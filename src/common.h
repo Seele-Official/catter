@@ -1,47 +1,9 @@
 #pragma once
-#include <string>
-#include <system_error>
 #include <string_view>
-
-#ifdef _WIN32
-#include <windows.h>
-#endif
 namespace catter {
-static constexpr char capture_root[] = "catter-captured";
-
-#ifdef _WIN32
-static constexpr char hook_dll[] = "catter-hook64.dll";
-
-std::string wstring_to_utf8(const std::wstring &wstr, std::error_code& ec) {
-    if (wstr.empty()) return {};
-
-    auto size_needed = WideCharToMultiByte(
-        CP_UTF8, 0, &wstr[0], 
-        (int)wstr.size(), NULL, 0, NULL, NULL
-    );
-    
-    if (size_needed == 0) {
-        switch (GetLastError()) {
-            case ERROR_NO_UNICODE_TRANSLATION:
-                ec = std::make_error_code(std::errc::illegal_byte_sequence);
-                break;
-            default:
-                ec = std::make_error_code(std::errc::io_error);
-        }
-        return {};
-    }
-
-    std::string to(size_needed, 0);
-
-    WideCharToMultiByte(
-        CP_UTF8, 0, &wstr[0], 
-        (int)wstr.size(), &to[0], size_needed, NULL, NULL
-    );
-
-    return to;
+    static constexpr char capture_root[] =     "catter-captured";
 }
-#endif
-}
+
 
 namespace meta {
 template <typename T>

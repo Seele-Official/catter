@@ -1,4 +1,6 @@
 set_project("catter")
+set_allowedplats("windows")
+
 
 set_languages("c++23")
 
@@ -7,15 +9,23 @@ add_rules("plugin.compile_commands.autoupdate", {outputdir = "build", lsp = "cla
 
 add_requires("microsoft-detours")
 
-target("catter-hook64")
-    set_kind("shared")
-    add_files("src/hook.cpp")
-    add_syslinks("user32")
+if is_plat("windows") then
+    target("catter-hook64")
+        set_kind("shared")
+        add_includedirs("src")
+        add_files("src/hook/windows/hook.cpp")
+        add_syslinks("user32")
 
-    add_packages("microsoft-detours")
+        add_packages("microsoft-detours")    
+end
+
+
 
 target("catter")
     set_kind("binary")
+    add_includedirs("src")
     add_files("src/main.cpp")
-
-    add_packages("microsoft-detours")
+    if is_plat("windows") then
+        add_files("src/hook/windows/impl.cpp")
+        add_packages("microsoft-detours")    
+    end

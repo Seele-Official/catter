@@ -10,11 +10,14 @@
 #include <thread>
 #include <print>
 
-#include "common.h"
 
 
 #include <windows.h>
 #include <detours.h>
+
+#include "common.h"
+#include "hook/output.h"
+#include "hook/windows/env.h"
 
 
 
@@ -24,61 +27,60 @@
 // Use anonymous namespace to avoid exporting symbols
 namespace {
 
-class unique_file{
-public:
-    unique_file(){
-        std::error_code ec;
-        std::filesystem::create_directories(catter::capture_root, ec);
-        if (ec) {
-            std::println("Failed to create capture root directory: {}: {}", catter::capture_root, ec.message());
-            return;
+std::string wstring_to_utf8(const std::wstring &wstr, std::error_code& ec) {
+    if (wstr.empty()) return {};
+
+    auto size_needed = WideCharToMultiByte(
+        CP_UTF8, 0, &wstr[0], 
+        (int)wstr.size(), NULL, 0, NULL, NULL
+    );
+    
+    if (size_needed == 0) {
+        switch (GetLastError()) {
+            case ERROR_NO_UNICODE_TRANSLATION:
+                ec = std::make_error_code(std::errc::illegal_byte_sequence);
+                break;
+            default:
+                ec = std::make_error_code(std::errc::io_error);
         }
-
-        auto unique_id = 
-            std::hash<std::thread::id>()(std::this_thread::get_id());
-        auto time_stamp = 
-            std::chrono::system_clock::now().time_since_epoch().count();
-
-        auto path = std::format("{}/{}_{}", catter::capture_root, unique_id, time_stamp);
-        this->ofs.open(path, std::ios::out | std::ios::app);
-
-        if (!this->ofs.is_open()) {
-            std::println("Failed to open output file: {}", path);
-        }
+        return {};
     }
 
-    template<typename... args_t>
-    void writeln(std::format_string<args_t...> fmt, args_t&&... args) {
-        std::lock_guard lock(this->mutex);
-        if (this->ofs.is_open()) {
-            this->ofs << std::format(fmt, std::forward<args_t>(args)...) << std::endl;
+    std::string to(size_needed, 0);
+
+    auto written = WideCharToMultiByte(
+        CP_UTF8, 0, &wstr[0], 
+        (int)wstr.size(), &to[0], size_needed, NULL, NULL
+    );
+    if (written == 0) {
+        switch (GetLastError()) {
+            case ERROR_NO_UNICODE_TRANSLATION:
+                ec = std::make_error_code(std::errc::illegal_byte_sequence);
+                break;
+            default:
+                ec = std::make_error_code(std::errc::io_error);
         }
+        return {};
     }
+    ec.clear();
+    return to;
+}
 
-    template<typename... args_t>
-    void wwriteln(std::wformat_string<args_t...> fmt, args_t&&... args) {
-        std::error_code ec;
-        auto message = catter::wstring_to_utf8(std::format(fmt, std::forward<args_t>(args)...), ec);
-        if (ec) {
-            this->writeln("Failed to convert wide string to UTF-8: {}", ec.message());
-        } else {
-            this->writeln("{}", std::move(message));
-        }
+
+template<typename... args_t>
+void wwriteln(std::wformat_string<args_t...> fmt, args_t&&... args) {
+    std::error_code ec;
+    auto message = wstring_to_utf8(std::format(fmt, std::forward<args_t>(args)...), ec);
+    if (ec) {
+        output_file().writeln("Failed to convert wide string to UTF-8: {}", ec.message());
+    } else {
+        output_file().writeln("{}", std::move(message));
     }
+}
 
-
-    ~unique_file(){
-        this->ofs.close();
-    }
-
-private:
-    std::ofstream  ofs;
-    std::mutex     mutex;
-};
-
-unique_file& output_file(){
-    static unique_file instance;
-    return instance;
+template<typename... args_t>
+void writeln(std::format_string<args_t...> fmt, args_t&&... args) {
+    output_file().writeln(fmt, std::forward<args_t>(args)...);
 }
 
 
@@ -99,7 +101,7 @@ namespace hook {
             LPSTARTUPINFOA lpStartupInfo,
             LPPROCESS_INFORMATION lpProcessInformation
         ){
-            output_file().writeln("{} {}", 
+            writeln("{} {}", 
                 lpApplicationName ? lpApplicationName : "",
                 lpCommandLine ? lpCommandLine : ""
             );
@@ -115,7 +117,7 @@ namespace hook {
                 lpCurrentDirectory,
                 lpStartupInfo,
                 lpProcessInformation,
-                catter::hook_dll,
+                catter::win::hook_dll,
                 target
             );
         }
@@ -135,7 +137,7 @@ namespace hook {
             LPSTARTUPINFOW lpStartupInfo,
             LPPROCESS_INFORMATION lpProcessInformation
         ){
-            output_file().wwriteln(L"{} {}", 
+            wwriteln(L"{} {}", 
                 lpApplicationName ? lpApplicationName : L"", 
                 lpCommandLine ? lpCommandLine : L""
             );
@@ -150,7 +152,7 @@ namespace hook {
                 lpCurrentDirectory,
                 lpStartupInfo,
                 lpProcessInformation,
-                catter::hook_dll,
+                catter::win::hook_dll,
                 target
             );
         }

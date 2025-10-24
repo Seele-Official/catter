@@ -9,32 +9,39 @@
 #include <print>
 
 
-#include <windows.h>
-#include <detours.h>
+#include "hook/interface.h"
 
 #include "common.h"
 
-
-std::string error_message(DWORD code) {
-    LPSTR buffer = nullptr;
-    size_t size = FormatMessageA(
-        FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-        NULL,
-        code,
-        MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-        (LPSTR)&buffer,
-        0,
-        NULL);
-    std::string message(buffer, size);
-    LocalFree(buffer);
-    return message;
-}
+namespace fs = std::filesystem;
 
 std::vector<std::string> collect_all(){
     std::vector<std::string> result;
-    for (const auto& entry : std::filesystem::recursive_directory_iterator(catter::capture_root)) {
-        if (entry.is_regular_file()){
-            std::ifstream ifs(entry.path(), std::ios::in | std::ios::binary);
+
+    std::error_code ec;
+
+    if (!fs::exists(catter::capture_root, ec)) {
+        return result;
+    }
+
+    if (ec) {
+        std::println("Failed to access capture root directory: {}: {}", catter::capture_root, ec.message());
+        return result;
+    }
+
+    auto dir_iter = fs::recursive_directory_iterator(
+        catter::capture_root,
+        fs::directory_options::skip_permission_denied,
+        ec
+    ); 
+
+    for (; dir_iter != fs::end(dir_iter); dir_iter.increment(ec)) {
+        if (ec) {
+            std::println("Failed to access directory entry: {}: {}", dir_iter->path().string(), ec.message());
+            continue;
+        }
+        if (dir_iter->is_regular_file()){
+            std::ifstream ifs(dir_iter->path(), std::ios::in | std::ios::binary);
             std::string line;
             while (std::getline(ifs, line)) {
                 result.push_back(line);
@@ -42,50 +49,14 @@ std::vector<std::string> collect_all(){
         }
     }
 
-    std::filesystem::remove_all(catter::capture_root);
-
+    fs::remove_all(catter::capture_root, ec);
+    if (ec) {
+        std::println("Failed to remove capture root directory: {}: {}", catter::capture_root, ec.message());
+    }
     return result;
 }
 
-int attach_run(std::string command_line) {
-    PROCESS_INFORMATION pi{};
-    STARTUPINFOA si{
-        .cb = sizeof(STARTUPINFOA)
-    };
 
-    auto ret = ::DetourCreateProcessWithDllExA(
-        nullptr,
-        command_line.data(),
-        nullptr,
-        nullptr,
-        FALSE,
-        CREATE_NEW_CONSOLE,
-        nullptr,
-        nullptr,
-        &si,
-        &pi,
-        catter::hook_dll,
-        nullptr
-    );
-
-    if (!ret) {
-       std::println("Failed to create process with hook. Error: {} ({})", GetLastError(), error_message(GetLastError()));
-        return -1;
-    }
-
-    WaitForSingleObject(pi.hProcess, INFINITE);
-    DWORD exit_code = 0;
-
-    if (GetExitCodeProcess(pi.hProcess, &exit_code) == FALSE) {
-        std::println("Failed to get exit code. Error: {} ({})", GetLastError(), error_message(GetLastError()));
-        CloseHandle(pi.hThread);
-        CloseHandle(pi.hProcess);
-        return -1;
-    }
-    CloseHandle(pi.hThread);
-    CloseHandle(pi.hProcess);
-    return static_cast<int>(exit_code);
-}
 
 int main(int argc, char* argv[]) {
     if (argc < 2) {
@@ -101,9 +72,17 @@ int main(int argc, char* argv[]) {
         command_line += argv[i];
     }
 
-    int result = attach_run(command_line);
-    if (result != 0) {
-        std::println("Process failed with exit code: {}", result);
+    std::error_code ec;
+
+    auto ret = catter::hook::attach_run(command_line, ec);
+
+    if (ec) {
+        std::println("Failed to attach hook: {}", ec.message());
+        return 1;
+    }
+    
+    if (ret != 0) {
+        std::println("Command failed with exit code: {}", ret);
     }
 
     auto captured_output = collect_all();
