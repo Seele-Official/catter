@@ -12,33 +12,39 @@
 namespace catter::hook {
 namespace detail {
 std::string quote_win32_arg(std::string_view arg) {
-    if(arg.empty()) {
-        return "\"\"";
-    }
-
-    bool need_quotes = arg.find_first_of(" \t\"") != std::string_view::npos;
-    if(!need_quotes) {
+    // No quoting needed if it's empty or has no special characters.
+    if(arg.empty() || arg.find_first_of(" \t\n\v\"") == std::string_view::npos) {
         return std::string(arg);
     }
-    std::string out;
-    out.push_back('"');
-    size_t backslashes = 0;
-    for(char ch: arg) {
-        if(ch == '\\') {
-            ++backslashes;
-        } else if(ch == '"') {
-            out.append(backslashes * 2 + 1, '\\');
-            out.push_back('"');
-            backslashes = 0;
+
+    std::string quoted_arg;
+    quoted_arg.push_back('"');
+
+    for(auto it = arg.begin();; ++it) {
+        int num_backslashes = 0;
+        while(it != arg.end() && *it == '\\') {
+            ++it;
+            ++num_backslashes;
+        }
+
+        if(it == arg.end()) {
+            // End of string; append backslashes and a closing quote.
+            quoted_arg.append(num_backslashes * 2, '\\');
+            break;
+        }
+
+        if(*it == '"') {
+            // Escape all backslashes and the following double quote.
+            quoted_arg.append(num_backslashes * 2 + 1, '\\');
+            quoted_arg.push_back(*it);
         } else {
-            out.append(backslashes, '\\');
-            backslashes = 0;
-            out.push_back(ch);
+            // Backslashes aren't special here.
+            quoted_arg.append(num_backslashes, '\\');
+            quoted_arg.push_back(*it);
         }
     }
-    out.append(backslashes * 2, '\\');
-    out.push_back('"');
-    return out;
+    quoted_arg.push_back('"');
+    return quoted_arg;
 }
 }  // namespace detail
 
