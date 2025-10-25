@@ -295,7 +295,7 @@ void detach() noexcept {
 }
 }  // namespace detour
 
-};  // namespace
+}  // namespace
 
 BOOL WINAPI DllMain(HINSTANCE hinst, DWORD dwReason, LPVOID reserved) {
     if(DetourIsHelperProcess()) {

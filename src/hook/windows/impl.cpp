@@ -12,11 +12,14 @@
 namespace catter::hook {
 namespace detail {
 std::string quote_win32_arg(std::string_view arg) {
-    if(arg.empty())
+    if(arg.empty()) {
         return "\"\"";
+    }
+
     bool need_quotes = arg.find_first_of(" \t\"") != std::string_view::npos;
-    if(!need_quotes)
+    if(!need_quotes) {
         return std::string(arg);
+    }
     std::string out;
     out.push_back('"');
     size_t backslashes = 0;
