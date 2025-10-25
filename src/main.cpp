@@ -1,6 +1,8 @@
 #include <cstddef>
+#include <span>
 #include <string>
 #include <filesystem>
+#include <string_view>
 #include <vector>
 #include <format>
 #include <iostream>
@@ -8,87 +10,90 @@
 #include <fstream>
 #include <print>
 
-
 #include "hook/interface.h"
 
 #include "common.h"
 
 namespace fs = std::filesystem;
 
-std::vector<std::string> collect_all(){
+std::vector<std::string> collect_all() {
     std::vector<std::string> result;
 
     std::error_code ec;
 
-    if (!fs::exists(catter::capture_root, ec)) {
+    if(!fs::exists(catter::capture_root, ec)) {
         return result;
     }
 
-    if (ec) {
-        std::println("Failed to access capture root directory: {}: {}", catter::capture_root, ec.message());
+    if(ec) {
+        std::println("Failed to access capture root directory: {}: {}",
+                     catter::capture_root,
+                     ec.message());
         return result;
     }
 
-    auto dir_iter = fs::recursive_directory_iterator(
-        catter::capture_root,
-        fs::directory_options::skip_permission_denied,
-        ec
-    ); 
+    auto dir_iter = fs::recursive_directory_iterator(catter::capture_root,
+                                                     fs::directory_options::skip_permission_denied,
+                                                     ec);
 
-    for (; dir_iter != fs::end(dir_iter); dir_iter.increment(ec)) {
-        if (ec) {
-            std::println("Failed to access directory entry: {}: {}", dir_iter->path().string(), ec.message());
+    for(; dir_iter != fs::end(dir_iter); dir_iter.increment(ec)) {
+        if(ec) {
+            std::println("Failed to access directory entry: {}: {}",
+                         dir_iter->path().string(),
+                         ec.message());
+            ec.clear();
             continue;
         }
-        if (dir_iter->is_regular_file()){
+        if(dir_iter->is_regular_file()) {
             std::ifstream ifs(dir_iter->path(), std::ios::in | std::ios::binary);
+            if(!ifs) {
+                std::println("Failed to open file: {}", dir_iter->path().string());
+                continue;
+            }
             std::string line;
-            while (std::getline(ifs, line)) {
+            while(std::getline(ifs, line)) {
                 result.push_back(line);
             }
         }
     }
 
     fs::remove_all(catter::capture_root, ec);
-    if (ec) {
-        std::println("Failed to remove capture root directory: {}: {}", catter::capture_root, ec.message());
+    if(ec) {
+        std::println("Failed to remove capture root directory: {}: {}",
+                     catter::capture_root,
+                     ec.message());
     }
     return result;
 }
 
-
-
 int main(int argc, char* argv[]) {
-    if (argc < 2) {
+    if(argc < 2) {
         std::println("Usage: {} <command>", argv[0]);
         return 1;
     }
 
-    std::string command_line;
-    for (auto i : std::views::iota(1, argc)) {
-        if (!command_line.empty()) {
-            command_line += " ";
-        }
-        command_line += argv[i];
+    std::vector<std::span<const char>> command;
+    for(auto i: std::views::iota(1, argc)) {
+        command.push_back({argv[i], std::char_traits<char>::length(argv[i])});
     }
 
     std::error_code ec;
 
-    auto ret = catter::hook::attach_run(command_line, ec);
+    auto ret = catter::hook::attach_run(command, ec);
 
-    if (ec) {
+    if(ec) {
         std::println("Failed to attach hook: {}", ec.message());
         return 1;
     }
-    
-    if (ret != 0) {
+
+    if(ret != 0) {
         std::println("Command failed with exit code: {}", ret);
     }
 
     auto captured_output = collect_all();
-    for (const auto& line : captured_output) {
+    for(const auto& line: captured_output) {
         std::println("{}", line);
     }
-    
+
     return 0;
 }

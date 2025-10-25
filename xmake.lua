@@ -16,7 +16,7 @@ if is_plat("windows") then
         add_files("src/hook/windows/hook.cpp")
         add_syslinks("user32")
 
-        add_packages("microsoft-detours")    
+        add_packages("microsoft-detours")
 end
 
 
@@ -27,5 +27,5 @@ target("catter")
     add_files("src/main.cpp")
     if is_plat("windows") then
         add_files("src/hook/windows/impl.cpp")
-        add_packages("microsoft-detours")    
+        add_packages("microsoft-detours")
     end
