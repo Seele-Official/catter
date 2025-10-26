@@ -44,10 +44,13 @@ std::vector<std::string> collect_all() {
             ec.clear();
             continue;
         }
-        if(dir_iter->is_regular_file()) {
-            std::ifstream ifs(dir_iter->path(), std::ios::in | std::ios::binary);
+
+        const auto& entry = *dir_iter;
+
+        if(entry.is_regular_file()) {
+            std::ifstream ifs(entry.path(), std::ios::in | std::ios::binary);
             if(!ifs) {
-                std::println("Failed to open file: {}", dir_iter->path().string());
+                std::println("Failed to open file: {}", entry.path().string());
                 continue;
             }
             std::string line;

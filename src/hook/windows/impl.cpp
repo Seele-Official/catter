@@ -50,6 +50,11 @@ std::string quote_win32_arg(std::string_view arg) {
 }  // namespace detail
 
 int attach_run(std::span<const char* const> command, std::error_code& ec) {
+    if(command.empty()) {
+        ec = std::make_error_code(std::errc::invalid_argument);
+        return 0;
+    }
+
     std::string command_line;
 
     auto view = command | std::views::transform([](auto&& s) {
@@ -57,9 +62,13 @@ int attach_run(std::span<const char* const> command, std::error_code& ec) {
                 }) |
                 std::views::transform(detail::quote_win32_arg);
 
+    bool space = false;
     for(auto&& c: view) {
+        if(space) {
+            command_line.push_back(' ');
+        }
         command_line.append(c);
-        command_line.push_back(' ');
+        space = true;
     }
 
     PROCESS_INFORMATION pi{};
