@@ -4,7 +4,10 @@ set_allowedplats("windows")
 
 set_languages("c++23")
 
-add_rules("plugin.compile_commands.autoupdate", {outputdir = "build", lsp = "clangd"})
+option("dev", {default = true})
+if has_config("dev") then
+   add_rules("plugin.compile_commands.autoupdate", {outputdir = "build", lsp = "clangd"})
+end
 
 
 add_requires("microsoft-detours")
