@@ -42,4 +42,5 @@
 
 .cache/
 .xmake
+.venv
 build*/
