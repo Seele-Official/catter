@@ -72,10 +72,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    std::vector<std::span<const char>> command;
-    for(auto i: std::views::iota(1, argc)) {
-        command.push_back({argv[i], std::char_traits<char>::length(argv[i])});
-    }
+    std::span<const char* const> command{argv + 1, argv + argc};
 
     std::error_code ec;
 

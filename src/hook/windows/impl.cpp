@@ -1,3 +1,4 @@
+#include <print>
 #include <string>
 #include <ranges>
 #include <system_error>
@@ -48,16 +49,17 @@ std::string quote_win32_arg(std::string_view arg) {
 }
 }  // namespace detail
 
-int attach_run(std::vector<std::span<const char>> command, std::error_code& ec) {
+int attach_run(std::span<const char* const> command, std::error_code& ec) {
     std::string command_line;
 
-    auto view =
-        command |
-        std::views::transform([](auto&& s) { return std::string_view{s.data(), s.size()}; }) |
-        std::views::transform(detail::quote_win32_arg);
+    auto view = command | std::views::transform([](auto&& s) {
+                    return std::string_view{s, std::char_traits<char>::length(s)};
+                }) |
+                std::views::transform(detail::quote_win32_arg);
 
     for(auto&& c: view) {
         command_line.append(c);
+        command_line.push_back(' ');
     }
 
     PROCESS_INFORMATION pi{};
