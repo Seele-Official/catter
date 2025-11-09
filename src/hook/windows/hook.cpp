@@ -9,7 +9,7 @@
 #include <detours.h>
 
 #include "common.h"
-#include "hook/output.h"
+#include "hook/windows/output.h"
 #include "hook/windows/env.h"
 
 // https://github.com/microsoft/Detours/wiki/DetourCreateProcessWithDll#remarks
