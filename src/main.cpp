@@ -1,6 +1,8 @@
 #include <span>
 #include <format>
 #include <print>
+#include <string>
+#include <string_view>
 
 #include "hook/interface.h"
 
