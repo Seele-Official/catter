@@ -398,52 +398,42 @@ public:
 
     using Register = Object::Register<std::function<Sign>>;
 
-    static Function from(JSContext* ctx, std::function<Sign>&& func) noexcept {
-        // Maybe we should require @func to receive this_obj as first parameter,
-        // like std::function<R(const Object&, Args...)> ?
-
+    template <typename Invocable>
+        requires std::is_invocable_r_v<R, Invocable, Args...>
+    static Function from(JSContext* ctx, Invocable&& invocable) noexcept {
+        using Opaque = std::remove_cvref_t<Invocable>;
         auto rt = JS_GetRuntime(ctx);
-
         JSClassID id = 0;
         if(auto it = Register::find(rt); it != Register::end()) {
             id = it->second;
         } else {
-            auto class_name = std::format("qjs.{}", meta::type_name<std::function<Sign>&&>());
-            JSClassDef def{class_name.c_str(),
-                           [](JSRuntime* rt, JSValue obj) {
-                               auto* ptr = static_cast<std::function<Sign>*>(
-                                   JS_GetOpaque(obj, Register::get(rt)));
-                               delete ptr;
-                           },
-                           nullptr,
-                           proxy,
-                           nullptr};
+            auto class_name = std::format("qjs.{}", meta::type_name<Invocable&&>());
+            if constexpr(std::is_convertible_v<Invocable, Sign*> ||
+                         std::is_lvalue_reference_v<Invocable&&>) {
+                JSClassDef def{class_name.c_str(), nullptr, nullptr, proxy<Opaque>, nullptr};
+                id = Register::create(rt, &def);
+            } else {
+                JSClassDef def{class_name.c_str(),
+                               [](JSRuntime* rt, JSValue obj) {
+                                   auto* ptr =
+                                       static_cast<Opaque*>(JS_GetOpaque(obj, Register::get(rt)));
+                                   delete ptr;
+                               },
+                               nullptr,
+                               proxy<Opaque>,
+                               nullptr};
 
-            id = Register::create(rt, &def);
+                id = Register::create(rt, &def);
+            }
         }
         Function<Sign> result{ctx, JS_NewObjectClass(ctx, id)};
-        JS_SetOpaque(result.value(), new std::function<Sign>(std::move(func)));
-        return result;
-    }
 
-    // Careful: @func reference must outlive the created Function
-    static Function from(JSContext* ctx, std::function<Sign>& func) noexcept {
-        // Maybe we should require @func to receive this_obj as first parameter,
-        // like std::function<R(const Object&, Args...)> ?
-
-        auto rt = JS_GetRuntime(ctx);
-
-        JSClassID id = 0;
-        if(auto it = Register::find(rt); it != Register::end()) {
-            id = it->second;
+        if constexpr(std::is_convertible_v<Invocable, Sign*> ||
+                     std::is_lvalue_reference_v<Invocable&&>) {
+            JS_SetOpaque(result.value(), &invocable);
         } else {
-            auto class_name = std::format("qjs.{}", meta::type_name<std::function<Sign>&>());
-            JSClassDef def{class_name.c_str(), nullptr, nullptr, proxy, nullptr};
-
-            id = Register::create(rt, &def);
+            JS_SetOpaque(result.value(), new Opaque(std::forward<Invocable>(invocable)));
         }
-        Function<Sign> result{ctx, JS_NewObjectClass(ctx, id)};
-        JS_SetOpaque(result.value(), &func);
         return result;
     }
 
@@ -496,6 +486,7 @@ public:
     }
 
 private:
+    template <typename Opaque>
     static JSValue proxy(JSContext* ctx,
                          JSValueConst func_obj,
                          JSValueConst this_val,
@@ -521,7 +512,7 @@ private:
                     std::format("Failed to convert argument[{}] to {}", N, meta::type_name<T>()));
             };
 
-            if(auto* ptr = static_cast<std::function<Sign>*>(
+            if(auto* ptr = static_cast<Opaque*>(
                    JS_GetOpaque(func_obj, Register::get(JS_GetRuntime(ctx))))) {
                 try {
                     if constexpr(std::is_void_v<R>) {
