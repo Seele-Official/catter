@@ -1,6 +1,5 @@
 #include <print>
 #include "../apitool.h"
-#include "libconfig/common.h"
 
 namespace {
 CAPI(os_name, ()->std::string) {

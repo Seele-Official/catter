@@ -33,9 +33,7 @@ elseif is_plat("windows") then
 end
 
 includes(
-    "src/common/librpc",
-    "src/common/libutil",
-    "src/common/libconfig",
+    "src/common",
 
     "src/catter",
     "src/catter-proxy",
