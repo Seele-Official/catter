@@ -3,6 +3,8 @@ set_project("catter")
 add_rules("mode.debug", "mode.release", "mode.releasedbg")
 set_allowedplats("windows", "linux", "macosx")
 
+set_languages("c++23")
+
 option("dev", {default = true})
 option("test", {default = true})
 
@@ -32,6 +34,7 @@ end
 
 if is_plat("macosx") then
     -- https://conda-forge.org/docs/maintainer/knowledge_base/#newer-c-features-with-old-sdk
+    set_toolchains("clang")
     add_defines("_LIBCPP_DISABLE_AVAILABILITY=1")
     add_ldflags("-fuse-ld=lld")
     add_shflags("-fuse-ld=lld")
@@ -43,7 +46,6 @@ if is_plat("macosx") then
     }})
 end
 
-set_languages("c++23")
 
 if is_mode("debug") and is_plat("linux", "macosx") then
     -- hook.so will use a static lib to log in debug mode
@@ -134,6 +136,17 @@ target("ut-catter")
 
     add_tests("default")
 
+target("ut-hook-unix")
+    set_default(false)
+    set_kind("binary")
+    add_files("tests/unit/unix-hook/**.cc")
+    add_packages("boost_ut")
+    add_deps("common")
+    add_deps("catter-hook-unix-support")
+    if is_plat("linux", "macosx") then
+        add_tests("default")
+    end
+
 
 target("catter-hook-win64")
     set_default(is_plat("windows"))
@@ -144,20 +157,55 @@ target("catter-hook-win64")
     add_packages("microsoft-detours")
     add_cxxflags("-fno-exceptions", "-fno-rtti")
 
+target("catter-hook-unix-support")
+    set_default(is_plat("linux", "macosx"))
+    set_kind("object")
+    if is_mode("debug") then
+        add_deps("common")
+    end
+    if is_plat("linux") then
+        add_syslinks("dl")
+    end
+    add_includedirs("src/catter-hook/", { public = true })
+    add_includedirs("src/catter-hook/linux-mac/payload/", { public = true })
+    add_files("src/catter-hook/linux-mac/payload/*.cc")
+
+
 target("catter-hook-unix")
     set_default(is_plat("linux", "macosx"))
     set_kind("shared")
+
     if is_mode("debug") then
         add_deps("common")
     end
 
+    add_cxxflags("-fvisibility=hidden")
+    add_cxxflags("-fvisibility-inlines-hidden")
+    add_cxflags("-ffunction-sections", "-fdata-sections")
+
     add_includedirs("src/catter-hook/")
     add_includedirs("src/catter-hook/linux-mac/payload/")
     add_files("src/catter-hook/linux-mac/payload/**.cc")
-    add_syslinks("dl")
-    if is_mode("release") then
-        add_cxxflags("-fvisibility=hidden")
-        add_cxxflags("-nostdlib++")
+
+    if is_plat("linux") then
+        add_shflags("-static-libstdc++", {force = true})
+        add_shflags("-static-libgcc", {force = true})
+
+        add_shflags("-Wl,--version-script=src/catter-hook/linux-mac/payload/inject/exports.map")
+        add_syslinks("dl")
+        add_shflags("-Wl,--gc-sections", {force = true})
+    end
+
+    if is_plat("macosx") then
+        -- set_policy("check.auto_ignore_flags", false)
+        add_shflags("-nostdlib++", {force = true})
+        add_syslinks("System")
+        add_syslinks("c++abi")
+        local libcxx_lib = path.absolute("./.pixi/envs/default/lib/libc++.a")
+        add_shflags("-Wl,-force_load," .. libcxx_lib, {force = true})
+        add_shflags("-fuse-ld=lld")
+        add_shflags("-Wl,-exported_symbols_list,/dev/null", {public = true, force = true})
+        add_shflags("-Wl,-dead_strip", {force = true})
     end
 
 target("catter-hook")
