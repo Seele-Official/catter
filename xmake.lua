@@ -66,43 +66,16 @@ add_requires("libuv", {version = "v1.51.0"})
 add_requires("quickjs-ng", {version = "v0.11.0"})
 add_requires("spdlog", {version = "1.15.3", configs = {header_only = false, std_format = true, noexcept = true}})
 if has_config("test") then
-    add_requires("boost_ut", {version = "v2.3.1"})
+    add_requires("eventide")
 end
-
-target("catter-config")
-    set_kind("headeronly")
-    add_includedirs("src/common", {public = true})
-
-target("catter-option")
-    set_kind("static")
-    add_includedirs("src/common", {public = true})
-    add_files("src/common/option/**.cc")
-
-target("catter-opt-data")
-    set_kind("static")
-    add_includedirs("src/common", {public = true})
-    add_deps("catter-option")
-    add_files("src/common/opt-data/**/*.cc")
-
-target("catter-uv")
-    set_kind("static")
-    add_includedirs("src/common", {public = true})
-    add_files("src/common/uv/**.cc")
-    add_packages("libuv", {public = true})
-
-target("catter-util")
-    set_kind("static")
-    add_includedirs("src/common", {public = true})
-    add_files("src/common/util/**.cc")
-    add_packages("spdlog", {public = true})
 
 target("common")
     set_kind("static")
-    add_deps("catter-config", {public = true})
-    add_deps("catter-option", {public = true})
-    add_deps("catter-opt-data", {public = true})
-    add_deps("catter-uv", {public = true})
-    add_deps("catter-util", {public = true})
+    add_includedirs("src/common", {public = true})
+    add_files("src/common/**.cc")
+
+    add_packages("spdlog", {public = true})
+    add_packages("libuv", {public = true})
 
 target("catter-core")
     -- use object, avoid register invalid
@@ -122,34 +95,7 @@ target("catter")
     add_deps("catter-core")
     add_files("src/catter/main.cc")
 
-target("ut-support")
-    set_kind("headeronly")
-    add_includedirs("tests/unit/support/", {public = true})
 
-
-target("ut-catter")
-    set_default(false)
-    set_kind("binary")
-    add_files("tests/unit/catter/**.cc")
-    add_packages("boost_ut")
-    add_deps("catter-core", "common", "ut-support")
-
-    add_defines(format([[JS_TEST_PATH="%s"]], path.unix(path.join(os.projectdir(), "api/output/test/"))))
-    add_defines(format([[JS_TEST_RES_PATH="%s"]], path.unix(path.join(os.projectdir(), "api/output/test/res"))))
-    add_rules("build.js", {js_target = "build-js-test"})
-    add_files("api/src/*.ts", "api/test/*.ts", "api/test/res/**/*.txt")
-
-    add_tests("default")
-
-target("ut-hook-unix")
-    set_default(false)
-    set_kind("binary")
-    add_files("tests/unit/unix-hook/**.cc")
-    add_packages("boost_ut")
-    add_deps("common", "catter-hook-unix-support", "ut-support")
-    if is_plat("linux", "macosx") then
-        add_tests("default")
-    end
 
 
 target("catter-hook-win64")
@@ -161,18 +107,7 @@ target("catter-hook-win64")
     add_packages("microsoft-detours")
     add_cxxflags("-fno-exceptions", "-fno-rtti")
 
-target("catter-hook-unix-support")
-    set_default(is_plat("linux", "macosx"))
-    set_kind("object")
-    if is_mode("debug") then
-        add_deps("common")
-    end
-    if is_plat("linux") then
-        add_syslinks("dl")
-    end
-    add_includedirs("src/catter-hook/", { public = true })
-    add_includedirs("src/catter-hook/linux-mac/payload/", { public = true })
-    add_files("src/catter-hook/linux-mac/payload/*.cc")
+
 
 
 target("catter-hook-unix")
@@ -198,9 +133,7 @@ target("catter-hook-unix")
         add_shflags("-Wl,--version-script=src/catter-hook/linux-mac/payload/inject/exports.map")
         add_syslinks("dl")
         add_shflags("-Wl,--gc-sections", {force = true})
-    end
-
-    if is_plat("macosx") then
+    elseif is_plat("macosx") then
         -- set_policy("check.auto_ignore_flags", false)
         add_shflags("-nostdlib++", {force = true})
         add_syslinks("System")
@@ -228,6 +161,71 @@ target("catter-proxy")
     add_deps("common", "catter-hook")
     add_includedirs("src/catter-proxy/")
     add_files("src/catter-proxy/main.cc", "src/catter-proxy/constructor.cc")
+
+target("ut-support")
+    set_kind("headeronly")
+    add_includedirs("tests/unit/support/", {public = true})
+
+
+target("ut-common")
+    set_default(false)
+    set_kind("binary")
+    add_files("tests/unit/common/**.cc")
+    add_packages("eventide")
+    add_deps("common", "ut-support")
+    add_tests("default")
+
+target("ut-catter")
+    set_default(false)
+    set_kind("binary")
+    add_files("tests/unit/catter/**.cc")
+    add_packages("eventide")
+    add_deps("catter-core", "common", "ut-support")
+
+    add_defines(format([[JS_TEST_PATH="%s"]], path.unix(path.join(os.projectdir(), "api/output/test/"))))
+    add_defines(format([[JS_TEST_RES_PATH="%s"]], path.unix(path.join(os.projectdir(), "api/output/test/res"))))
+    add_rules("build.js", {js_target = "build-js-test"})
+    add_files("api/src/*.ts", "api/test/*.ts")
+
+    add_tests("default")
+
+
+target("ut-catter-hook-unix")
+    set_default(false)
+    set_kind("binary")
+    if is_plat("linux") then
+        add_syslinks("dl")
+    end
+    add_includedirs("src/catter-hook/", { public = true })
+    add_includedirs("src/catter-hook/linux-mac/payload/", { public = true })
+    add_files("src/catter-hook/linux-mac/payload/*.cc")
+
+    add_files("tests/unit/catter-hook/linux-mac/**.cc")
+
+    add_packages("eventide")
+    add_deps("common", "ut-support")
+
+    if is_plat("linux", "macosx") then
+        add_tests("default")
+    end
+
+target("ut-catter-hook-win64")
+    set_default(false)
+    set_kind("binary")
+
+    if is_plat("windows") then
+        -- skip
+    elseif is_plat("linux", "macosx") then
+        add_deps("ut-catter-hook-unix")
+    end
+    add_files("tests/unit/catter-hook/win/**.cc")
+
+    add_packages("eventide")
+    add_deps("common", "ut-support")
+
+    if is_plat("windows") then
+        add_tests("default")
+    end
 
 rule("build.js")
     set_extensions(".ts", ".d.ts", ".js", ".txt")
@@ -278,4 +276,26 @@ rule("build.js")
             dependfile = target:dependfile(objectfile),
             changed = target:is_rebuilt(),
         })
+    end)
+
+package("eventide")
+    set_homepage("https://clice.io")
+    set_license("Apache-2.0")
+
+    set_urls("https://github.com/clice-io/eventide.git")
+    -- version from `git rev-list --count HEAD`
+    -- add_versions("22", "b573881204c3c95f5c98fdc23ef39160a9e413fa")
+
+    add_deps("libuv 1.51.0")
+    add_deps("cpptrace v1.0.4")
+
+    on_install(function (package)
+        if package:has_tool("cxx", "cl", "clang_cl") then
+            package:add("cxxflags", "/Zc:__cplusplus", "/Zc:preprocessor")
+        end
+
+        local configs = {}
+        configs.dev = false
+        configs.test = false
+        import("package.tools.xmake").install(package, configs)
     end)
