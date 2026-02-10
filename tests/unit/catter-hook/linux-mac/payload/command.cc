@@ -41,8 +41,8 @@ TEST_SUITE(cmd_builder) {
             auto parse_res = ct::optdata::catter_proxy::parse_opt(cmd.argv);
             EXPECT_TRUE(parse_res.parent_id == "session-99");
             EXPECT_TRUE(parse_res.executable == target_path);
-
-            auto& args = parse_res.raw_argv;
+            EXPECT_TRUE(parse_res.argv.has_value());
+            auto& args = parse_res.argv.value();
             EXPECT_TRUE(args.size() == 3);
             EXPECT_TRUE(args.at(0) == "gcc");
             EXPECT_TRUE(args.at(2) == "main.c");
@@ -76,7 +76,7 @@ TEST_SUITE(cmd_builder) {
 
         auto f = [&]() {
             auto parse_res = ct::optdata::catter_proxy::parse_opt(cmd.argv);
-            EXPECT_FALSE(parse_res.error_msg.empty());
+            EXPECT_FALSE(parse_res.argv.has_value());
         };
 
         EXPECT_NOTHROWS(f());

@@ -40,8 +40,8 @@ TEST_SUITE(executor) {
             auto parse_res = catter::optdata::catter_proxy::parse_opt(linker.last_argv);
             EXPECT_TRUE(parse_res.parent_id == session.self_id);
             EXPECT_TRUE(parse_res.executable == "/bin/ls");
-
-            auto& raw_args = parse_res.raw_argv;
+            EXPECT_TRUE(parse_res.argv.has_value());
+            auto& raw_args = parse_res.argv.value();
             EXPECT_TRUE(raw_args.size() == 2);
             EXPECT_TRUE(raw_args[0] == "ls");
             EXPECT_TRUE(raw_args[1] == "-la");
@@ -82,7 +82,7 @@ TEST_SUITE(executor) {
         auto f = [&]() {
             auto parse_res = catter::optdata::catter_proxy::parse_opt(linker.last_argv);
             EXPECT_TRUE(parse_res.executable == "/app/run");
-            EXPECT_TRUE(parse_res.raw_argv.at(1) == "--arg1");
+            EXPECT_TRUE(parse_res.argv.value().at(1) == "--arg1");
         };
         EXPECT_NOTHROWS(f());
     };
