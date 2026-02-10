@@ -123,14 +123,14 @@ target("catter-hook-unix")
     add_cxflags("-ffunction-sections", "-fdata-sections")
 
     add_includedirs("src/catter-hook/")
-    add_includedirs("src/catter-hook/linux-mac/payload/")
-    add_files("src/catter-hook/linux-mac/payload/**.cc")
+    add_includedirs("src/catter-hook/unix/payload/")
+    add_files("src/catter-hook/unix/payload/**.cc")
 
     if is_plat("linux") then
         add_shflags("-static-libstdc++", {force = true})
         add_shflags("-static-libgcc", {force = true})
 
-        add_shflags("-Wl,--version-script=src/catter-hook/linux-mac/payload/inject/exports.map")
+        add_shflags("-Wl,--version-script=src/catter-hook/unix/payload/inject/exports.map")
         add_syslinks("dl")
         add_shflags("-Wl,--gc-sections", {force = true})
     elseif is_plat("macosx") then
@@ -158,7 +158,7 @@ target("catter-hook")
         add_files("src/catter-hook/win/impl.cc")
         add_packages("microsoft-detours")
     elseif is_plat("linux", "macosx") then
-        add_files("src/catter-hook/linux-mac/impl.cc")
+        add_files("src/catter-hook/unix/impl.cc")
     end
 
 target("catter-proxy")
@@ -210,10 +210,10 @@ target("ut-catter-hook-unix")
         add_syslinks("dl")
     end
     add_includedirs("src/catter-hook/", { public = true })
-    add_includedirs("src/catter-hook/linux-mac/payload/", { public = true })
-    add_files("src/catter-hook/linux-mac/payload/*.cc")
+    add_includedirs("src/catter-hook/unix/payload/", { public = true })
+    add_files("src/catter-hook/unix/payload/*.cc")
 
-    add_files("tests/unit/catter-hook/linux-mac/**.cc")
+    add_files("tests/unit/catter-hook/unix/**.cc")
 
     add_deps("common")
 

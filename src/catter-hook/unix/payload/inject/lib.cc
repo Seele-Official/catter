@@ -3,9 +3,9 @@
 #include "linker.h"
 #include "session.h"
 #include "executor.h"
-#include "linux-mac/debug.h"
-#include "linux-mac/crossplat.h"
-#include "linux-mac/config.h"
+#include "unix/debug.h"
+#include "unix/crossplat.h"
+#include "unix/config.h"
 
 #include <limits.h>
 #include "unistd.h"
