@@ -11,7 +11,7 @@
 
 #include "hook.h"
 #include "ipc_handler.h"
-#include "linux-mac/config.h"
+#include "unix/config.h"
 
 #include "util/crossplat.h"
 #include "util/log.h"

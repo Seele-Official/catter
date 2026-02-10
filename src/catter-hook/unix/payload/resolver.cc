@@ -1,7 +1,7 @@
 #include "resolver.h"
 
 #include "environment.h"
-#include "linux-mac/config.h"
+#include "unix/config.h"
 
 #include <cerrno>
 #include <ranges>

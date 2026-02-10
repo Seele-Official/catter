@@ -15,7 +15,7 @@
 #include "util/crossplat.h"
 #include "util/log.h"
 #include "util/eventide.h"
-#include "linux-mac/config.h"
+#include "unix/config.h"
 
 namespace catter::proxy::hook {
 

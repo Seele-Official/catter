@@ -1,8 +1,8 @@
 #include "session.h"
 
-#include "linux-mac/debug.h"
+#include "unix/debug.h"
 #include "environment.h"
-#include "linux-mac/config.h"
+#include "unix/config.h"
 #include <string>
 
 namespace {
