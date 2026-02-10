@@ -1,24 +1,22 @@
 #pragma once
-
-/* This file is for easily use the option of catter-proxy
- */
-
-#include "opt-data/catter-proxy/table.h"
-#include "util/option.h"
 #include <expected>
 #include <format>
 #include <print>
 #include <stdexcept>
 #include <string>
+#include <system_error>
 #include <vector>
+
+#include "opt-data/catter-proxy/table.h"
+#include "util/option.h"
 
 namespace catter::optdata::catter_proxy {
 
 struct Option {
     std::string parent_id;
     std::string executable;
-    std::string error_msg;
-    std::vector<std::string> raw_argv;
+    // if the input is not "--", then it is an error message from the hook
+    std::expected<std::vector<std::string>, std::runtime_error> argv;
 };
 
 inline Option parse_opt(std::span<std::string> argv_span, bool with_program_name = true) {
@@ -33,6 +31,9 @@ inline Option parse_opt(std::span<std::string> argv_span, bool with_program_name
     catter_proxy_opt_table.parse_args(
         argv,
         [&](const std::expected<opt::ParsedArgument, std::string>& arg) {
+            if(!error.empty()) {
+                return;
+            }
             if(!arg.has_value()) {
                 error = std::format("error parsing arguments: {}", arg.error());
                 return;
@@ -49,10 +50,11 @@ inline Option parse_opt(std::span<std::string> argv_span, bool with_program_name
                 }
                 case OPT_INPUT: {
                     if(arg->get_spelling_view() == "--") {
-                        option.raw_argv =
+                        option.argv =
                             std::vector<std::string>(arg->values.begin(), arg->values.end());
                     } else {
-                        option.error_msg = arg->get_spelling_view();
+                        option.argv = std::unexpected(std::runtime_error(
+                            std::format("error from hook: {}", arg->get_spelling_view())));
                     }
                     break;
                 }

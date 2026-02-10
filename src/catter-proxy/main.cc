@@ -65,13 +65,13 @@ int main(int argc, char* argv[], char* envp[]) {
 
         auto opt = catter::optdata::catter_proxy::parse_opt(argc, argv);
 
-        if(!opt.error_msg.empty()) {
-            throw std::runtime_error(std::format("Error from hook: {}", opt.error_msg));
+        if(!opt.argv.has_value()) {
+            throw opt.argv.error();
         }
         catter::ipc::data::command cmd = {
             .working_dir = std::filesystem::current_path().string(),
             .executable = opt.executable,
-            .args = opt.raw_argv,
+            .args = opt.argv.value(),
             .env = catter::util::get_environment(),
         };
 

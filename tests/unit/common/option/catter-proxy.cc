@@ -101,7 +101,8 @@ TEST_SUITE(opt_catter_proxy_parser) {
             auto res = optdata::catter_proxy::parse_opt(argc, (char**)argv);
             EXPECT_TRUE(res.parent_id == "5678");
             EXPECT_TRUE(res.executable == "/bin/echo");
-            EXPECT_TRUE(res.raw_argv.size() == 0);
+            EXPECT_TRUE(res.argv.has_value());
+            EXPECT_TRUE(res.argv.value().size() == 0);
         };
         EXPECT_NOTHROWS(f());
     };
@@ -113,9 +114,11 @@ TEST_SUITE(opt_catter_proxy_parser) {
             auto res = optdata::catter_proxy::parse_opt(argc, (char**)argv);
             EXPECT_TRUE(res.parent_id == "91011");
             EXPECT_TRUE(res.executable == "/usr/bin/python3");
-            EXPECT_TRUE(res.raw_argv.size() == 2);
-            EXPECT_TRUE(res.raw_argv.at(0) == "script.py");
-            EXPECT_TRUE(res.raw_argv.at(1) == "--verbose");
+            EXPECT_TRUE(res.argv.has_value());
+            auto& argv = res.argv.value();
+            EXPECT_TRUE(argv.size() == 2);
+            EXPECT_TRUE(argv.at(0) == "script.py");
+            EXPECT_TRUE(argv.at(1) == "--verbose");
         };
         EXPECT_NOTHROWS(f());
     };
@@ -137,7 +140,7 @@ TEST_SUITE(opt_catter_proxy_parser) {
         };
         auto f = [&]() {
             auto parse_res = optdata::catter_proxy::parse_opt(argc, (char**)argv);
-            EXPECT_FALSE(parse_res.error_msg.empty());
+            EXPECT_FALSE(parse_res.argv.has_value());
         };
 
         EXPECT_NOTHROWS(f());
