@@ -65,8 +65,6 @@ eventide::task<void> spawn(std::vector<std::string> shell, std::shared_ptr<accep
     if(error) {
         std::println("Failed to stop acceptor: {}", error.message());
     }
-    acceptor
-        .reset();  // We can release our reference to the acceptor since we won't accept new clients
     co_return;
 }
 
@@ -183,7 +181,6 @@ eventide::task<void> loop(std::shared_ptr<acceptor> acceptor) {
     } catch(const std::exception& ex) {
         std::println("Exception in client task: {}", ex.what());
     }
-    acceptor.reset();  // Ensure acceptor is destroyed after exiting loop
     co_return;
 }
 
@@ -205,22 +202,20 @@ int main(int argc, char* argv[]) {
         shell.push_back(argv[i]);
     }
 
-    auto acceptor = eventide::pipe::listen(catter::config::ipc::PIPE_NAME,
-                                           eventide::pipe::options(),
-                                           default_loop());
+    auto acc_ret = eventide::pipe::listen(catter::config::ipc::PIPE_NAME,
+                                          eventide::pipe::options(),
+                                          default_loop());
 
-    if(!acceptor) {
-        std::println("Failed to create pipe server: {}", acceptor.error().message());
+    if(!acc_ret) {
+        std::println("Failed to create pipe server: {}", acc_ret.error().message());
         return 1;
     }
 
     try {
-        auto acc = std::make_shared<eventide::acceptor<eventide::pipe>>(std::move(*acceptor));
-        auto loop_task = loop(acc);
-        auto spawn_task = spawn(shell, acc);
-        default_loop().schedule(loop_task);
-        default_loop().schedule(spawn_task);
-
+        auto acc = std::make_shared<acceptor>(std::move(*acc_ret));
+        // becareful, msvc has a bug that asan will report false positive UAF
+        default_loop().schedule(loop(acc));
+        default_loop().schedule(spawn(shell, acc));
         acc.reset();  // We can release our reference to the acceptor since the loop task will keep
                       // it alive
         default_loop().run();
