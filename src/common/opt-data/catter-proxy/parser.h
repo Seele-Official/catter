@@ -1,10 +1,4 @@
 #pragma once
-
-/* This file is for easily use the option of catter-proxy
- */
-
-#include "opt-data/catter-proxy/table.h"
-#include "util/option.h"
 #include <expected>
 #include <format>
 #include <print>
@@ -12,6 +6,9 @@
 #include <string>
 #include <system_error>
 #include <vector>
+
+#include "opt-data/catter-proxy/table.h"
+#include "util/option.h"
 
 namespace catter::optdata::catter_proxy {
 
