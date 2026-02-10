@@ -31,6 +31,9 @@ inline Option parse_opt(std::span<std::string> argv_span, bool with_program_name
     catter_proxy_opt_table.parse_args(
         argv,
         [&](const std::expected<opt::ParsedArgument, std::string>& arg) {
+            if(!error.empty()) {
+                return;
+            }
             if(!arg.has_value()) {
                 error = std::format("error parsing arguments: {}", arg.error());
                 return;
