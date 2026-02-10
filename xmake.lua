@@ -62,7 +62,7 @@ elseif is_plat("windows") then
     add_requires("microsoft-detours", {version = "2023.6.8"})
 end
 
-add_requires("libuv", {version = "v1.51.0"})
+
 add_requires("quickjs-ng", {version = "v0.11.0"})
 add_requires("spdlog", {version = "1.15.3", configs = {header_only = false, std_format = true, noexcept = true}})
 if has_config("test") then
@@ -75,7 +75,7 @@ target("common")
     add_files("src/common/**.cc")
 
     add_packages("spdlog", {public = true})
-    add_packages("libuv", {public = true})
+    add_packages("eventide", {public = true})
 
 target("catter-core")
     -- use object, avoid register invalid
@@ -165,27 +165,33 @@ target("catter-proxy")
     set_kind("binary")
     add_deps("common", "catter-hook")
     add_includedirs("src/catter-proxy/")
-    add_files("src/catter-proxy/main.cc", "src/catter-proxy/constructor.cc")
+    add_files("src/catter-proxy/**.cc")
 
-target("ut-support")
-    set_kind("headeronly")
-    add_includedirs("tests/unit/support/", {public = true})
 
+rule("ut-base")
+    on_load(function (target)
+        target:add("includedirs", "tests/unit/base/")
+        target:add("files", "tests/unit/base/**.cc")
+        target:add("packages", "eventide")
+    end)
 
 target("ut-common")
     set_default(false)
     set_kind("binary")
+    add_rules("ut-base")
+
     add_files("tests/unit/common/**.cc")
-    add_packages("eventide")
-    add_deps("common", "ut-support")
+
+    add_deps("common")
     add_tests("default")
 
 target("ut-catter")
     set_default(false)
     set_kind("binary")
+    add_rules("ut-base")
+
     add_files("tests/unit/catter/**.cc")
-    add_packages("eventide")
-    add_deps("catter-core", "common", "ut-support")
+    add_deps("catter-core", "common")
 
     add_defines(format([[JS_TEST_PATH="%s"]], path.unix(path.join(os.projectdir(), "api/output/test/"))))
     add_defines(format([[JS_TEST_RES_PATH="%s"]], path.unix(path.join(os.projectdir(), "api/output/test/res"))))
@@ -198,6 +204,8 @@ target("ut-catter")
 target("ut-catter-hook-unix")
     set_default(false)
     set_kind("binary")
+    add_rules("ut-base")
+
     if is_plat("linux") then
         add_syslinks("dl")
     end
@@ -207,8 +215,7 @@ target("ut-catter-hook-unix")
 
     add_files("tests/unit/catter-hook/linux-mac/**.cc")
 
-    add_packages("eventide")
-    add_deps("common", "ut-support")
+    add_deps("common")
 
     if is_plat("linux", "macosx") then
         add_tests("default")
@@ -217,6 +224,7 @@ target("ut-catter-hook-unix")
 target("ut-catter-hook-win64")
     set_default(false)
     set_kind("binary")
+    add_rules("ut-base")
 
     if is_plat("windows") then
         -- skip
@@ -225,8 +233,7 @@ target("ut-catter-hook-win64")
     end
     add_files("tests/unit/catter-hook/win/**.cc")
 
-    add_packages("eventide")
-    add_deps("common", "ut-support")
+    add_deps("common")
 
     if is_plat("windows") then
         add_tests("default")
@@ -289,7 +296,7 @@ package("eventide")
 
     set_urls("https://github.com/clice-io/eventide.git")
     -- version from `git rev-list --count HEAD`
-    -- add_versions("22", "b573881204c3c95f5c98fdc23ef39160a9e413fa")
+    add_versions("34", "500ea2f8a5fde57637560159753ce0b3522b6c83")
 
     add_deps("libuv 1.51.0")
     add_deps("cpptrace v1.0.4")
@@ -300,7 +307,7 @@ package("eventide")
         end
 
         local configs = {}
-        configs.dev = false
+        configs.dev = has_config("dev")
         configs.test = false
         import("package.tools.xmake").install(package, configs)
     end)
