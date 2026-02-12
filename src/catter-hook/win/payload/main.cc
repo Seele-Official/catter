@@ -19,8 +19,7 @@
 namespace catter::win {
 namespace {
 template <CharT char_t>
-std::basic_string<char_t> get_app_name(const char_t* application_name,
-                                         const char_t* command_line) {
+std::basic_string<char_t> get_app_name(const char_t* application_name, const char_t* command_line) {
     if(application_name == nullptr) {
         auto view = std::basic_string_view<char_t>(command_line);
         auto first_space = view.find_first_of(char_t(' '));
@@ -32,7 +31,7 @@ std::basic_string<char_t> get_app_name(const char_t* application_name,
 
 template <CharT char_t>
 std::basic_string<char_t> get_proxy_path() {
-    constexpr size_t buffer_size = 64;
+    constexpr size_t buffer_size = 256;
     char_t buffer[buffer_size];
 
     if constexpr(std::is_same_v<char_t, char>) {

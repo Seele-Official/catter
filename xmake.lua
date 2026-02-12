@@ -234,6 +234,13 @@ target("ut-catter-hook-win64")
         add_tests("default")
     end
 
+target("integration-test")
+    set_kind("binary")
+
+    add_files("tests/inte/**.cc")
+
+    add_deps("catter-hook", "common")
+
 rule("build.js")
     set_extensions(".ts", ".d.ts", ".js", ".txt")
 
