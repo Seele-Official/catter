@@ -1,10 +1,7 @@
-import os
 import sys
 import subprocess
 import platform
 import json
-import difflib
-from typing import Callable
 
 
 def run(cmd: str) -> str:
@@ -16,20 +13,7 @@ def run(cmd: str) -> str:
     return process.stdout
 
 
-
-def test_hook(it_path: str, fn_list: list[str]):
-
-    def check_output(output: str):
-        print(f"Output for {fn}:\n{output}")
-    
-
-    for fn in fn_list:
-        ret = run(f"{it_path} --test {fn}")
-        check_output(ret)
-
-    
-if __name__ == "__main__":
-    it_path = json.loads(run("xmake show -t it-hook --json"))["targetfile"]
+def test_hook():
     match platform.system():
         case "Windows":
             fn_list = [
@@ -40,12 +24,28 @@ if __name__ == "__main__":
             fn_list = [
                 "execve",
                 "execv",
-                "execl",
-                "execlp",
-                "execle",
                 "execvp",
-                "execvpe",
+                "execl",
+                "posix_spawn",
+                "posix_spawnp",
             ]
         case _:
             pass
-    test_hook(it_path, fn_list)
+
+    js = json.loads(run("xmake show -t it-hook --json"))
+
+    integration_test_path = js["targetfile"]
+
+    def check_output(output: str):
+        if "-p 0 --exec /bin/echo -- /bin/echo Hello, World!" not in output:
+            error_msg = f"Expected output not found in command output:\n{output}"
+            print(error_msg, file=sys.stderr)
+            raise RuntimeError(error_msg)
+
+    for fn in fn_list:
+        ret = run(f"{integration_test_path} --test {fn}")
+        check_output(ret)
+
+
+if __name__ == "__main__":
+    test_hook()

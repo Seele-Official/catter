@@ -8,17 +8,19 @@
 #include <unordered_map>
 #include <vector>
 
-#include <windows.h>
-
 #include "hook.h"
 #include "util/crossplat.h"
 #include "util/log.h"
 #include "util/option.h"
 
-namespace test {
 #ifdef CATTER_WINDOWS
+
+#include <windows.h>
+
+namespace test {
+
 void CreateProcessA() {
-    char cmdline[] = "echo Hello, World!";
+    char cmdline[] = "/bin/echo Hello, World!";
 
     PROCESS_INFORMATION pi{};
     STARTUPINFOA si{.cb = sizeof(STARTUPINFOA)};
@@ -34,7 +36,7 @@ void CreateProcessA() {
 }
 
 void CreateProcessW() {
-    wchar_t cmdline[] = L"echo Hello, World!";
+    wchar_t cmdline[] = L"/bin/echo Hello, World!";
     PROCESS_INFORMATION pi{};
     STARTUPINFOW si{.cb = sizeof(STARTUPINFOW)};
     if(!CreateProcessW(nullptr, cmdline, nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi)) {
@@ -52,38 +54,94 @@ std::unordered_map<std::string, std::function<void()>> funcs = {
     {"CreateProcessA", CreateProcessA},
     {"CreateProcessW", CreateProcessW},
 };
-#else
-
-int execve() {
-    auto argv = argvify(exec_name.c_str(), "-a");
-    ::execve(exec_path.c_str(), argv.data(), environ);
-    std::perror("execve");
-    return 1;
-}
-
-int execv() {
-    auto argv = argvify(exec_name.c_str(), "-a");
-    ::execv(exec_path.c_str(), argv.data());
-    std::perror("execv");
-    return 1;
-}
-
-int execvp() {
-    auto argv = argvify(exec_name.c_str(), "-a");
-    ::execvp(exec_name.c_str(), argv.data());
-    std::perror("execvp");
-    return 1;
-}
-
-int execl() {
-    ::execl(exec_path.c_str(), exec_name.c_str(), "-a", static_cast<char*>(nullptr));
-    std::perror("execl");
-    return 1;
-}
-
-
-#endif
 }  // namespace test
+#else
+#include <spawn.h>
+#include <unistd.h>
+#include <sys/wait.h>
+extern char** environ;
+
+namespace test {
+
+template <typename... Args>
+std::vector<char*> argvify(Args&&... args) {
+    return {const_cast<char*>(args)..., nullptr};
+}
+
+void execve() {
+    char exec_name[] = "/bin/echo";
+    auto argv = argvify(exec_name, "Hello, World!");
+    if(::execve(exec_name, argv.data(), environ) != 0) {
+        throw std::system_error(errno, std::system_category(), "execve failed");
+    }
+}
+
+void execv() {
+    char exec_name[] = "/bin/echo";
+    if(::execv(exec_name, argvify(exec_name, "Hello, World!").data()) != 0) {
+        throw std::system_error(errno, std::system_category(), "execv failed");
+    }
+}
+
+void execvp() {
+    char exec_name[] = "/bin/echo";
+    if(::execvp(exec_name, argvify(exec_name, "Hello, World!").data()) != 0) {
+        throw std::system_error(errno, std::system_category(), "execvp failed");
+    }
+}
+
+void execl() {
+    char exec_name[] = "/bin/echo";
+    if(::execl(exec_name, exec_name, "Hello, World!", static_cast<char*>(nullptr)) != 0) {
+        throw std::system_error(errno, std::system_category(), "execl failed");
+    }
+}
+
+void posix_spawn() {
+    char exec_name[] = "/bin/echo";
+    pid_t pid = 0;
+    if(::posix_spawn(&pid,
+                     exec_name,
+                     nullptr,
+                     nullptr,
+                     argvify(exec_name, "Hello, World!").data(),
+                     environ) != 0) {
+        throw std::system_error(errno, std::system_category(), "posix_spawn failed");
+    }
+    int status;
+    if(::waitpid(pid, &status, 0) < 0) {
+        throw std::system_error(errno, std::system_category(), "waitpid failed");
+    }
+}
+
+void posix_spawnp() {
+    char exec_name[] = "/bin/echo";
+    pid_t pid = 0;
+    if(::posix_spawnp(&pid,
+                      exec_name,
+                      nullptr,
+                      nullptr,
+                      argvify(exec_name, "Hello, World!").data(),
+                      environ) != 0) {
+        throw std::system_error(errno, std::system_category(), "posix_spawnp failed");
+    }
+    int status;
+    if(::waitpid(pid, &status, 0) < 0) {
+        throw std::system_error(errno, std::system_category(), "waitpid failed");
+    }
+}
+
+std::unordered_map<std::string, std::function<void()>> funcs = {
+    {"execve",       execve      },
+    {"execv",        execv       },
+    {"execvp",       execvp      },
+    {"execl",        execl       },
+    {"posix_spawn",  posix_spawn },
+    {"posix_spawnp", posix_spawnp}
+};
+
+}  // namespace test
+#endif
 
 int main(int argc, char* argv[]) {
     catter::log::mute_logger();
@@ -114,9 +172,11 @@ int main(int argc, char* argv[]) {
                 return -1;
             }
         } else {
-            auto line = args
-                | std::views::join_with(std::string(" "))
-                | std::ranges::to<std::string>();
+            std::string line;
+            for(auto& arg: args) {
+                line.append(arg).append(" ");
+            }
+            line.pop_back();
             std::print("{}", line);
             return 0;
         }
