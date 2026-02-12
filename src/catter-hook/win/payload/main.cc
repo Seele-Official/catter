@@ -86,7 +86,6 @@ struct CreateProcessA {
                               LPSTARTUPINFOA lpStartupInfo,
                               LPPROCESS_INFORMATION lpProcessInformation) {
 
-
         auto converted_cmdline =
             std::format("{} -p {} --exec {} -- {}",
                         catter::win::get_proxy_path<char>(),
@@ -121,7 +120,6 @@ struct CreateProcessW {
                               LPCWSTR lpCurrentDirectory,
                               LPSTARTUPINFOW lpStartupInfo,
                               LPPROCESS_INFORMATION lpProcessInformation) {
-
 
         auto converted_cmdline =
             std::format(L"{} -p {} --exec {} -- {}",
