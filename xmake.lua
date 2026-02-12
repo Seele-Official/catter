@@ -234,12 +234,19 @@ target("ut-catter-hook-win64")
         add_tests("default")
     end
 
-target("it-hook")
+target("it-catter-hook")
     set_kind("binary")
 
-    add_files("tests/inte/**.cc")
+    add_files("tests/inte/catter-hook/**.cc")
 
     add_deps("catter-hook", "common")
+
+target("it-catter-proxy")
+    set_kind("binary")
+
+    add_files("tests/inte/catter-proxy/**.cc")
+
+    add_deps("common")
 
 rule("build.js")
     set_extensions(".ts", ".d.ts", ".js", ".txt")
