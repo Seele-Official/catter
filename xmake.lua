@@ -234,7 +234,7 @@ target("ut-catter-hook-win64")
         add_tests("default")
     end
 
-target("integration-test")
+target("it-hook")
     set_kind("binary")
 
     add_files("tests/inte/**.cc")

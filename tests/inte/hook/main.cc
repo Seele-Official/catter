@@ -1,22 +1,24 @@
 
 #include <functional>
 #include <iostream>
+#include <ranges>
 #include <string>
 #include <format>
 #include <print>
-
 #include <unordered_map>
 #include <vector>
+
 #include <windows.h>
 
 #include "hook.h"
 #include "util/crossplat.h"
+#include "util/log.h"
 #include "util/option.h"
 
 namespace test {
-
+#ifdef CATTER_WINDOWS
 void CreateProcessA() {
-    char cmdline[] = "C:\\WINDOWS\\system32\\cmd.exe /c ver";
+    char cmdline[] = "echo Hello, World!";
 
     PROCESS_INFORMATION pi{};
     STARTUPINFOA si{.cb = sizeof(STARTUPINFOA)};
@@ -32,7 +34,7 @@ void CreateProcessA() {
 }
 
 void CreateProcessW() {
-    wchar_t cmdline[] = L"C:\\WINDOWS\\system32\\cmd.exe /c ver";
+    wchar_t cmdline[] = L"echo Hello, World!";
     PROCESS_INFORMATION pi{};
     STARTUPINFOW si{.cb = sizeof(STARTUPINFOW)};
     if(!CreateProcessW(nullptr, cmdline, nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi)) {
@@ -50,9 +52,42 @@ std::unordered_map<std::string, std::function<void()>> funcs = {
     {"CreateProcessA", CreateProcessA},
     {"CreateProcessW", CreateProcessW},
 };
+#else
+
+int execve() {
+    auto argv = argvify(exec_name.c_str(), "-a");
+    ::execve(exec_path.c_str(), argv.data(), environ);
+    std::perror("execve");
+    return 1;
+}
+
+int execv() {
+    auto argv = argvify(exec_name.c_str(), "-a");
+    ::execv(exec_path.c_str(), argv.data());
+    std::perror("execv");
+    return 1;
+}
+
+int execvp() {
+    auto argv = argvify(exec_name.c_str(), "-a");
+    ::execvp(exec_name.c_str(), argv.data());
+    std::perror("execvp");
+    return 1;
+}
+
+int execl() {
+    ::execl(exec_path.c_str(), exec_name.c_str(), "-a", static_cast<char*>(nullptr));
+    std::perror("execl");
+    return 1;
+}
+
+
+#endif
 }  // namespace test
 
 int main(int argc, char* argv[]) {
+    catter::log::mute_logger();
+
     try {
         auto args = catter::util::save_argv(argc, argv);
 
@@ -79,10 +114,10 @@ int main(int argc, char* argv[]) {
                 return -1;
             }
         } else {
-            for(auto arg: args) {
-                std::print("{} ", arg);
-            }
-            std::println();
+            auto line = args
+                | std::views::join_with(std::string(" "))
+                | std::ranges::to<std::string>();
+            std::print("{}", line);
             return 0;
         }
     } catch(const std::exception& e) {
