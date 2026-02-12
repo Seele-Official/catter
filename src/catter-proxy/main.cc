@@ -49,6 +49,7 @@ int run(ipc::data::action act, ipc::data::command_id_t id) {
 }  // namespace catter::proxy
 
 // we do not output in proxy, it must be invoked by main program.
+// usage: catter-proxy.exe -p <parent ipc id> --exec <exe path> -- <args...>
 int main(int argc, char* argv[], char* envp[]) {
     try {
         catter::log::init_logger("catter-proxy.log",

@@ -70,6 +70,7 @@ namespace catter::proxy::hook {
 int run(ipc::data::command cmd, ipc::data::command_id_t id) {
 
     SetEnvironmentVariableA(catter::win::ENV_VAR_IPC_ID<char>, std::to_string(id).c_str());
+    SetEnvironmentVariableA(catter::win::ENV_VAR_PROXY_PATH<char>, catter::util::get_executable_path().string().c_str());
 
     std::vector<char> env_block;
 

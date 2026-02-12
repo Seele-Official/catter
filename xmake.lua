@@ -226,11 +226,6 @@ target("ut-catter-hook-win64")
     set_kind("binary")
     add_rules("ut-base")
 
-    if is_plat("windows") then
-        -- skip
-    elseif is_plat("linux", "macosx") then
-        add_deps("ut-catter-hook-unix")
-    end
     add_files("tests/unit/catter-hook/win/**.cc")
 
     add_deps("common")
