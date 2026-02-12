@@ -1,4 +1,5 @@
 
+#include <functional>
 #include <iostream>
 #include <string>
 #include <format>
@@ -10,6 +11,7 @@
 
 #include "hook.h"
 #include "util/crossplat.h"
+#include "util/option.h"
 
 namespace test {
 
@@ -44,8 +46,7 @@ void CreateProcessW() {
     CloseHandle(pi.hThread);
 }
 
-using func_t = void();
-std::unordered_map<std::string, func_t*> funcs = {
+std::unordered_map<std::string, std::function<void()>> funcs = {
     {"CreateProcessA", CreateProcessA},
     {"CreateProcessW", CreateProcessW},
 };
@@ -53,36 +54,35 @@ std::unordered_map<std::string, func_t*> funcs = {
 
 int main(int argc, char* argv[]) {
     try {
-        if(argc == 1) {
-            std::println("Running with no arguments, launching self with hook...");
+        auto args = catter::util::save_argv(argc, argv);
+
+        if(args.size() == 3 && args[1] == "--test") {
             std::string executable = catter::util::get_executable_path().string();
-            std::vector<std::string> args = {
-                executable,
-                "CreateProcessA",
-            };
 
             catter::ipc::data::command cmd{
                 .working_dir = std::filesystem::current_path().string(),
                 .executable = executable,
-                .args = args,
+                .args =
+                    {
+                           executable, args[2],
+                           },
                 .env = catter::util::get_environment(),
             };
 
             return catter::proxy::hook::run(cmd, 0);
-        } else if(argc == 2) {
-            std::println("Running function: {}", argv[1]);
-            std::string func_name = argv[1];
-            if(test::funcs.contains(func_name)) {
-                test::funcs[func_name]();
+        } else if(args.size() == 2) {
+            if(auto it = test::funcs.find(args[1]); it != test::funcs.end()) {
+                std::invoke(it->second);
                 return 0;
             } else {
-                std::println("Unknown function: {}", func_name);
+                std::println("Unknown function: {}", args[1]);
                 return -1;
             }
         } else {
-            for(int i = 0; i < argc; ++i) {
-                std::println("argv[{}]: {}", i, argv[i]);
+            for(auto arg: args) {
+                std::print("{} ", arg);
             }
+            std::println();
             return 0;
         }
     } catch(const std::exception& e) {

@@ -43,7 +43,7 @@ int run(ipc::data::command command, ipc::data::command_id_t id, std::string prox
     for(auto& arg: command.args) {
         cmd_for_print += " " + arg;
     }
-    LOG_INFO("| -> Catter-Proxy Final Executing command: exe: {}, args:{}",
+    LOG_INFO("| -> Catter-Proxy Final Executing command: \n    exe = {} \n    args = {}",
              command.executable,
              cmd_for_print);
 

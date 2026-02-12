@@ -91,7 +91,7 @@ int run(ipc::data::command cmd, ipc::data::command_id_t id, std::string proxy_pa
 
     std::string cmdline = cmdline_of(cmd);
 
-    LOG_INFO("| -> Catter-Proxy Final Executing command: exe: {}, args:{}",
+    LOG_INFO("| -> Catter-Proxy Final Executing command: \n    exe = {} \n    args = {}",
              cmd.executable,
              cmdline);
 
