@@ -1,16 +1,17 @@
 // UNSUPPORTED: system-windows
 // RUN: %cc
-// RUN: %inject-hook11 %t x execve | %filecheck %s --check-prefix=EXECVE -DEXE_PATH=%t
-// RUN: %inject-hook12 %t x execv | %filecheck %s --check-prefix=EXECV -DEXE_PATH=%t
-// RUN: %inject-hook13 %t x execvp | %filecheck %s --check-prefix=EXECVP -DEXE_PATH=%t
-// RUN: %inject-hook14 %t x execl | %filecheck %s --check-prefix=EXECL -DEXE_PATH=%t
-// RUN: %inject-hook15 %t x posix_spawn | %filecheck %s --check-prefix=SPAWN -DEXE_PATH=%t
-// RUN: %inject-hook16 %t x posix_spawnp | %filecheck %s --check-prefix=SPAWNP -DEXE_PATH=%t
+// RUN: %inject-hook11 %t x execve 2>&1 | %filecheck %s --check-prefix=EXECVE -DEXE_PATH=%t
+// RUN: %inject-hook12 %t x execv 2>&1 | %filecheck %s --check-prefix=EXECV -DEXE_PATH=%t
+// RUN: %inject-hook13 %t x execvp 2>&1 | %filecheck %s --check-prefix=EXECVP -DEXE_PATH=%t
+// RUN: %inject-hook14 %t x execl 2>&1 | %filecheck %s --check-prefix=EXECL -DEXE_PATH=%t
+// RUN: %inject-hook15 %t x posix_spawn 2>&1 | %filecheck %s --check-prefix=SPAWN -DEXE_PATH=%t
+// RUN: %inject-hook16 %t x posix_spawnp 2>&1 | %filecheck %s --check-prefix=SPAWNP -DEXE_PATH=%t
 
-#include <cstdio>
+#include <cassert>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <print>
 #include <spawn.h>
 #include <string>
 #include <string_view>
@@ -40,10 +41,6 @@ void print_args(int argc, const char** argv) {
 
 int run_execve() {
     auto argv = argvify(exec_name.c_str(), "-a");
-    // test
-    for(size_t i = 0; argv[i] != nullptr; ++i) {
-        std::printf("argv[%zu]: %s\n", i, argv[i]);
-    }
     ::execve(exec_path.c_str(), argv.data(), environ);
     std::perror("execve");
     return 1;
@@ -103,11 +100,22 @@ int main(int argc, const char** argv) {
     }
     // call by hook proxy
     if(argv[1][0] != 'x') {
+        // Assert that envp do not have relevant envs
+        auto pid = std::getenv(_KEY_PID);
+        assert(pid == nullptr);
+        auto proxy_path = std::getenv(_KEY_PROXY_PATH);
+        assert(proxy_path == nullptr);
+        auto preload = std::getenv(_KEY_PRELOAD);
+        if(preload != nullptr) {
+            std::string_view preload_sv(preload);
+            assert(preload_sv.find("libcatter-hook") == std::string_view::npos);
+        }
         print_args(argc, argv);
         return 0;
     }
 
     if(argc < 3) {
+        std::println("Usage: {} x [execve|execv|execvp|execl|posix_spawn|posix_spawnp]", argv[0]);
         return 2;
     }
     exec_path = argv[0];

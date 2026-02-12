@@ -5,6 +5,7 @@
 #include "resolver.h"
 #include "linker.h"
 #include "session.h"
+#include "env_guard.h"
 
 #include <cerrno>
 #include <cstdlib>
@@ -63,7 +64,7 @@ Executor::Executor(const Linker& linker,
                    const Resolver& resolver /* = {}*/) noexcept :
     linker_(linker), session_(session), resolver_(resolver), cmd_builder_(session) {}
 
-int Executor::execve(const char* path, char* const* argv, char* const* envp) {
+int Executor::execve(const char* path, char* const* argv, char* const* envp) noexcept {
     auto argv_ref = spanify(argv);
     ELSE_RETURN(cmd, precheck(session_, path, argv_ref))
     ELSE_RETURN(executable, resolver_.from_current_directory(path));
@@ -71,6 +72,7 @@ int Executor::execve(const char* path, char* const* argv, char* const* envp) {
     if(!cmd.valid()) {
         cmd = cmd_builder_.proxy_cmd(executable, argv_ref);
     }
+    EnvGuard env_guard(const_cast<const char***>(&envp));
     auto run_res =
         linker_.execve(cmd.path.c_str(), const_cast<decltype(argv)>(cmd.c_argv().data()), envp);
     if(!run_res.has_value()) {
@@ -81,7 +83,7 @@ int Executor::execve(const char* path, char* const* argv, char* const* envp) {
     return run_res.value();
 }
 
-int Executor::execvpe(const char* file, char* const* argv, char* const* envp) {
+int Executor::execvpe(const char* file, char* const* argv, char* const* envp) noexcept {
     auto argv_ref = spanify(argv);
     ELSE_RETURN(cmd, precheck(session_, file, argv_ref));
     ELSE_RETURN(executable, resolver_.from_path(file, const_cast<const char**>(envp)));
@@ -89,6 +91,7 @@ int Executor::execvpe(const char* file, char* const* argv, char* const* envp) {
     if(!cmd.valid()) {
         cmd = cmd_builder_.proxy_cmd(executable, argv_ref);
     }
+    EnvGuard env_guard(const_cast<const char***>(&envp));
     auto run_res =
         linker_.execve(cmd.path.c_str(), const_cast<decltype(argv)>(cmd.c_argv().data()), envp);
     if(!run_res.has_value()) {
@@ -102,7 +105,7 @@ int Executor::execvpe(const char* file, char* const* argv, char* const* envp) {
 int Executor::execvP(const char* file,
                      const char* search_path,
                      char* const* argv,
-                     char* const* envp) {
+                     char* const* envp) noexcept {
     auto argv_ref = spanify(argv);
     ELSE_RETURN(cmd, precheck(session_, file, argv_ref));
     ELSE_RETURN(executable, resolver_.from_search_path(file, search_path));
@@ -110,6 +113,7 @@ int Executor::execvP(const char* file,
     if(!cmd.valid()) {
         cmd = cmd_builder_.proxy_cmd(executable, argv_ref);
     }
+    EnvGuard env_guard(const_cast<const char***>(&envp));
     auto run_res =
         linker_.execve(cmd.path.c_str(), const_cast<decltype(argv)>(cmd.c_argv().data()), envp);
     if(!run_res.has_value()) {
@@ -125,7 +129,7 @@ int Executor::posix_spawn(pid_t* pid,
                           const posix_spawn_file_actions_t* file_actions,
                           const posix_spawnattr_t* attrp,
                           char* const* argv,
-                          char* const* envp) {
+                          char* const* envp) noexcept {
     auto argv_ref = spanify(argv);
     ELSE_RETURN(cmd, precheck(session_, path, argv_ref));
     ELSE_RETURN(executable, resolver_.from_current_directory(path));
@@ -133,6 +137,7 @@ int Executor::posix_spawn(pid_t* pid,
     if(!cmd.valid()) {
         cmd = cmd_builder_.proxy_cmd(executable, argv_ref);
     }
+    EnvGuard env_guard(const_cast<const char***>(&envp));
     auto run_res = linker_.posix_spawn(pid,
                                        cmd.path.c_str(),
                                        file_actions,
@@ -152,7 +157,7 @@ int Executor::posix_spawnp(pid_t* pid,
                            const posix_spawn_file_actions_t* file_actions,
                            const posix_spawnattr_t* attrp,
                            char* const* argv,
-                           char* const* envp) {
+                           char* const* envp) noexcept {
     auto argv_ref = spanify(argv);
     ELSE_RETURN(cmd, precheck(session_, file, argv_ref));
     ELSE_RETURN(executable, resolver_.from_path(file, const_cast<const char**>(envp)));
@@ -160,6 +165,7 @@ int Executor::posix_spawnp(pid_t* pid,
     if(!cmd.valid()) {
         cmd = cmd_builder_.proxy_cmd(executable, argv_ref);
     }
+    EnvGuard env_guard(const_cast<const char***>(&envp));
     auto run_res = linker_.posix_spawn(pid,
                                        cmd.path.c_str(),
                                        file_actions,
