@@ -31,10 +31,20 @@ int run(ipc::data::command command, ipc::data::command_id_t id, std::string prox
             std::format("Catter-Proxy Hook library not found at path: {}", lib_path.string()));
     }
 
-    command.env.push_back(std::format("{}={}",
-                                      //   "/usr/lib/gcc/x86_64-linux-gnu/14/libasan.so",
-                                      catter::config::hook::KEY_PRELOAD,
-                                      lib_path.string()));
+    bool preload_injected = false;
+    std::string key_preload_prefix = std::string(catter::config::hook::KEY_PRELOAD) + "=";
+    for(auto& env_item: command.env) {
+        if(env_item.starts_with(key_preload_prefix)) {
+            env_item += catter::config::OS_PATH_SEPARATOR + lib_path.string();
+            preload_injected = true;
+            break;
+        }
+    }
+
+    if(!preload_injected) {
+        command.env.push_back(
+            std::format("{}={}", catter::config::hook::KEY_PRELOAD, lib_path.string()));
+    }
     command.env.push_back(std::format("{}={}", catter::config::hook::KEY_CATTER_COMMAND_ID, id));
     command.env.push_back(
         std::format("{}={}", catter::config::hook::KEY_CATTER_PROXY_PATH, proxy_path));
