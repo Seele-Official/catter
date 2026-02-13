@@ -201,7 +201,7 @@ target("ut-catter")
 
 
 target("ut-catter-hook-unix")
-    set_default(has_config("test"))
+    set_default(has_config("test") and (is_plat("linux", "macosx")))
     set_kind("binary")
     add_rules("ut-base")
 
@@ -221,7 +221,7 @@ target("ut-catter-hook-unix")
     end
 
 target("ut-catter-hook-win64")
-    set_default(has_config("test"))
+    set_default(has_config("test") and is_plat("windows"))
     set_kind("binary")
     add_rules("ut-base")
 
