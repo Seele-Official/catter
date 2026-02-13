@@ -51,7 +51,7 @@ check = "pre-commit run --all-files"
 unitest = "xmake test --verbose"
 
 [feature.dev.tasks.integration-test]
-cmd = "lit ./tests/integration -av"
+cmd = "lit ./tests/integration -sav"
 depends-on = [{ task = "build" }]
 
 [environments]
@@ -67,7 +67,7 @@ build = "xmake --verbose --diagnosis"
 
 [tasks.configure]
 args = ["build_type"]
-cmd = "xmake config --clean --yes --mode={{ build_type }}{% if pixi.is_osx %} --toolchain=clang{% endif %}"
+cmd = "xmake config --clean --yes --mode={{ build_type }}{% if pixi.is_osx %} --test=y --toolchain=clang{% endif %}"
 
 [tasks.ci-build]
 args = ["build_type"]

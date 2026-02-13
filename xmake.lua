@@ -6,7 +6,7 @@ set_allowedplats("windows", "linux", "macosx")
 set_languages("c++23")
 
 option("dev", {default = true})
-option("test", {default = true})
+option("test", {default = false})
 
 if has_config("dev") then
     -- Don't fetch system package
@@ -65,9 +65,8 @@ end
 
 add_requires("quickjs-ng", {version = "v0.11.0"})
 add_requires("spdlog", {version = "1.15.3", configs = {header_only = false, std_format = true, noexcept = true}})
-if has_config("test") then
-    add_requires("eventide")
-end
+add_requires("eventide")
+
 
 target("common")
     set_kind("static")
@@ -176,7 +175,7 @@ rule("ut-base")
     end)
 
 target("ut-common")
-    set_default(false)
+    set_default(has_config("test"))
     set_kind("binary")
     add_rules("ut-base")
 
@@ -186,7 +185,7 @@ target("ut-common")
     add_tests("default")
 
 target("ut-catter")
-    set_default(false)
+    set_default(has_config("test"))
     set_kind("binary")
     add_rules("ut-base")
 
@@ -202,7 +201,7 @@ target("ut-catter")
 
 
 target("ut-catter-hook-unix")
-    set_default(false)
+    set_default(has_config("test"))
     set_kind("binary")
     add_rules("ut-base")
 
@@ -222,7 +221,7 @@ target("ut-catter-hook-unix")
     end
 
 target("ut-catter-hook-win64")
-    set_default(false)
+    set_default(has_config("test"))
     set_kind("binary")
     add_rules("ut-base")
 
@@ -235,7 +234,7 @@ target("ut-catter-hook-win64")
     end
 
 target("it-catter-hook")
-    set_default(false)
+    set_default(has_config("test"))
     set_kind("binary")
 
     add_files("tests/integration/src/catter-hook/**.cc")
@@ -243,7 +242,7 @@ target("it-catter-hook")
     add_deps("catter-hook", "common")
 
 target("it-catter-proxy")
-    set_default(false)
+    set_default(has_config("test"))
     set_kind("binary")
 
     add_files("tests/integration/src/catter-proxy/**.cc")
