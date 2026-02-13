@@ -21,6 +21,9 @@ namespace {
 template <CharT char_t>
 std::basic_string<char_t> get_app_name(const char_t* application_name, const char_t* command_line) {
     if(application_name == nullptr) {
+        if(command_line == nullptr) {
+            return {};
+        }
         auto view = std::basic_string_view<char_t>(command_line);
         auto first_space = view.find_first_of(char_t(' '));
         return std::basic_string<char_t>(view.substr(0, first_space));
@@ -30,20 +33,36 @@ std::basic_string<char_t> get_app_name(const char_t* application_name, const cha
 }
 
 template <CharT char_t>
+DWORD FixGetEnvironmentVariable(const char_t* name, char_t* buffer, DWORD size) {
+    if constexpr(std::is_same_v<char_t, char>) {
+        return GetEnvironmentVariableA(name, buffer, size);
+    } else {
+        return GetEnvironmentVariableW(name, buffer, size);
+    }
+}
+
+template <CharT char_t>
 std::basic_string<char_t> get_proxy_path() {
     constexpr size_t buffer_size = 256;
     char_t buffer[buffer_size];
 
-    if constexpr(std::is_same_v<char_t, char>) {
-        if(!GetEnvironmentVariableA(catter::win::ENV_VAR_PROXY_PATH<char_t>, buffer, buffer_size)) {
-            // TODO: log
-        }
-    } else {
-        if(!GetEnvironmentVariableW(catter::win::ENV_VAR_PROXY_PATH<char_t>, buffer, buffer_size)) {
-            // TODO: log
-        }
+    auto len = FixGetEnvironmentVariable<char_t>(catter::win::ENV_VAR_PROXY_PATH<char_t>,
+                                                 buffer,
+                                                 buffer_size);
+    if(len == 0) {
+        return {};
     }
-    return buffer;
+
+    if(len < buffer_size) {
+        return std::basic_string<char_t>(buffer, len);
+    }
+
+    std::basic_string<char_t> path;
+    path.resize(len);
+    FixGetEnvironmentVariable<char_t>(catter::win::ENV_VAR_PROXY_PATH<char_t>,
+                                      path.data(),
+                                      len + 1);
+    return path;
 }
 
 template <CharT char_t>
@@ -51,16 +70,20 @@ std::basic_string<char_t> get_ipc_id() {
     constexpr size_t buffer_size = 64;
     char_t buffer[buffer_size];
 
-    if constexpr(std::is_same_v<char_t, char>) {
-        if(!GetEnvironmentVariableA(catter::win::ENV_VAR_IPC_ID<char_t>, buffer, buffer_size)) {
-            // TODO: log
-        }
-    } else {
-        if(!GetEnvironmentVariableW(catter::win::ENV_VAR_IPC_ID<char_t>, buffer, buffer_size)) {
-            // TODO: log
-        }
+    auto len =
+        FixGetEnvironmentVariable<char_t>(catter::win::ENV_VAR_IPC_ID<char_t>, buffer, buffer_size);
+    if(len == 0) {
+        return {};
     }
-    return buffer;
+
+    if(len < buffer_size) {
+        return std::basic_string<char_t>(buffer, len);
+    }
+
+    std::basic_string<char_t> id;
+    id.resize(len);
+    FixGetEnvironmentVariable<char_t>(catter::win::ENV_VAR_IPC_ID<char_t>, id.data(), len + 1);
+    return id;
 }
 
 }  // namespace

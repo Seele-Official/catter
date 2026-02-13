@@ -67,7 +67,7 @@ build = "xmake --verbose --diagnosis"
 
 [tasks.configure]
 args = ["build_type"]
-cmd = "xmake config --clean --yes --mode={{ build_type }}{% if pixi.is_osx %} --test=y --toolchain=clang{% endif %}"
+cmd = "xmake config --clean --yes --test=y --mode={{ build_type }} {% if pixi.is_osx %}--toolchain=clang{% endif %}"
 
 [tasks.ci-build]
 args = ["build_type"]
