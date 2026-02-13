@@ -39,8 +39,7 @@ eventide::task<void> spawn(std::shared_ptr<acceptor> acceptor) {
     std::string exe_path =
         (util::get_catter_root_path() / catter::config::proxy::EXE_NAME).string();
 
-    std::vector<std::string> args =
-        {exe_path, "-p", "0", "--exec", "echo", "--", "Hello, World!"};
+    std::vector<std::string> args = {exe_path, "-p", "0", "--exec", "echo", "--", "Hello, World!"};
 
     eventide::process::options opts{
         .file = exe_path,
@@ -158,11 +157,16 @@ eventide::task<void> accept(eventide::pipe client) {
     }
 
     std::string missing_reqs;
-    if(!create_received) missing_reqs.append("CREATE ");
-    if(!decision_received) missing_reqs.append("MAKE_DECISION ");
-    if(!finish_received) missing_reqs.append("FINISH ");
+    if(!create_received)
+        missing_reqs.append("CREATE ");
+    if(!decision_received)
+        missing_reqs.append("MAKE_DECISION ");
+    if(!finish_received)
+        missing_reqs.append("FINISH ");
     if(!missing_reqs.empty()) {
-        throw std::runtime_error(std::format("Client disconnected before sending all expected requests. Missing: {}", missing_reqs));
+        throw std::runtime_error(
+            std::format("Client disconnected before sending all expected requests. Missing: {}",
+                        missing_reqs));
     }
     co_return;
 }

@@ -3,7 +3,6 @@ import sys
 import os
 import subprocess
 import json
-import platform
 from typing import Callable
 import lit.formats
 from lit.llvm import config as cfg
@@ -51,6 +50,5 @@ proxy_rel = get_cmd_output(
 )
 proxy_path = os.path.join(project_root, proxy_rel)
 
-config.substitutions.append(('%it_catter_hook', hook_path))
-config.substitutions.append(('%it_catter_proxy', proxy_path))
-
+config.substitutions.append(("%it_catter_hook", hook_path))
+config.substitutions.append(("%it_catter_proxy", proxy_path))
