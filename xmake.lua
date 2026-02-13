@@ -238,7 +238,7 @@ target("it-catter-hook")
     set_default(false)
     set_kind("binary")
 
-    add_files("tests/inte/catter-hook/**.cc")
+    add_files("tests/integration/src/catter-hook/**.cc")
 
     add_deps("catter-hook", "common")
 
@@ -246,7 +246,7 @@ target("it-catter-proxy")
     set_default(false)
     set_kind("binary")
 
-    add_files("tests/inte/catter-proxy/**.cc")
+    add_files("tests/integration/src/catter-proxy/**.cc")
 
     add_deps("common")
 

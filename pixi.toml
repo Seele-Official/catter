@@ -51,7 +51,7 @@ check = "pre-commit run --all-files"
 unitest = "xmake test --verbose"
 
 [feature.dev.tasks.integration-test]
-cmd = "python ./tests/inte/test.py"
+cmd = "lit ./tests/integration -av"
 depends-on = [{ task = "build" }]
 
 [environments]

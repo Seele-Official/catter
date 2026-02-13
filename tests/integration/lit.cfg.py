@@ -3,6 +3,7 @@ import sys
 import os
 import subprocess
 import json
+import platform
 from typing import Callable
 import lit.formats
 from lit.llvm import config as cfg
@@ -37,5 +38,19 @@ project_root = get_cmd_output(
     "xmake show --json", lambda r: json.loads(r)["project"]["projectdir"]
 )
 
-config.test_source_root = os.path.join(project_root, "tests", "integration", "test")
-config.test_exec_root = os.path.join(project_root, "build", "lit-tests")
+config.test_source_root = os.path.normpath(f"{project_root}/tests/integration/test")
+config.test_exec_root = os.path.normpath(f"{project_root}/build/lit-tests")
+
+
+hook_rel = get_cmd_output(
+    "xmake show -t it-catter-hook --json", lambda r: json.loads(r)["targetfile"]
+)
+hook_path = os.path.join(project_root, hook_rel)
+proxy_rel = get_cmd_output(
+    "xmake show -t it-catter-proxy --json", lambda r: json.loads(r)["targetfile"]
+)
+proxy_path = os.path.join(project_root, proxy_rel)
+
+config.substitutions.append(('%it_catter_hook', hook_path))
+config.substitutions.append(('%it_catter_proxy', proxy_path))
+
