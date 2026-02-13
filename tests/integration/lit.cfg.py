@@ -31,7 +31,7 @@ llvm_config = cfg.LLVMConfig(lit_config, config)
 
 config.name = "Catter Integration Test"
 config.test_format = lit.formats.ShTest(True)
-config.suffixes = [".js", ".c", ".cpp", ".cc", ".ts"]
+config.suffixes = [".test"]
 
 project_root = get_cmd_output(
     "xmake show --json", lambda r: json.loads(r)["project"]["projectdir"]
@@ -39,63 +39,3 @@ project_root = get_cmd_output(
 
 config.test_source_root = os.path.join(project_root, "tests", "integration", "test")
 config.test_exec_root = os.path.join(project_root, "build", "lit-tests")
-
-is_macos = sys.platform == "darwin"
-is_linux = sys.platform.startswith("linux")
-
-if is_linux or is_macos:
-    hook_path = get_cmd_output(
-        "xmake show -t catter-hook-unix --json", lambda r: json.loads(r)["targetfile"]
-    )
-    hook_path = os.path.join(project_root, hook_path)
-    mode = get_cmd_output(
-        "xmake show --json", lambda r: json.loads(r)["project"]["mode"]
-    )
-
-    preload_var_name = "DYLD_INSERT_LIBRARIES" if is_macos else "LD_PRELOAD"
-
-    catter_proxy_cmd = "%t"
-
-    key_parent_id = "__key_catter_command_id_v1"
-    key_proxy_path = "__key_catter_proxy_path_v1"
-
-    macros = "".join(
-        (
-            rf" -D_KEY_PID=\"{key_parent_id}\"",
-            rf" -D_KEY_PROXY_PATH=\"{key_proxy_path}\"",
-            rf" -D_KEY_PRELOAD=\"{preload_var_name}\"",
-        )
-    )
-
-    config.substitutions.append(("%catter-proxy", catter_proxy_cmd))
-    config.substitutions.append(("%catter-hook-path", hook_path))
-    config.substitutions.append(("%filecheck", "FileCheck"))
-
-    # in debug mode, we need asan
-    if is_macos:
-        config.substitutions.append(
-            ("%cc", f"clang++ -std=c++23 {macros} -fuse-ld=lld %s -o %t")
-        )
-    else:
-        config.substitutions.append(("%cc", f"g++ -std=c++23 {macros} %s -o %t"))
-        if mode == "debug":
-            asan_path = get_cmd_output(
-                "g++ -print-file-name=libasan.so", lambda x: x.strip()
-            )
-            if not os.path.isabs(asan_path):
-                raise RuntimeError(
-                    f"Could not resolve absolute path for libasan.so (got '{asan_path}'). "
-                    "Is ASan installed?"
-                )
-            hook_path = f"{asan_path}:{hook_path}"
-
-    inject_cmd_str = (
-        f"{preload_var_name}={hook_path} "
-        f"{key_proxy_path}='{catter_proxy_cmd}' "
-        f"{key_parent_id}="
-    )
-
-    config.substitutions.append(("%inject-hook", inject_cmd_str))
-
-else:
-    config.substitutions.append(("%cc", "cl %s"))

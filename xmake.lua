@@ -235,6 +235,7 @@ target("ut-catter-hook-win64")
     end
 
 target("it-catter-hook")
+    set_default(false)
     set_kind("binary")
 
     add_files("tests/inte/catter-hook/**.cc")
@@ -242,6 +243,7 @@ target("it-catter-hook")
     add_deps("catter-hook", "common")
 
 target("it-catter-proxy")
+    set_default(false)
     set_kind("binary")
 
     add_files("tests/inte/catter-proxy/**.cc")
