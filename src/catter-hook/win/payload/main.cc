@@ -61,7 +61,8 @@ std::basic_string<char_t> get_proxy_path() {
     path.resize(len);
     FixGetEnvironmentVariable<char_t>(catter::win::ENV_VAR_PROXY_PATH<char_t>,
                                       path.data(),
-                                      len + 1);
+                                      len);
+    path.pop_back();
     return path;
 }
 
@@ -82,7 +83,8 @@ std::basic_string<char_t> get_ipc_id() {
 
     std::basic_string<char_t> id;
     id.resize(len);
-    FixGetEnvironmentVariable<char_t>(catter::win::ENV_VAR_IPC_ID<char_t>, id.data(), len + 1);
+    FixGetEnvironmentVariable<char_t>(catter::win::ENV_VAR_IPC_ID<char_t>, id.data(), len);
+    id.pop_back();
     return id;
 }
 
@@ -114,7 +116,7 @@ struct CreateProcessA {
                         catter::win::get_proxy_path<char>(),
                         catter::win::get_ipc_id<char>(),
                         catter::win::get_app_name<char>(lpApplicationName, lpCommandLine),
-                        std::string_view(lpCommandLine));
+                        std::string_view(lpCommandLine ? lpCommandLine : ""));
 
         return target(nullptr,
                       converted_cmdline.data(),
@@ -149,7 +151,7 @@ struct CreateProcessW {
                         catter::win::get_proxy_path<wchar_t>(),
                         catter::win::get_ipc_id<wchar_t>(),
                         catter::win::get_app_name<wchar_t>(lpApplicationName, lpCommandLine),
-                        std::wstring_view(lpCommandLine));
+                        std::wstring_view(lpCommandLine ? lpCommandLine : L""));
 
         return target(nullptr,
                       converted_cmdline.data(),
