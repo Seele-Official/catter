@@ -59,9 +59,7 @@ std::basic_string<char_t> get_proxy_path() {
 
     std::basic_string<char_t> path;
     path.resize(len);
-    FixGetEnvironmentVariable<char_t>(catter::win::ENV_VAR_PROXY_PATH<char_t>,
-                                      path.data(),
-                                      len);
+    FixGetEnvironmentVariable<char_t>(catter::win::ENV_VAR_PROXY_PATH<char_t>, path.data(), len);
     path.pop_back();
     return path;
 }

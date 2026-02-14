@@ -26,7 +26,7 @@ llvm_config = cfg.LLVMConfig(lit_config, config)
 
 config.name = "Catter Integration Test"
 config.test_format = lit.formats.ShTest(True)
-config.suffixes = [".test"]
+config.suffixes = [".test", ".cc"]
 
 project_root = run_with_json("xmake show --json")["project"]["projectdir"]
 
