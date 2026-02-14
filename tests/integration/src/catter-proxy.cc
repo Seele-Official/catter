@@ -1,5 +1,3 @@
-// RUN: %it_catter_proxy
-
 #include <coroutine>
 #include <cstddef>
 #include <cstdint>

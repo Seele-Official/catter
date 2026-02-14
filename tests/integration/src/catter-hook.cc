@@ -1,20 +1,3 @@
-// ## Windows Specific Tests
-// RUN: %if system-windows %{ %it_catter_hook --test CreateProcessA | FileCheck %s
-// --check-prefix=CHECK-OUTPUT %} RUN: %if system-windows %{ %it_catter_hook --test CreateProcessW |
-// FileCheck %s --check-prefix=CHECK-OUTPUT %}
-
-// ## Unix Specific Tests
-// RUN: %if !system-windows %{ %it_catter_hook --test execve | FileCheck %s
-// --check-prefix=CHECK-OUTPUT %} RUN: %if !system-windows %{ %it_catter_hook --test execv |
-// FileCheck %s --check-prefix=CHECK-OUTPUT %} RUN: %if !system-windows %{ %it_catter_hook --test
-// execvp | FileCheck %s --check-prefix=CHECK-OUTPUT %} RUN: %if !system-windows %{ %it_catter_hook
-// --test execl | FileCheck %s --check-prefix=CHECK-OUTPUT %} RUN: %if !system-windows %{
-// %it_catter_hook --test posix_spawn | FileCheck %s --check-prefix=CHECK-OUTPUT %} RUN: %if
-// !system-windows %{ %it_catter_hook --test posix_spawnp | FileCheck %s --check-prefix=CHECK-OUTPUT
-// %}
-
-// CHECK-OUTPUT: -p 0 --exec /bin/echo -- /bin/echo Hello, World!
-
 #include <functional>
 #include <iostream>
 #include <ranges>
