@@ -167,16 +167,9 @@ int main(int argc, char* argv[]) {
             std::string executable = catter::util::get_executable_path().string();
 
             catter::ipc::data::command cmd{
-                .working_dir = std::filesystem::
-                
-                
-                
-                current_path().string(),
+                .working_dir = std::filesystem::current_path().string(),
                 .executable = executable,
-                .args =
-                    {
-                           executable, args[2],
-                           },
+                .args = {executable, args[2]},
                 .env = catter::util::get_environment(),
             };
 

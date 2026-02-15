@@ -49,16 +49,10 @@ eventide::task<void> spawn(std::shared_ptr<acceptor> acceptor) {
     eventide::process::options opts{
         .file = exe_path,
         .args = args,
-        .creation =
-            {
-                       .windows_hide = true,
-                       .windows_verbatim_arguments = true,
-                       },
-        .streams = {
-                       eventide::process::stdio::ignore(),
-                       eventide::process::stdio::ignore(),
-                       eventide::process::stdio::ignore(),
-                       }
+        .creation = {.windows_hide = true, .windows_verbatim_arguments = true},
+        .streams = {eventide::process::stdio::ignore(),
+                     eventide::process::stdio::ignore(),
+                     eventide::process::stdio::ignore()}
     };
     auto ret = co_await catter::spawn(opts);
     auto error = acceptor->stop();  // Stop accepting new clients after spawning the process
@@ -202,10 +196,6 @@ int main(int argc, char* argv[]) {
 #ifndef _WIN32
     if(std::filesystem::exists(catter::config::ipc::PIPE_NAME)) {
         std::filesystem::remove(catter::config::ipc::PIPE_NAME);
-
-
-
-
     }
 #endif
 

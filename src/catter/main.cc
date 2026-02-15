@@ -49,16 +49,10 @@ eventide::task<void> spawn(std::vector<std::string> shell, std::shared_ptr<accep
     eventide::process::options opts{
         .file = exe_path,
         .args = args,
-        .creation =
-            {
-                       .windows_hide = true,
-                       .windows_verbatim_arguments = true,
-                       },
-        .streams = {
-                       eventide::process::stdio::ignore(),
-                       eventide::process::stdio::ignore(),
-                       eventide::process::stdio::ignore(),
-                       }
+        .creation = {.windows_hide = true, .windows_verbatim_arguments = true},
+        .streams = {eventide::process::stdio::ignore(),
+                     eventide::process::stdio::ignore(),
+                     eventide::process::stdio::ignore()}
     };
     auto ret = co_await catter::spawn(opts);
     auto error = acceptor->stop();  // Stop accepting new clients after spawning the process
