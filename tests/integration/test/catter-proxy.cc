@@ -1,3 +1,8 @@
+
+
+// clang-format off
+// RUN: %it_catter_proxy
+// clang-format on
 #include <coroutine>
 #include <cstddef>
 #include <cstdint>
@@ -197,6 +202,10 @@ int main(int argc, char* argv[]) {
 #ifndef _WIN32
     if(std::filesystem::exists(catter::config::ipc::PIPE_NAME)) {
         std::filesystem::remove(catter::config::ipc::PIPE_NAME);
+
+
+
+
     }
 #endif
 

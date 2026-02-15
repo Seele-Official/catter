@@ -1,3 +1,18 @@
+// clang-format off
+// ## Windows Specific Tests
+// RUN: %if system-windows %{ %it_catter_hook --test CreateProcessA | FileCheck %s --check-prefix=CHECK-OUTPUT %}
+// RUN: %if system-windows %{ %it_catter_hook --test CreateProcessW | FileCheck %s --check-prefix=CHECK-OUTPUT %}
+
+// ## Unix Specific Tests
+// RUN: %if !system-windows %{ %it_catter_hook --test execve | FileCheck %s --check-prefix=CHECK-OUTPUT %}
+// RUN: %if !system-windows %{ %it_catter_hook --test execv | FileCheck %s --check-prefix=CHECK-OUTPUT %}
+// RUN: %if !system-windows %{ %it_catter_hook --test execvp | FileCheck %s --check-prefix=CHECK-OUTPUT %}
+// RUN: %if !system-windows %{ %it_catter_hook --test execl | FileCheck %s --check-prefix=CHECK-OUTPUT %}
+// RUN: %if !system-windows %{ %it_catter_hook --test posix_spawn | FileCheck %s --check-prefix=CHECK-OUTPUT %}
+// RUN: %if !system-windows %{ %it_catter_hook --test posix_spawnp | FileCheck %s --check-prefix=CHECK-OUTPUT %}
+
+// CHECK-OUTPUT: -p 0 --exec /bin/echo -- /bin/echo Hello, World!
+// clang-format on
 #include <functional>
 #include <iostream>
 #include <ranges>
@@ -152,7 +167,11 @@ int main(int argc, char* argv[]) {
             std::string executable = catter::util::get_executable_path().string();
 
             catter::ipc::data::command cmd{
-                .working_dir = std::filesystem::current_path().string(),
+                .working_dir = std::filesystem::
+                
+                
+                
+                current_path().string(),
                 .executable = executable,
                 .args =
                     {
