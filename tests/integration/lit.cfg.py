@@ -47,7 +47,7 @@ match platform.system():
         config.test_format = lit.formats.ShTest(False)
     case "Linux":
         if project_mode == "debug":
-            compiler = hook_config[0]["program"]
+            compiler = hook_config["compilers"][0]["program"]
             if "g++" in compiler and "clang" not in compiler:
                 asan_path = run(f"{compiler} -print-file-name=libasan.so").strip()
                 hook_path = f"LD_PRELOAD={asan_path} {hook_path}"
