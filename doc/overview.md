@@ -37,9 +37,9 @@ catter [options] -- <build system command>
 catter-proxy [options] -- <compiler command>
 ```
 
-- The first parameter of `catter` is always used to specify the script. 
+- The first parameter of `catter` is always used to specify the script.
 - Then, you can provide specific options for scripts.
-- Finally, after `--`, you provide the actual build system command that you want to run. 
+- Finally, after `--`, you provide the actual build system command that you want to run.
 
 To specify a built-in script:
 ```bash

@@ -342,16 +342,16 @@ public:
      * @tparam T The type of the value to set, if it is JSValue, will free inside.
      * @param prop_name The name of the property to set.
      * @param val The value to set.
-     * @return std::optional<qjs::Exception> Returns an exception if setting the property fails;
-     * std::nullopt on success.
+     * @throws qjs::Exception if the operation fails, you can catch it in C++ and convert to JS
+     * exception in `C` if needed.
      */
     template <typename T>
-    std::optional<qjs::Exception> set_property(const std::string& prop_name, T&& val) noexcept {
+    void set_property(const std::string& prop_name, T&& val) {
         if constexpr(std::is_same_v<JSValue, std::remove_cv_t<T>>) {
             JSValue js_val = val;
             int ret = JS_SetPropertyStr(this->context(), this->value(), prop_name.c_str(), js_val);
             if(ret < 0) {
-                return qjs::Exception(detail::dump(this->context()));
+                throw qjs::Exception(detail::dump(this->context()));
             }
         }
         if constexpr(std::is_same_v<Value, std::remove_cv_t<T>>) {
@@ -361,7 +361,7 @@ public:
                                         prop_name.c_str(),
                                         js_val.release());
             if(ret < 0) {
-                return qjs::Exception(detail::dump(this->context()));
+                throw qjs::Exception(detail::dump(this->context()));
             }
         } else {
             auto js_val = Value::from<std::remove_cv_t<T>>(this->context(), std::forward<T>(val));
@@ -370,23 +370,14 @@ public:
                                         prop_name.c_str(),
                                         js_val.value());
             if(ret < 0) {
-                return qjs::Exception(detail::dump(this->context()));
+                throw qjs::Exception(detail::dump(this->context()));
             }
         }
-        return std::nullopt;
     }
 
     template <typename T>
     static Object from(T&& value) noexcept {
         return detail::object_trans<std::remove_cvref_t<T>>::from(std::forward<T>(value));
-    }
-
-    static std::expected<Object, qjs::Exception> empty_one(JSContext* ctx) noexcept {
-        auto obj = JS_NewObject(ctx);
-        if(JS_IsException(obj)) {
-            return std::unexpected(qjs::Exception(detail::dump(ctx)));
-        }
-        return Object{ctx, obj};
     }
 
     template <typename T>
