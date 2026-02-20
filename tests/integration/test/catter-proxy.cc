@@ -39,7 +39,7 @@ using namespace catter;
 
 using acceptor = eventide::acceptor<eventide::pipe>;
 
-class IpcImpl : public ipc::Handler {
+class ServiceImpl : public ipc::Service {
 public:
     data::ipcid_t create(data::ipcid_t parent_id) override {
         this->create_called = true;
@@ -105,7 +105,7 @@ eventide::task<void> spawn(std::shared_ptr<acceptor> acceptor) {
 }
 
 eventide::task<void> loop(std::shared_ptr<acceptor> acceptor) {
-    IpcImpl handler{};
+    ServiceImpl service{};
     std::list<eventide::task<void>> linked_clients;
     while(true) {
         auto client = co_await acceptor->accept();
@@ -115,12 +115,12 @@ eventide::task<void> loop(std::shared_ptr<acceptor> acceptor) {
             // expected
             break;
         }
-        linked_clients.push_back(ipc::accept(handler, std::move(*client)));
+        linked_clients.push_back(ipc::accept(service, std::move(*client)));
         default_loop().schedule(linked_clients.back());
     }
 
-    assert(handler.create_called && handler.make_decision_called && handler.finish_called &&
-           !handler.error_reported &&
+    assert(service.create_called && service.make_decision_called && service.finish_called &&
+           !service.error_reported &&
            "Expected all IPC handler methods to be called appropriately");
 
     try {

@@ -6,7 +6,7 @@
 
 namespace catter::ipc {
 
-class Handler {
+class Service {
 public:
     virtual data::ipcid_t create(data::ipcid_t parent_id) = 0;
     virtual data::action make_decision(data::command cmd) = 0;
@@ -14,6 +14,6 @@ public:
     virtual void report_error(data::ipcid_t parent_id, data::ipcid_t id, std::string error_msg) = 0;
 };
 
-eventide::task<void> accept(Handler& handler, eventide::pipe client);
+eventide::task<void> accept(Service& service, eventide::pipe client);
 
 }  // namespace catter::ipc

@@ -34,7 +34,7 @@
 
 using namespace catter;
 
-class Handler {
+class Session {
 public:
     virtual void start() = 0;
     virtual void finish(int64_t code) = 0;
@@ -42,8 +42,10 @@ public:
 
 using acceptor = eventide::acceptor<eventide::pipe>;
 
-eventide::task<void> spawn(std::vector<std::string> shell, std::shared_ptr<acceptor> acceptor) {
-    // co_await std::suspend_always{};  // placeholder
+eventide::task<void> spawn(std::vector<std::string> shell,
+                           Session& session,
+                           std::shared_ptr<acceptor> acceptor) {
+    session.start();
 
     std::string exe_path =
         (util::get_catter_root_path() / catter::config::proxy::EXE_NAME).string();
@@ -60,7 +62,8 @@ eventide::task<void> spawn(std::vector<std::string> shell, std::shared_ptr<accep
                      eventide::process::stdio::ignore(),
                      eventide::process::stdio::ignore()}
     };
-    auto ret = co_await catter::spawn(opts);
+
+    session.finish(co_await catter::spawn(opts));
     auto error = acceptor->stop();  // Stop accepting new clients after spawning the process
     if(error) {
         std::println("Failed to stop acceptor: {}", error.message());
@@ -68,7 +71,7 @@ eventide::task<void> spawn(std::vector<std::string> shell, std::shared_ptr<accep
     co_return;
 }
 
-eventide::task<void> loop(ipc::Handler& handler, std::shared_ptr<acceptor> acceptor) {
+eventide::task<void> loop(ipc::Service& service, std::shared_ptr<acceptor> acceptor) {
     std::list<eventide::task<void>> linked_clients;
     while(true) {
         auto client = co_await acceptor->accept();
@@ -78,7 +81,7 @@ eventide::task<void> loop(ipc::Handler& handler, std::shared_ptr<acceptor> accep
             // expected
             break;
         }
-        linked_clients.push_back(ipc::accept(handler, std::move(*client)));
+        linked_clients.push_back(ipc::accept(service, std::move(*client)));
         default_loop().schedule(linked_clients.back());
     }
 
@@ -92,7 +95,7 @@ eventide::task<void> loop(ipc::Handler& handler, std::shared_ptr<acceptor> accep
     co_return;
 }
 
-class IpcImpl : public ipc::Handler {
+class ServiceImpl : public ipc::Service {
 public:
     data::ipcid_t create(data::ipcid_t parent_id) override {
         std::println("Creating new command with parent id: {}", parent_id);
@@ -117,6 +120,17 @@ public:
 
 private:
     data::ipcid_t id = 0;
+};
+
+class SessionImpl : public Session {
+public:
+    void start() override {
+        std::println("Session started.");
+    }
+
+    void finish(int64_t code) override {
+        std::println("Session finished with code: {}", code);
+    }
 };
 
 int main(int argc, char* argv[]) {
@@ -147,11 +161,12 @@ int main(int argc, char* argv[]) {
     }
 
     try {
-        auto handler = IpcImpl{};
+        auto service = ServiceImpl{};
+        auto session = SessionImpl{};
         auto acc = std::make_shared<acceptor>(std::move(*acc_ret));
         // becareful, msvc has a bug that asan will report false positive UAF
-        default_loop().schedule(loop(handler, acc));
-        default_loop().schedule(spawn(shell, acc));
+        default_loop().schedule(loop(service, acc));
+        default_loop().schedule(spawn(shell, session, acc));
         acc.reset();  // We can release our reference to the acceptor since the loop task will keep
                       // it alive
         default_loop().run();

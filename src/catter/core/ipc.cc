@@ -5,7 +5,7 @@
 #include <cassert>
 
 namespace catter::ipc {
-eventide::task<void> accept(Handler& handler, eventide::pipe client) {
+eventide::task<void> accept(Service& service, eventide::pipe client) {
 
     auto reader = [&](char* dst, size_t len) -> eventide::task<void> {
         size_t total_read = 0;
@@ -26,7 +26,7 @@ eventide::task<void> accept(Handler& handler, eventide::pipe client) {
                 case data::Request::CREATE: {
                     data::ipcid_t parent_id = co_await Serde<data::ipcid_t>::co_deserialize(reader);
                     auto err = co_await client.write(
-                        Serde<data::ipcid_t>::serialize(handler.create(parent_id)));
+                        Serde<data::ipcid_t>::serialize(service.create(parent_id)));
 
                     if(err.has_error()) {
                         throw std::runtime_error(
@@ -40,7 +40,7 @@ eventide::task<void> accept(Handler& handler, eventide::pipe client) {
                     data::command cmd = co_await Serde<data::command>::co_deserialize(reader);
 
                     auto err = co_await client.write(
-                        Serde<data::action>::serialize(handler.make_decision(cmd)));
+                        Serde<data::action>::serialize(service.make_decision(cmd)));
                     if(err.has_error()) {
                         throw std::runtime_error(
                             std::format("Failed to send action to client: {}", err.message()));
@@ -49,11 +49,11 @@ eventide::task<void> accept(Handler& handler, eventide::pipe client) {
                     break;
                 }
                 case data::Request::FINISH: {
-                    handler.finish(co_await Serde<int64_t>::co_deserialize(reader));
+                    service.finish(co_await Serde<int64_t>::co_deserialize(reader));
                     break;
                 }
                 case data::Request::REPORT_ERROR: {
-                    handler.report_error(co_await Serde<data::ipcid_t>::co_deserialize(reader),
+                    service.report_error(co_await Serde<data::ipcid_t>::co_deserialize(reader),
                                          co_await Serde<data::ipcid_t>::co_deserialize(reader),
                                          co_await Serde<std::string>::co_deserialize(reader));
                     break;
