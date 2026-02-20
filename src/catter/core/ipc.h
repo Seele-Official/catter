@@ -2,10 +2,9 @@
 
 #include <eventide/stream.h>
 
-
 #include "util/data.h"
 
-namespace catter::ipc{
+namespace catter::ipc {
 
 class Handler {
 public:
@@ -17,4 +16,4 @@ public:
 
 eventide::task<void> accept(Handler& handler, eventide::pipe client);
 
-}
+}  // namespace catter::ipc

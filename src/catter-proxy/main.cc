@@ -7,17 +7,17 @@
 #include <system_error>
 
 #include <eventide/process.h>
-#include <vector>
 
+#include "ipc.h"
 #include "hook.h"
-#include "ipc_handler.h"
-#include "unix/config.h"
 
-#include "util/crossplat.h"
 #include "util/log.h"
-#include "util/output.h"
-#include "opt-data/catter-proxy/parser.h"
+#include "util/eventide.h"
+#include "util/crossplat.h"
 #include "config/catter-proxy.h"
+#include "opt-data/catter-proxy/parser.h"
+
+using namespace catter;
 
 namespace catter::proxy {
 int64_t run(data::action act, data::ipcid_t id) {
@@ -33,7 +33,7 @@ int64_t run(data::action act, data::ipcid_t id) {
             return wait(spawn(opts));
         }
         case action::INJECT: {
-            return catter::proxy::hook::run(act.cmd, id);
+            return proxy::hook::run(act.cmd, id);
         }
         case action::DROP: {
             return 0;
@@ -49,37 +49,35 @@ int64_t run(data::action act, data::ipcid_t id) {
 // usage: catter-proxy.exe -p <parent ipc id> --exec <exe path> -- <args...>
 int main(int argc, char* argv[], char* envp[]) {
     try {
-        catter::log::init_logger("catter-proxy.log",
-                                 catter::util::get_catter_data_path() /
-                                     catter::config::proxy::LOG_PATH_REL,
-                                 false);
+        log::init_logger("catter-proxy.log",
+                         util::get_catter_data_path() / config::proxy::LOG_PATH_REL,
+                         false);
     } catch(const std::exception& e) {
         // cannot init logger
-        catter::log::mute_logger();
+        log::mute_logger();
     }
-    auto& ipc_ins = catter::proxy::ipc_handler::instance();
 
     try {
 
-        auto opt = catter::optdata::catter_proxy::parse_opt(argc, argv);
+        auto opt = optdata::catter_proxy::parse_opt(argc, argv);
 
         if(!opt.argv.has_value()) {
             throw opt.argv.error();
         }
-        catter::data::command cmd = {
+        data::command cmd = {
             .cwd = std::filesystem::current_path().string(),
             .executable = opt.executable,
             .args = opt.argv.value(),
-            .env = catter::util::get_environment(),
+            .env = util::get_environment(),
         };
 
-        auto id = ipc_ins.create(std::stoi(opt.parent_id));
+        auto id = proxy::ipc::create(std::stoi(opt.parent_id));
 
-        auto received_act = ipc_ins.make_decision(cmd);
+        auto received_act = proxy::ipc::make_decision(cmd);
 
-        int64_t ret = catter::proxy::run(received_act, id);
+        int64_t ret = proxy::run(received_act, id);
 
-        ipc_ins.finish(ret);
+        proxy::ipc::finish(ret);
 
         return ret;
     } catch(const std::exception& e) {
@@ -89,11 +87,11 @@ int main(int argc, char* argv[], char* envp[]) {
         }
 
         LOG_CRITICAL("Exception in catter-proxy: {}. Args: {}", e.what(), args);
-        ipc_ins.report_error(e.what());
+        proxy::ipc::report_error(e.what());
         return -1;
     } catch(...) {
         LOG_CRITICAL("Unknown exception in catter-proxy.");
-        ipc_ins.report_error("Unknown exception in catter-proxy.");
+        proxy::ipc::report_error("Unknown exception in catter-proxy.");
         return -1;
     }
 }

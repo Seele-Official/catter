@@ -1,11 +1,10 @@
 #include "ipc.h"
 
-
 #include "util/serde.h"
 #include "util/data.h"
 #include <cassert>
 
-namespace catter::ipc{   
+namespace catter::ipc {
 eventide::task<void> accept(Handler& handler, eventide::pipe client) {
 
     auto reader = [&](char* dst, size_t len) -> eventide::task<void> {
@@ -25,9 +24,9 @@ eventide::task<void> accept(Handler& handler, eventide::pipe client) {
             data::Request req = co_await Serde<data::Request>::co_deserialize(reader);
             switch(req) {
                 case data::Request::CREATE: {
-                    data::ipcid_t parent_id =
-                        co_await Serde<data::ipcid_t>::co_deserialize(reader);
-                    auto err = co_await client.write(Serde<data::ipcid_t>::serialize(handler.create(parent_id)));
+                    data::ipcid_t parent_id = co_await Serde<data::ipcid_t>::co_deserialize(reader);
+                    auto err = co_await client.write(
+                        Serde<data::ipcid_t>::serialize(handler.create(parent_id)));
 
                     if(err.has_error()) {
                         throw std::runtime_error(
@@ -38,10 +37,10 @@ eventide::task<void> accept(Handler& handler, eventide::pipe client) {
                 }
 
                 case data::Request::MAKE_DECISION: {
-                    data::command cmd =
-                        co_await Serde<data::command>::co_deserialize(reader);
+                    data::command cmd = co_await Serde<data::command>::co_deserialize(reader);
 
-                    auto err = co_await client.write(Serde<data::action>::serialize(handler.make_decision(cmd)));
+                    auto err = co_await client.write(
+                        Serde<data::action>::serialize(handler.make_decision(cmd)));
                     if(err.has_error()) {
                         throw std::runtime_error(
                             std::format("Failed to send action to client: {}", err.message()));
@@ -54,11 +53,9 @@ eventide::task<void> accept(Handler& handler, eventide::pipe client) {
                     break;
                 }
                 case data::Request::REPORT_ERROR: {
-                    handler.report_error(
-                        co_await Serde<data::ipcid_t>::co_deserialize(reader),
-                        co_await Serde<data::ipcid_t>::co_deserialize(reader),
-                        co_await Serde<std::string>::co_deserialize(reader)
-                    );
+                    handler.report_error(co_await Serde<data::ipcid_t>::co_deserialize(reader),
+                                         co_await Serde<data::ipcid_t>::co_deserialize(reader),
+                                         co_await Serde<std::string>::co_deserialize(reader));
                     break;
                 }
                 default: {
@@ -72,4 +69,4 @@ eventide::task<void> accept(Handler& handler, eventide::pipe client) {
     }
     co_return;
 }
-}
+}  // namespace catter::ipc

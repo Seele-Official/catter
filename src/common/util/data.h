@@ -76,8 +76,7 @@ struct Serde<data::command> {
     template <CoReader Invocable>
     static eventide::task<data::command> co_deserialize(Invocable&& reader) {
         data::command cmd;
-        cmd.cwd =
-            co_await Serde<std::string>::co_deserialize(std::forward<Invocable>(reader));
+        cmd.cwd = co_await Serde<std::string>::co_deserialize(std::forward<Invocable>(reader));
         cmd.executable =
             co_await Serde<std::string>::co_deserialize(std::forward<Invocable>(reader));
         cmd.args = co_await Serde<std::vector<std::string>>::co_deserialize(
@@ -109,8 +108,7 @@ struct Serde<data::action> {
         data::action act;
         act.type = static_cast<enum_type>(
             co_await Serde<uint8_t>::co_deserialize(std::forward<Invocable>(reader)));
-        act.cmd =
-            co_await Serde<data::command>::co_deserialize(std::forward<Invocable>(reader));
+        act.cmd = co_await Serde<data::command>::co_deserialize(std::forward<Invocable>(reader));
         co_return act;
     }
 };
