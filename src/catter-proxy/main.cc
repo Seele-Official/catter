@@ -20,14 +20,14 @@
 #include "config/catter-proxy.h"
 
 namespace catter::proxy {
-int run(ipc::data::action act, ipc::data::command_id_t id) {
-    using catter::ipc::data::action;
+int64_t run(data::action act, data::ipcid_t id) {
+    using catter::data::action;
     switch(act.type) {
         case action::WRAP: {
             eventide::process::options opts{
                 .file = act.cmd.executable,
                 .args = act.cmd.args,
-                .cwd = act.cmd.working_dir,
+                .cwd = act.cmd.cwd,
                 .creation = {.windows_hide = true, .windows_verbatim_arguments = true}
             };
             return wait(spawn(opts));
@@ -66,8 +66,8 @@ int main(int argc, char* argv[], char* envp[]) {
         if(!opt.argv.has_value()) {
             throw opt.argv.error();
         }
-        catter::ipc::data::command cmd = {
-            .working_dir = std::filesystem::current_path().string(),
+        catter::data::command cmd = {
+            .cwd = std::filesystem::current_path().string(),
             .executable = opt.executable,
             .args = opt.argv.value(),
             .env = catter::util::get_environment(),
@@ -77,7 +77,7 @@ int main(int argc, char* argv[], char* envp[]) {
 
         auto received_act = ipc_ins.make_decision(cmd);
 
-        int ret = catter::proxy::run(received_act, id);
+        int64_t ret = catter::proxy::run(received_act, id);
 
         ipc_ins.finish(ret);
 

@@ -13,7 +13,7 @@
 #include <detours.h>
 
 #include "util/log.h"
-#include "util/ipc-data.h"
+#include "util/data.h"
 #include "util/crossplat.h"
 
 #include "win/env.h"
@@ -56,7 +56,7 @@ std::string quote_win32_arg(std::string_view arg) noexcept {
     return quoted_arg;
 }
 
-std::string cmdline_of(const catter::ipc::data::command& cmd) noexcept {
+std::string cmdline_of(const catter::data::command& cmd) noexcept {
     std::string full_cmd;
     for(const auto& arg: cmd.args) {
         full_cmd += quote_win32_arg(arg) + " ";
@@ -68,7 +68,7 @@ std::string cmdline_of(const catter::ipc::data::command& cmd) noexcept {
 
 namespace catter::proxy::hook {
 
-int run(ipc::data::command cmd, ipc::data::command_id_t id, std::string proxy_path) {
+int64_t run(data::command cmd, data::ipcid_t id, std::string proxy_path) {
 
     LOG_INFO("new command id is: {}", id);
 
@@ -130,7 +130,7 @@ int run(ipc::data::command cmd, ipc::data::command_id_t id, std::string proxy_pa
     }
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
-    return static_cast<int>(exit_code);
+    return static_cast<int64_t>(exit_code);
 };
 
 };  // namespace catter::proxy::hook

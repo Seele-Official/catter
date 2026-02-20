@@ -11,7 +11,7 @@
 #include <sys/wait.h>
 
 #include "hook.h"
-#include "util/ipc-data.h"
+#include "util/data.h"
 #include "util/crossplat.h"
 #include "util/log.h"
 #include "util/eventide.h"
@@ -19,7 +19,7 @@
 
 namespace catter::proxy::hook {
 
-int run(ipc::data::command command, ipc::data::command_id_t id, std::string proxy_path) {
+int64_t run(data::command command, data::ipcid_t id, std::string proxy_path) {
     LOG_INFO("new command id is: {}", id);
 
     const auto lib_path =
@@ -61,7 +61,7 @@ int run(ipc::data::command command, ipc::data::command_id_t id, std::string prox
         .file = command.executable,
         .args = command.args,
         .env = command.env,
-        .cwd = command.working_dir,
+        .cwd = command.cwd,
     };
     return catter::wait(catter::spawn(opts));
 };

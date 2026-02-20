@@ -8,7 +8,7 @@
 #include <eventide/stream.h>
 
 #include "config/ipc.h"
-#include "util/ipc-data.h"
+#include "util/data.h"
 #include "util/eventide.h"
 
 namespace catter::proxy {
@@ -30,33 +30,33 @@ public:
         };
     }
 
-    ipc::data::command_id_t create(ipc::data::command_id_t parent_id) {
+    data::ipcid_t create(data::ipcid_t parent_id) {
         this->parent_id = parent_id;
-        this->write(Serde<ipc::data::Request>::serialize(ipc::data::Request::CREATE),
-                    Serde<ipc::data::command_id_t>::serialize(parent_id));
-        auto nxt_id = Serde<ipc::data::command_id_t>::deserialize(this->reader());
+        this->write(Serde<data::Request>::serialize(data::Request::CREATE),
+                    Serde<data::ipcid_t>::serialize(parent_id));
+        auto nxt_id = Serde<data::ipcid_t>::deserialize(this->reader());
         this->id = nxt_id;
         return nxt_id;
     }
 
-    ipc::data::action make_decision(ipc::data::command cmd) {
-        this->write(Serde<ipc::data::Request>::serialize(ipc::data::Request::MAKE_DECISION),
-                    Serde<ipc::data::command>::serialize(cmd));
+    data::action make_decision(data::command cmd) {
+        this->write(Serde<data::Request>::serialize(data::Request::MAKE_DECISION),
+                    Serde<data::command>::serialize(cmd));
 
-        return Serde<ipc::data::action>::deserialize(this->reader());
+        return Serde<data::action>::deserialize(this->reader());
     }
 
-    void finish(int ret_code) {
-        this->write(Serde<ipc::data::Request>::serialize(ipc::data::Request::FINISH),
-                    Serde<int>::serialize(ret_code));
+    void finish(int64_t ret_code) {
+        this->write(Serde<data::Request>::serialize(data::Request::FINISH),
+                    Serde<int64_t>::serialize(ret_code));
         return;
     }
 
     void report_error(std::string error_msg) noexcept {
         try {
-            this->write(Serde<ipc::data::Request>::serialize(ipc::data::Request::REPORT_ERROR),
-                        Serde<ipc::data::command_id_t>::serialize(this->parent_id),
-                        Serde<ipc::data::command_id_t>::serialize(this->id),
+            this->write(Serde<data::Request>::serialize(data::Request::REPORT_ERROR),
+                        Serde<data::ipcid_t>::serialize(this->parent_id),
+                        Serde<data::ipcid_t>::serialize(this->id),
                         Serde<std::string>::serialize(error_msg));
         } catch(...) {
             // cannot do anything here
@@ -103,8 +103,8 @@ private:
     ~ipc_handler() = default;
 
 private:
-    ipc::data::command_id_t parent_id{-1};
-    ipc::data::command_id_t id{-1};
+    data::ipcid_t parent_id{-1};
+    data::ipcid_t id{-1};
     eventide::pipe client_pipe{};
 };
 }  // namespace catter::proxy
