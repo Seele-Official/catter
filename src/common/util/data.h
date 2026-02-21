@@ -27,9 +27,8 @@ struct action {
 };
 
 enum class ServiceMode : uint8_t {
-    DEFAULT,  
+    DEFAULT,
 };
-
 
 enum class Request : uint8_t {
     CREATE,

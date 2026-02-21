@@ -6,14 +6,13 @@
 #include "ipc.h"
 #include "session.h"
 
-
 using namespace catter;
-
 
 class ServiceImpl : public ipc::DefaultService {
 public:
-    ServiceImpl(data::ipcid_t id): id(id) {};
+    ServiceImpl(data::ipcid_t id) : id(id) {};
     ~ServiceImpl() override = default;
+
     data::ipcid_t create(data::ipcid_t parent_id) override {
         std::println("Creating new command with parent id: {}", parent_id);
         return this->id;
@@ -38,7 +37,7 @@ public:
     struct Factory {
         data::ipcid_t id;
 
-        std::unique_ptr<ipc::DefaultService> operator()() {
+        std::unique_ptr<ipc::DefaultService> operator() () {
             return std::make_unique<ServiceImpl>(++id);
         }
     };
@@ -57,7 +56,6 @@ public:
         std::println("Session finished with code: {}", code);
     }
 };
-
 
 int main(int argc, char* argv[]) {
 

@@ -8,7 +8,6 @@
 #include "util/serde.h"
 #include "util/data.h"
 
-
 namespace catter::ipc {
 
 eventide::task<void> accept(std::unique_ptr<DefaultService> service, eventide::pipe client) {
@@ -60,8 +59,8 @@ eventide::task<void> accept(std::unique_ptr<DefaultService> service, eventide::p
                 }
                 case data::Request::REPORT_ERROR: {
                     service->report_error(co_await Serde<data::ipcid_t>::co_deserialize(reader),
-                                         co_await Serde<data::ipcid_t>::co_deserialize(reader),
-                                         co_await Serde<std::string>::co_deserialize(reader));
+                                          co_await Serde<data::ipcid_t>::co_deserialize(reader),
+                                          co_await Serde<std::string>::co_deserialize(reader));
                     break;
                 }
                 default: {
@@ -76,13 +75,13 @@ eventide::task<void> accept(std::unique_ptr<DefaultService> service, eventide::p
     co_return;
 }
 
-template<typename Derived>
+template <typename Derived>
 std::unique_ptr<Derived> downcast_service(std::unique_ptr<Service>&& service) {
     return std::unique_ptr<Derived>(static_cast<Derived*>(service.release()));
 }
 
-eventide::task<void> accept(std::unique_ptr<Service> service, eventide::pipe client){
-    if (dynamic_cast<DefaultService*>(service.get()) != nullptr) {
+eventide::task<void> accept(std::unique_ptr<Service> service, eventide::pipe client) {
+    if(dynamic_cast<DefaultService*>(service.get()) != nullptr) {
         return accept(downcast_service<DefaultService>(std::move(service)), std::move(client));
     } else {
         throw std::runtime_error("Unsupported service type for IPC communication");

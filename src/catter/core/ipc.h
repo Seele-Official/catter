@@ -13,12 +13,11 @@ public:
     Service() = default;
     Service(const Service&) = default;
     Service(Service&&) = default;
-    Service& operator=(const Service&) = default;
-    Service& operator=(Service&&) = default;
+    Service& operator= (const Service&) = default;
+    Service& operator= (Service&&) = default;
 
     virtual ~Service() = default;
 };
-    
 
 class DefaultService : public Service {
 public:
