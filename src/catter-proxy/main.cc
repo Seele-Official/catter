@@ -58,7 +58,10 @@ int main(int argc, char* argv[], char* envp[]) {
         log::mute_logger();
     }
 
+    data::ipcid_t parent_id = -1;  // invalid id to indicate error in parsing args
+
     try {
+        proxy::ipc::set_service_mode(data::ServiceMode::DEFAULT);
 
         auto opt = optdata::catter_proxy::parse_opt(argc, argv);
 
@@ -72,7 +75,7 @@ int main(int argc, char* argv[], char* envp[]) {
             .env = util::get_environment(),
         };
 
-        auto id = proxy::ipc::create(std::stoi(opt.parent_id));
+        auto id = proxy::ipc::create(parent_id = std::stoi(opt.parent_id));
 
         auto received_act = proxy::ipc::make_decision(cmd);
 
@@ -88,11 +91,11 @@ int main(int argc, char* argv[], char* envp[]) {
         }
 
         LOG_CRITICAL("Exception in catter-proxy: {}. Args: {}", e.what(), args);
-        proxy::ipc::report_error(e.what());
+        proxy::ipc::report_error(parent_id, e.what());
         return -1;
     } catch(...) {
         LOG_CRITICAL("Unknown exception in catter-proxy.");
-        proxy::ipc::report_error("Unknown exception in catter-proxy.");
+        proxy::ipc::report_error(parent_id, "Unknown exception in catter-proxy.");
         return -1;
     }
 }

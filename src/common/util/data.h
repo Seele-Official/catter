@@ -59,6 +59,25 @@ struct Serde<data::Request> {
 };
 
 template <>
+struct Serde<data::ServiceMode> {
+    static std::vector<char> serialize(const data::ServiceMode& mode) {
+        return Serde<uint8_t>::serialize(static_cast<uint8_t>(mode));
+    }
+
+    template <Reader Invocable>
+    static data::ServiceMode deserialize(Invocable&& reader) {
+        uint8_t value = Serde<uint8_t>::deserialize(std::forward<Invocable>(reader));
+        return static_cast<data::ServiceMode>(value);
+    }
+
+    template <CoReader Invocable>
+    static eventide::task<data::ServiceMode> co_deserialize(Invocable&& reader) {
+        uint8_t value = co_await Serde<uint8_t>::co_deserialize(std::forward<Invocable>(reader));
+        co_return static_cast<data::ServiceMode>(value);
+    }
+};
+
+template <>
 struct Serde<data::command> {
     static std::vector<char> serialize(const data::command& cmd) {
         return merge_range_to_vector(Serde<std::string>::serialize(cmd.cwd),

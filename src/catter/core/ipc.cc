@@ -25,6 +25,8 @@ eventide::task<void> accept(DefaultService* service, eventide::pipe client) {
     };
 
     try {
+        auto service_mode = co_await Serde<data::ServiceMode>::co_deserialize(reader);
+        assert(service_mode == data::ServiceMode::DEFAULT && "Unsupported service mode received");
         while(true) {
             data::Request req = co_await Serde<data::Request>::co_deserialize(reader);
             switch(req) {
@@ -59,7 +61,6 @@ eventide::task<void> accept(DefaultService* service, eventide::pipe client) {
                 }
                 case data::Request::REPORT_ERROR: {
                     service->report_error(co_await Serde<data::ipcid_t>::co_deserialize(reader),
-                                          co_await Serde<data::ipcid_t>::co_deserialize(reader),
                                           co_await Serde<std::string>::co_deserialize(reader));
                     break;
                 }

@@ -26,10 +26,10 @@ public:
         std::println("Command finished with code: {}", code);
     }
 
-    void report_error(data::ipcid_t parent_id, data::ipcid_t id, std::string error_msg) override {
+    void report_error(data::ipcid_t parent_id, std::string error_msg) override {
         std::println("Error reported for command with parent id {} and id {}: {}",
                      parent_id,
-                     id,
+                     this->id,
                      error_msg);
     }
 
