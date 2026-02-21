@@ -27,7 +27,7 @@ void Session::do_run(const std::vector<std::string>& shell, ServiceFactory facto
             std::format("Failed to create acceptor: {}", acc_ret.error().message()));
     }
 
-    this->acc = std::make_unique<acceptor>(std::move(*acc_ret));
+    this->acc = std::make_unique<Acceptor>(std::move(*acc_ret));
 
     this->start();
 

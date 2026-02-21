@@ -20,16 +20,14 @@ concept ServicePointerTypeLike =
 
 class Session {
 public:
-    using acceptor = eventide::acceptor<eventide::pipe>;
+    using Acceptor = eventide::acceptor<eventide::pipe>;
+    using ServiceFactory = util::function_ref<ipc::Service*()>;
 
     virtual void start() = 0;
     virtual void finish(int64_t code) = 0;
 
-    using ServiceFactory = util::function_ref<ipc::Service*()>;
-
     template <typename ServiceFactoryType>
-        requires std::invocable<ServiceFactoryType> &&
-                 ServicePointerTypeLike<std::invoke_result_t<ServiceFactoryType>>
+        requires ServicePointerTypeLike<std::invoke_result_t<ServiceFactoryType>>
     void run(const std::vector<std::string>& shell, ServiceFactoryType&& factory) {
         auto factory_wrapper = [&]() -> ipc::Service* {
             return factory();
@@ -42,7 +40,7 @@ private:
     eventide::task<int64_t> spawn(const std::vector<std::string>& shell);
     eventide::task<void> loop(ServiceFactory factory);
 
-    std::unique_ptr<acceptor> acc = nullptr;
+    std::unique_ptr<Acceptor> acc = nullptr;
 };
 
 }  // namespace catter
