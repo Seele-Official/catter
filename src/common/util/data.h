@@ -26,6 +26,11 @@ struct action {
     command cmd;
 };
 
+enum class ServiceMode : uint8_t {
+    DEFAULT,  
+};
+
+
 enum class Request : uint8_t {
     CREATE,
     MAKE_DECISION,

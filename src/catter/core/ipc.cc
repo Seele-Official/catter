@@ -1,11 +1,17 @@
+#include <cassert>
+#include <memory>
+#include <format>
+#include <utility>
+
 #include "ipc.h"
 
 #include "util/serde.h"
 #include "util/data.h"
-#include <cassert>
+
 
 namespace catter::ipc {
-eventide::task<void> accept(Service& service, eventide::pipe client) {
+
+eventide::task<void> accept(std::unique_ptr<DefaultService> service, eventide::pipe client) {
 
     auto reader = [&](char* dst, size_t len) -> eventide::task<void> {
         size_t total_read = 0;
@@ -26,7 +32,7 @@ eventide::task<void> accept(Service& service, eventide::pipe client) {
                 case data::Request::CREATE: {
                     data::ipcid_t parent_id = co_await Serde<data::ipcid_t>::co_deserialize(reader);
                     auto err = co_await client.write(
-                        Serde<data::ipcid_t>::serialize(service.create(parent_id)));
+                        Serde<data::ipcid_t>::serialize(service->create(parent_id)));
 
                     if(err.has_error()) {
                         throw std::runtime_error(
@@ -40,7 +46,7 @@ eventide::task<void> accept(Service& service, eventide::pipe client) {
                     data::command cmd = co_await Serde<data::command>::co_deserialize(reader);
 
                     auto err = co_await client.write(
-                        Serde<data::action>::serialize(service.make_decision(cmd)));
+                        Serde<data::action>::serialize(service->make_decision(cmd)));
                     if(err.has_error()) {
                         throw std::runtime_error(
                             std::format("Failed to send action to client: {}", err.message()));
@@ -49,11 +55,11 @@ eventide::task<void> accept(Service& service, eventide::pipe client) {
                     break;
                 }
                 case data::Request::FINISH: {
-                    service.finish(co_await Serde<int64_t>::co_deserialize(reader));
+                    service->finish(co_await Serde<int64_t>::co_deserialize(reader));
                     break;
                 }
                 case data::Request::REPORT_ERROR: {
-                    service.report_error(co_await Serde<data::ipcid_t>::co_deserialize(reader),
+                    service->report_error(co_await Serde<data::ipcid_t>::co_deserialize(reader),
                                          co_await Serde<data::ipcid_t>::co_deserialize(reader),
                                          co_await Serde<std::string>::co_deserialize(reader));
                     break;
@@ -69,4 +75,18 @@ eventide::task<void> accept(Service& service, eventide::pipe client) {
     }
     co_return;
 }
+
+template<typename Derived>
+std::unique_ptr<Derived> downcast_service(std::unique_ptr<Service>&& service) {
+    return std::unique_ptr<Derived>(static_cast<Derived*>(service.release()));
+}
+
+eventide::task<void> accept(std::unique_ptr<Service> service, eventide::pipe client){
+    if (dynamic_cast<DefaultService*>(service.get()) != nullptr) {
+        return accept(downcast_service<DefaultService>(std::move(service)), std::move(client));
+    } else {
+        throw std::runtime_error("Unsupported service type for IPC communication");
+    }
+}
+
 }  // namespace catter::ipc
