@@ -37,7 +37,7 @@ void Session::do_run(const std::vector<std::string>& shell, ServiceFactory facto
     default_loop().schedule(spawn_task);
     default_loop().run();
 
-    spawn_task.result();  // Propagate exceptions from spawn task
+    loop_task.result();  // Propagate exceptions from spawn task
     this->finish(spawn_task.result());
 }
 

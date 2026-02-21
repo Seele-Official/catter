@@ -27,6 +27,7 @@ int64_t run(data::action act, data::ipcid_t id) {
             eventide::process::options opts{
                 .file = act.cmd.executable,
                 .args = act.cmd.args,
+                .env = act.cmd.env,
                 .cwd = act.cmd.cwd,
                 .creation = {.windows_hide = true, .windows_verbatim_arguments = true}
             };
@@ -47,13 +48,13 @@ int64_t run(data::action act, data::ipcid_t id) {
 
 // we do not output in proxy, it must be invoked by main program.
 // usage: catter-proxy.exe -p <parent ipc id> --exec <exe path> -- <args...>
+// TODO: act as a fake compiler 
 int main(int argc, char* argv[], char* envp[]) {
     try {
         log::init_logger("catter-proxy.log",
                          util::get_catter_data_path() / config::proxy::LOG_PATH_REL,
                          false);
     } catch(const std::exception& e) {
-        // cannot init logger
         log::mute_logger();
     }
 
