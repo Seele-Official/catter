@@ -36,8 +36,8 @@ public:
     struct Factory {
         data::ipcid_t id;
 
-        ServiceImpl* operator() () {
-            return new ServiceImpl(++id);
+        std::unique_ptr<ServiceImpl> operator() () {
+            return std::make_unique<ServiceImpl>(++id);
         }
     };
 

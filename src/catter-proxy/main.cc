@@ -48,7 +48,7 @@ int64_t run(data::action act, data::ipcid_t id) {
 
 // we do not output in proxy, it must be invoked by main program.
 // usage: catter-proxy.exe -p <parent ipc id> --exec <exe path> -- <args...>
-// TODO: act as a fake compiler 
+// TODO: act as a fake compiler
 int main(int argc, char* argv[], char* envp[]) {
     try {
         log::init_logger("catter-proxy.log",

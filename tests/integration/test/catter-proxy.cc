@@ -79,8 +79,8 @@ public:
     struct Factory {
         data::ipcid_t id;
 
-        ipc::DefaultService* operator() () {
-            return new ServiceImpl(++id);
+        std::unique_ptr<ServiceImpl> operator() () {
+            return std::make_unique<ServiceImpl>(++id);
         }
     };
 

@@ -80,10 +80,8 @@ eventide::task<void> Session::loop(ServiceFactory factory) {
             // expected
             break;
         }
-        auto service = factory();
-        linked_clients.push_back(ipc::accept(service, std::move(*client)));
-        services.push_back(std::unique_ptr<ipc::Service>(
-            service));  // Keep service alive as long as client is alive
+        services.push_back(factory());  // Create a new service for each client
+        linked_clients.push_back(ipc::accept(services.back().get(), std::move(*client)));
         default_loop().schedule(linked_clients.back());
     }
 
