@@ -31,7 +31,7 @@ void Session::do_run(const std::vector<std::string>& shell, ServiceFactory facto
 
     this->start();
 
-    auto loop_task = this->loop(std::move(factory));
+    auto loop_task = this->loop(factory);
     auto spawn_task = this->spawn(shell);
     default_loop().schedule(loop_task);
     default_loop().schedule(spawn_task);

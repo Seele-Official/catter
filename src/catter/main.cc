@@ -1,6 +1,5 @@
 #include <functional>
 #include <print>
-#
 
 #include "js.h"
 #include "ipc.h"

@@ -4,7 +4,8 @@
 namespace catter::util {
 
 #ifdef __cpp_lib_function_ref
-using function_ref = std::function_ref;
+template <typename T>
+using function_ref = std::function_ref<T>;
 #else
 
 template <typename Sign>

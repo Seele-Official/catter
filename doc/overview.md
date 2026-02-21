@@ -3,13 +3,13 @@
 Catter probably can be divided into 3 parts:
 
 1. **HOOK**: Intercept compilation commands from any build system.
-2. **PROXY** Act as a proxy compiler to capture commands.
+2. **PROXY**: Act as a proxy compiler to capture commands.
 3. **DECISION**: Communicate with the PROXY to determine how to handle commands.
 
-General process fllows like this:
+General process follows like this:
 1. User runs `catter <build command>`.
 2. `catter` starts the Decision-making Server and delegates execution by spawning `<catter-proxy> <build command>`.
-3. **PROXY** starts. It queries **DECISION**, which instructs it to execute the build command with **HOOK** attached (e.g., via `LD_PRELOAD` or DLL Injection etc).
+3. **PROXY** starts. It queries **DECISION**, which instructs it to execute the build command with **HOOK** attached (e.g., via `LD_PRELOAD` or DLL Injection etc.).
 4. The build system runs. When it attempts to spawn a compiler (e.g., `g++ ...`), the **HOOK** intercepts the call.
 5. **HOOK** rewrites the execution call to redirect to `<catter-proxy> <compiler command>`.
 6. **PROXY** starts. It sends the captured arguments to **DECISION**.

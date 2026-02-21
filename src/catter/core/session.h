@@ -1,6 +1,5 @@
 #pragma once
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <string>
 #include <type_traits>
@@ -11,6 +10,7 @@
 #include <eventide/loop.h>
 
 #include "ipc.h"
+#include "util/function_ref.h"
 
 namespace catter {
 
@@ -25,13 +25,16 @@ public:
     virtual void start() = 0;
     virtual void finish(int64_t code) = 0;
 
-    using ServiceFactory = std::move_only_function<ipc::Service*()>;
+    using ServiceFactory = util::function_ref<ipc::Service*()>;
 
     template <typename ServiceFactoryType>
         requires std::invocable<ServiceFactoryType> &&
                  ServicePointerTypeLike<std::invoke_result_t<ServiceFactoryType>>
     void run(const std::vector<std::string>& shell, ServiceFactoryType&& factory) {
-        this->do_run(shell, [&]() -> ipc::Service* { return factory(); });
+        auto factory_wrapper = [&]() -> ipc::Service* {
+            return factory();
+        };
+        this->do_run(shell, factory_wrapper);
     }
 
 private:
