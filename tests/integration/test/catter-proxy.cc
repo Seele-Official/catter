@@ -79,8 +79,8 @@ public:
     struct Factory {
         data::ipcid_t id;
 
-        std::unique_ptr<ipc::DefaultService> operator() () {
-            return std::make_unique<ServiceImpl>(++id);
+        ipc::DefaultService* operator() () {
+            return new ServiceImpl(++id);
         }
     };
 
@@ -89,7 +89,7 @@ public:
     bool make_decision_called = false;
     bool finish_called = false;
     bool error_reported = false;
-    data::ipcid_t id = 0;
+    data::ipcid_t id;
 };
 
 class SessionImpl : public Session {

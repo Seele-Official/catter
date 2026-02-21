@@ -37,13 +37,13 @@ public:
     struct Factory {
         data::ipcid_t id;
 
-        std::unique_ptr<ipc::DefaultService> operator() () {
-            return std::make_unique<ServiceImpl>(++id);
+        ServiceImpl* operator() () {
+            return new ServiceImpl(++id);
         }
     };
 
 private:
-    data::ipcid_t id = 0;
+    data::ipcid_t id;
 };
 
 class SessionImpl : public Session {

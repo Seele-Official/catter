@@ -1,8 +1,6 @@
 #pragma once
 
 #include <eventide/stream.h>
-#include <memory>
-#include <utility>
 
 #include "util/data.h"
 
@@ -30,6 +28,6 @@ public:
     virtual void report_error(data::ipcid_t parent_id, data::ipcid_t id, std::string error_msg) = 0;
 };
 
-eventide::task<void> accept(std::unique_ptr<Service> service, eventide::pipe client);
+eventide::task<void> accept(Service* service, eventide::pipe client);
 
 }  // namespace catter::ipc
