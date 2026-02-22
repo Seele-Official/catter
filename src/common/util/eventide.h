@@ -8,7 +8,7 @@
 #include <eventide/process.h>
 
 #include "config/ipc.h"
-#include "ipc-data.h"
+#include "data.h"
 
 namespace catter {
 

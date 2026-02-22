@@ -166,8 +166,8 @@ int main(int argc, char* argv[]) {
         if(args.size() == 3 && args[1] == "--test") {
             std::string executable = catter::util::get_executable_path().string();
 
-            catter::ipc::data::command cmd{
-                .working_dir = std::filesystem::current_path().string(),
+            catter::data::command cmd{
+                .cwd = std::filesystem::current_path().string(),
                 .executable = executable,
                 .args = {executable, args[2]},
                 .env = catter::util::get_environment(),

@@ -247,7 +247,7 @@ target("it-catter-proxy")
 
     add_files("tests/integration/test/catter-proxy.cc")
 
-    add_deps("common")
+    add_deps("common", "catter-core")
 
 rule("build.js")
     set_extensions(".ts", ".d.ts", ".js", ".txt")
