@@ -34,6 +34,7 @@
 #include "util/eventide.h"
 #include "util/serde.h"
 #include "util/data.h"
+#include "util/log.h"
 #include "opt-data/catter/table.h"
 
 using namespace catter;
@@ -105,6 +106,7 @@ public:
 };
 
 int main(int argc, char* argv[]) {
+    catter::log::mute_logger();
     try {
         SessionImpl session;
         session.run({"echo", "Hello, World!"}, ServiceImpl::Factory{});

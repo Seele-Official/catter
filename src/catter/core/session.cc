@@ -7,6 +7,7 @@
 
 #include "session.h"
 
+#include "util/log.h"
 #include "util/crossplat.h"
 #include "util/eventide.h"
 #include "config/ipc.h"
@@ -27,6 +28,7 @@ eventide::task<void> Session::loop(
         }
         linked_clients.push_back(acceptor(i, std::move(*client)));
         default_loop().schedule(linked_clients.back());
+        LOG_INFO("Accepted new client with id: {}", i);
     }
 
     std::string error_msg;
@@ -53,6 +55,13 @@ eventide::task<int64_t> Session::spawn(std::string executable, std::vector<std::
                      eventide::process::stdio::ignore(),
                      eventide::process::stdio::ignore()}
     };
+
+    std::string args_str;
+    for(const auto& arg: args) {
+        args_str += std::format("{} ", arg);
+    }
+
+    LOG_INFO("Spawning process: \n    exe = {} \n    args = {}", executable, args_str);
 
     auto ret = co_await catter::spawn(opts);
 
