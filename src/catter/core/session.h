@@ -46,6 +46,11 @@ public:
     virtual bool start(data::ServiceMode mode) = 0;
     virtual void finish(int64_t code) = 0;
 
+    /**
+     * Run a session with the given shell and service factory.
+     * @param factory The factory should be a callable that takes an ipcid_t and returns a
+     * unique_ptr to a Service instance.
+     */
     template <typename ServiceFactoryType>
         requires ServiceFactoryLike<ServiceFactoryType>
     void run(const std::vector<std::string>& shell, ServiceFactoryType&& factory) {
