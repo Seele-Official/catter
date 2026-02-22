@@ -10,7 +10,7 @@
 
 namespace catter::ipc {
 
-eventide::task<void> accept(DefaultService* service, eventide::pipe client) {
+eventide::task<void> accept(std::unique_ptr<DefaultService> service, eventide::pipe client) {
 
     auto reader = [&](char* dst, size_t len) -> eventide::task<void> {
         size_t total_read = 0;
@@ -74,14 +74,6 @@ eventide::task<void> accept(DefaultService* service, eventide::pipe client) {
         assert(err == 0 && "Unexpected error in IPC communication");
     }
     co_return;
-}
-
-eventide::task<void> accept(Service* service, eventide::pipe client) {
-    if(dynamic_cast<DefaultService*>(service) != nullptr) {
-        return accept(static_cast<DefaultService*>(service), std::move(client));
-    } else {
-        throw std::runtime_error("Unsupported service type for IPC communication");
-    }
 }
 
 }  // namespace catter::ipc

@@ -13,31 +13,39 @@ public:
     ~ServiceImpl() override = default;
 
     data::ipcid_t create(data::ipcid_t parent_id) override {
-        std::println("Creating new command with parent id: {}", parent_id);
+        std::println("[{}] Creating service with parent id {}", this->id, parent_id);
         return this->id;
     }
 
     data::action make_decision(data::command cmd) override {
-        std::println("Making decision for command: {}", cmd.executable);
+        std::string args_str;
+        for(const auto& arg: cmd.args) {
+            args_str.append(arg).append(" ");
+        }
+
+        std::println(
+            "[{}] Received command: \n    -> cwd = {} \n    -> exe = {} \n    -> args = {}",
+            this->id,
+            cmd.cwd,
+            cmd.executable,
+            args_str);
         return data::action{.type = data::action::WRAP, .cmd = cmd};
     }
 
     void finish(int64_t code) override {
-        std::println("Command finished with code: {}", code);
+        std::println("[{}] Command finished with code: {}", this->id, code);
     }
 
     void report_error(data::ipcid_t parent_id, std::string error_msg) override {
-        std::println("Error reported for command with parent id {} and id {}: {}",
-                     parent_id,
+        std::println("[{}] Error reported for command with parent id {} : {}",
                      this->id,
+                     parent_id,
                      error_msg);
     }
 
     struct Factory {
-        data::ipcid_t id;
-
-        std::unique_ptr<ServiceImpl> operator() () {
-            return std::make_unique<ServiceImpl>(++id);
+        std::unique_ptr<ServiceImpl> operator() (data::ipcid_t id) {
+            return std::make_unique<ServiceImpl>(id);
         }
     };
 
@@ -47,8 +55,9 @@ private:
 
 class SessionImpl : public Session {
 public:
-    void start() override {
-        std::println("Session started.");
+    bool start(data::ServiceMode mode) override {
+        std::println("Session started ");
+        return true;
     }
 
     void finish(int64_t code) override {
@@ -72,7 +81,7 @@ int main(int argc, char* argv[]) {
     try {
         SessionImpl session;
 
-        session.run(shell, ServiceImpl::Factory{0});
+        session.run(shell, ServiceImpl::Factory{});
     } catch(const std::exception& ex) {
         std::println("Fatal error: {}", ex.what());
         return 1;
