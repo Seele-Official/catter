@@ -236,17 +236,13 @@ target("ut-catter-hook-win64")
 target("it-catter-hook")
     set_default(has_config("test"))
     set_kind("binary")
-
     add_files("tests/integration/test/catter-hook.cc")
-
     add_deps("catter-hook", "common")
 
 target("it-catter-proxy")
     set_default(has_config("test"))
     set_kind("binary")
-
     add_files("tests/integration/test/catter-proxy.cc")
-
     add_deps("common", "catter-core")
 
 rule("build.js")
@@ -306,7 +302,7 @@ package("eventide")
 
     set_urls("https://github.com/clice-io/eventide.git")
     -- version from `git rev-list --count HEAD`
-    add_versions("34", "500ea2f8a5fde57637560159753ce0b3522b6c83")
+    add_versions("48", "97b2ee5e93789cc90712fe1371474d0ad9d71bf6")
 
     add_deps("libuv 1.51.0")
     add_deps("cpptrace v1.0.4")
