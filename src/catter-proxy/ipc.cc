@@ -12,7 +12,7 @@
 #include "util/eventide.h"
 
 namespace catter::proxy::ipc {
-
+using namespace data;
 class Impl {
 public:
     Impl() noexcept {
@@ -31,6 +31,11 @@ public:
     Impl(Impl&&) = delete;
     Impl& operator= (Impl&&) = delete;
     ~Impl() = default;
+
+    static Impl& instance() noexcept {
+        static Impl instance;
+        return instance;
+    }
 
     auto reader() {
         return [this](char* dst, size_t len) {
@@ -62,45 +67,53 @@ public:
         }
     }
 
-    template <data::Request Req, typename Ret, typename... Args>
-    Ret request(Args&&... args) {
-        static_assert(std::is_same_v<Ret(std::remove_cvref_t<Args>...), data::RequestType<Req>>,
-                      "RequestType mismatch");
-        this->write(Serde<data::Request>::serialize(Req),
-                    Serde<std::remove_cvref_t<Args>>::serialize(std::forward<Args>(args))...);
+    template <typename T>
+    struct request_helper {};
+
+    template <typename Ret, typename... Args>
+    struct request_helper<Ret(Args...)> {
+        using type = Ret;
+    };
+
+    template <Request Req, typename... Args>
+    static auto request(Args&&... args) {
+        using Ret = typename request_helper<RequestType<Req>>::type;
+
+        instance().write(Serde<Request>::serialize(Req),
+                         Serde<std::remove_cvref_t<Args>>::serialize(args)...);
+
         if constexpr(!std::is_same_v<Ret, void>) {
-            return Serde<Ret>::deserialize(this->reader());
+            return Serde<Ret>::deserialize(instance().reader());
         }
+    }
+
+    static void set_service_mode(ServiceMode mode) {
+        instance().write(Serde<ServiceMode>::serialize(mode));
     }
 
 public:
     eventide::pipe client_pipe{};
 };
 
-static Impl& impl() noexcept {
-    static Impl instance;
-    return instance;
+void set_service_mode(ServiceMode mode) {
+    Impl::set_service_mode(mode);
 }
 
-void set_service_mode(data::ServiceMode mode) {
-    impl().write(Serde<data::ServiceMode>::serialize(mode));
+ipcid_t create(ipcid_t parent_id) {
+    return Impl::request<Request::CREATE>(parent_id);
 }
 
-data::ipcid_t create(data::ipcid_t parent_id) {
-    return impl().request<data::Request::CREATE, data::ipcid_t>(parent_id);
-}
-
-data::action make_decision(data::command cmd) {
-    return impl().request<data::Request::MAKE_DECISION, data::action>(cmd);
+action make_decision(command cmd) {
+    return Impl::request<Request::MAKE_DECISION>(cmd);
 }
 
 void finish(int64_t ret_code) {
-    impl().request<data::Request::FINISH, void>(ret_code);
+    Impl::request<Request::FINISH>(ret_code);
 }
 
-void report_error(data::ipcid_t parent_id, std::string error_msg) noexcept {
+void report_error(ipcid_t parent_id, std::string error_msg) noexcept {
     try {
-        impl().request<data::Request::REPORT_ERROR, void>(parent_id, error_msg);
+        Impl::request<Request::REPORT_ERROR>(parent_id, error_msg);
     } catch(...) {
         // cannot do anything here
     }
