@@ -1,4 +1,5 @@
 #pragma once
+#include <cstddef>
 #include <cstdint>
 #include <string>
 
@@ -36,6 +37,35 @@ enum class Request : uint8_t {
     REPORT_ERROR,
     FINISH,
 };
+
+template <Request Req>
+struct RequestHelper {
+    using RequestType = void;
+};
+
+template <>
+struct RequestHelper<Request::CREATE> {
+    using RequestType = ipcid_t(ipcid_t parent_id);
+};
+
+template <>
+struct RequestHelper<Request::MAKE_DECISION> {
+    using RequestType = action(command cmd);
+};
+
+template <>
+struct RequestHelper<Request::REPORT_ERROR> {
+    using RequestType = void(ipcid_t parent_id, std::string error_msg);
+};
+
+template <>
+struct RequestHelper<Request::FINISH> {
+    using RequestType = void(int64_t ret_code);
+};
+
+template <Request Req>
+using RequestType = typename RequestHelper<Req>::RequestType;
+
 }  // namespace catter::data
 
 namespace catter {

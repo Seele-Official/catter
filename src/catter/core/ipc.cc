@@ -3,12 +3,49 @@
 #include <format>
 #include <utility>
 
+#include <eventide/reflection/name.h>
+
 #include "ipc.h"
 
 #include "util/serde.h"
 #include "util/data.h"
+#include "util/function_ref.h"
 
 namespace catter::ipc {
+using namespace data;
+
+template <Request Req, typename T>
+struct Helper {};
+
+template <Request Req, typename Ret, typename... Args>
+struct Helper<Req, Ret(Args...)> {
+    template <CoReader Reader, typename Writer>
+    eventide::task<void> operator() (util::function_ref<Ret(Args...)> callback,
+                                     Reader&& reader,
+                                     Writer&& writer) {
+
+        if constexpr(!std::is_same_v<Ret, void>) {
+            auto ret = co_await writer(
+                Serde<Ret>::serialize(callback(co_await Serde<Args>::co_deserialize(reader)...)));
+            if(ret.has_error()) {
+                throw std::runtime_error(std::format("Failed to send response [{}] to client: {}",
+                                                     eventide::refl::enum_name<Req>(),
+                                                     ret.message()));
+            }
+        } else {
+            callback(co_await Serde<Args>::co_deserialize(reader)...);
+        }
+    }
+};
+
+template <Request Req, CoReader Reader, typename Writer>
+eventide::task<void> handle_req(util::function_ref<RequestType<Req>> callback,
+                                Reader&& reader,
+                                Writer&& writer) {
+    return Helper<Req, RequestType<Req>>{}(callback,
+                                           std::forward<Reader>(reader),
+                                           std::forward<Writer>(writer));
+}
 
 eventide::task<void> accept(std::unique_ptr<DefaultService> service, eventide::pipe client) {
 
@@ -24,44 +61,43 @@ eventide::task<void> accept(std::unique_ptr<DefaultService> service, eventide::p
         co_return;
     };
 
+    auto writer = [&](auto&& payload) -> eventide::task<eventide::error> {
+        return client.write(std::forward<decltype(payload)>(payload));
+    };
+
     try {
-        auto service_mode = co_await Serde<data::ServiceMode>::co_deserialize(reader);
-        assert(service_mode == data::ServiceMode::DEFAULT && "Unsupported service mode received");
+        auto service_mode = co_await Serde<ServiceMode>::co_deserialize(reader);
+        assert(service_mode == ServiceMode::DEFAULT && "Unsupported service mode received");
         while(true) {
-            data::Request req = co_await Serde<data::Request>::co_deserialize(reader);
+            Request req = co_await Serde<Request>::co_deserialize(reader);
             switch(req) {
-                case data::Request::CREATE: {
-                    data::ipcid_t parent_id = co_await Serde<data::ipcid_t>::co_deserialize(reader);
-                    auto err = co_await client.write(
-                        Serde<data::ipcid_t>::serialize(service->create(parent_id)));
-
-                    if(err.has_error()) {
-                        throw std::runtime_error(
-                            std::format("Failed to send command ID to client: {}", err.message()));
-                    }
-
+                case Request::CREATE: {
+                    co_await handle_req<Request::CREATE>(
+                        {service.get(), util::mem_fn<&DefaultService::create>{}},
+                        reader,
+                        writer);
                     break;
                 }
 
-                case data::Request::MAKE_DECISION: {
-                    data::command cmd = co_await Serde<data::command>::co_deserialize(reader);
-
-                    auto err = co_await client.write(
-                        Serde<data::action>::serialize(service->make_decision(cmd)));
-                    if(err.has_error()) {
-                        throw std::runtime_error(
-                            std::format("Failed to send action to client: {}", err.message()));
-                    }
-
+                case Request::MAKE_DECISION: {
+                    co_await handle_req<Request::MAKE_DECISION>(
+                        {service.get(), util::mem_fn<&DefaultService::make_decision>{}},
+                        reader,
+                        writer);
                     break;
                 }
-                case data::Request::FINISH: {
-                    service->finish(co_await Serde<int64_t>::co_deserialize(reader));
+                case Request::FINISH: {
+                    co_await handle_req<Request::FINISH>(
+                        {service.get(), util::mem_fn<&DefaultService::finish>{}},
+                        reader,
+                        writer);
                     break;
                 }
-                case data::Request::REPORT_ERROR: {
-                    service->report_error(co_await Serde<data::ipcid_t>::co_deserialize(reader),
-                                          co_await Serde<std::string>::co_deserialize(reader));
+                case Request::REPORT_ERROR: {
+                    co_await handle_req<Request::REPORT_ERROR>(
+                        {service.get(), util::mem_fn<&DefaultService::report_error>{}},
+                        reader,
+                        writer);
                     break;
                 }
                 default: {

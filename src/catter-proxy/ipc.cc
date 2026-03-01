@@ -5,6 +5,7 @@
 
 #include <eventide/async/loop.h>
 #include <eventide/async/stream.h>
+#include <type_traits>
 
 #include "config/ipc.h"
 #include "util/data.h"
@@ -61,6 +62,17 @@ public:
         }
     }
 
+    template <data::Request Req, typename Ret, typename... Args>
+    Ret request(Args&&... args) {
+        static_assert(std::is_same_v<Ret(std::remove_cvref_t<Args>...), data::RequestType<Req>>,
+                      "RequestType mismatch");
+        this->write(Serde<data::Request>::serialize(Req),
+                    Serde<std::remove_cvref_t<Args>>::serialize(std::forward<Args>(args))...);
+        if constexpr(!std::is_same_v<Ret, void>) {
+            return Serde<Ret>::deserialize(this->reader());
+        }
+    }
+
 public:
     eventide::pipe client_pipe{};
 };
@@ -75,30 +87,20 @@ void set_service_mode(data::ServiceMode mode) {
 }
 
 data::ipcid_t create(data::ipcid_t parent_id) {
-
-    impl().write(Serde<data::Request>::serialize(data::Request::CREATE),
-                 Serde<data::ipcid_t>::serialize(parent_id));
-    return Serde<data::ipcid_t>::deserialize(impl().reader());
+    return impl().request<data::Request::CREATE, data::ipcid_t>(parent_id);
 }
 
 data::action make_decision(data::command cmd) {
-    impl().write(Serde<data::Request>::serialize(data::Request::MAKE_DECISION),
-                 Serde<data::command>::serialize(cmd));
-
-    return Serde<data::action>::deserialize(impl().reader());
+    return impl().request<data::Request::MAKE_DECISION, data::action>(cmd);
 }
 
 void finish(int64_t ret_code) {
-    impl().write(Serde<data::Request>::serialize(data::Request::FINISH),
-                 Serde<int64_t>::serialize(ret_code));
-    return;
+    impl().request<data::Request::FINISH, void>(ret_code);
 }
 
 void report_error(data::ipcid_t parent_id, std::string error_msg) noexcept {
     try {
-        impl().write(Serde<data::Request>::serialize(data::Request::REPORT_ERROR),
-                     Serde<data::ipcid_t>::serialize(parent_id),
-                     Serde<std::string>::serialize(error_msg));
+        impl().request<data::Request::REPORT_ERROR, void>(parent_id, error_msg);
     } catch(...) {
         // cannot do anything here
     }
