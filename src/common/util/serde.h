@@ -175,24 +175,4 @@ struct Serde<T> {
     }
 };
 
-// template <eventide::refl::reflectable_class T>
-// struct Serde<T> {
-//     static std::vector<char> serialize(const T& value) {
-//         std::vector<char> buffer;
-//         eventide::refl::for_each(value, [&]<typename FieldType>(FieldType& field) {
-//             append_range_to_vector(buffer, Serde<FieldType>::serialize(field.value()));
-//         });
-//         return buffer;
-//     }
-
-//     template <Reader Invocable>
-//     static T deserialize(Invocable&& reader) {
-//         T value{};
-//         eventide::refl::for_each(value, [&]<typename FieldType>(FieldType& field) {
-//             field.value() = Serde<FieldType>::deserialize(reader);
-//         });
-//         return value;
-//     }
-// };
-
 };  // namespace catter
