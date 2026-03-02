@@ -42,11 +42,7 @@ public:
     Impl& operator= (Impl&&) = delete;
     ~Impl() = default;
 
-    static Impl& instance() noexcept {
-        static Impl instance;
-        return instance;
-    }
-
+private:
     void read(char* dst, size_t len) {
         size_t total_read = 0;
         while(total_read < len) {
@@ -69,6 +65,12 @@ public:
         return [this](char* dst, size_t len) {
             this->read(dst, len);
         };
+    }
+
+public:
+    static Impl& instance() noexcept {
+        static Impl instance;
+        return instance;
     }
 
     void write_packet(const std::vector<char>& payload) {
@@ -106,7 +108,7 @@ public:
         instance().write_packet(Serde<ServiceMode>::serialize(mode));
     }
 
-public:
+private:
     eventide::pipe client_pipe{};
 };
 
