@@ -5,12 +5,23 @@
 
 #include <eventide/async/loop.h>
 #include <eventide/async/stream.h>
+#include <type_traits>
+#include <vector>
 
 #include "config/ipc.h"
 #include "util/data.h"
 #include "util/eventide.h"
 
 namespace catter::proxy::ipc {
+using namespace data;
+
+void print_packet(std::string msg, const packet& pkt) {
+    std::println("Packet ({} bytes): {}", pkt.size(), msg);
+    for(auto byte: pkt) {
+        std::print("{:02x} ", static_cast<unsigned char>(byte));
+    }
+    std::println();
+}
 
 class Impl {
 public:
@@ -31,12 +42,7 @@ public:
     Impl& operator= (Impl&&) = delete;
     ~Impl() = default;
 
-    auto reader() {
-        return [this](char* dst, size_t len) {
-            this->read(dst, len);
-        };
-    }
-
+private:
     void read(char* dst, size_t len) {
         size_t total_read = 0;
         while(total_read < len) {
@@ -48,57 +54,83 @@ public:
         }
     }
 
-    template <typename... Args>
-    void write(Args&&... payload) {
-        (this->write(std::forward<Args>(payload)), ...);
-    }
-
-    template <typename T>
-    void write(T&& payload) {
-        auto err = wait(this->client_pipe.write(std::forward<T>(payload)));
+    void write(const std::vector<char>& payload) {
+        auto err = wait(this->client_pipe.write(payload));
         if(err.has_error()) {
             throw std::runtime_error(std::format("ipc_handler write failed: {}", err.message()));
         }
     }
 
+    auto reader() {
+        return [this](char* dst, size_t len) {
+            this->read(dst, len);
+        };
+    }
+
 public:
+    static Impl& instance() noexcept {
+        static Impl instance;
+        return instance;
+    }
+
+    void write_packet(const std::vector<char>& payload) {
+        this->write(Serde<packet>::serialize(payload));
+    }
+
+    packet read_packet() {
+        return Serde<packet>::deserialize(reader());
+    }
+
+    template <typename T>
+    struct request_helper {};
+
+    template <typename Ret, typename... Args>
+    struct request_helper<Ret(Args...)> {
+        using type = Ret;
+    };
+
+    template <Request Req, typename... Args>
+    static auto request(Args&&... args) {
+        using Ret = typename request_helper<RequestType<Req>>::type;
+
+        auto payload = merge_range_to_vector(Serde<Request>::serialize(Req),
+                                             Serde<std::remove_cvref_t<Args>>::serialize(args)...);
+        instance().write_packet(payload);
+
+        if constexpr(!std::is_same_v<Ret, void>) {
+            auto packet = instance().read_packet();
+            BufferReader buf_reader(packet);
+            return Serde<Ret>::deserialize(buf_reader);
+        }
+    }
+
+    static void set_service_mode(ServiceMode mode) {
+        instance().write_packet(Serde<ServiceMode>::serialize(mode));
+    }
+
+private:
     eventide::pipe client_pipe{};
 };
 
-static Impl& impl() noexcept {
-    static Impl instance;
-    return instance;
+void set_service_mode(ServiceMode mode) {
+    Impl::set_service_mode(mode);
 }
 
-void set_service_mode(data::ServiceMode mode) {
-    impl().write(Serde<data::ServiceMode>::serialize(mode));
+ipcid_t create(ipcid_t parent_id) {
+    return Impl::request<Request::CREATE>(parent_id);
 }
 
-data::ipcid_t create(data::ipcid_t parent_id) {
-
-    impl().write(Serde<data::Request>::serialize(data::Request::CREATE),
-                 Serde<data::ipcid_t>::serialize(parent_id));
-    return Serde<data::ipcid_t>::deserialize(impl().reader());
-}
-
-data::action make_decision(data::command cmd) {
-    impl().write(Serde<data::Request>::serialize(data::Request::MAKE_DECISION),
-                 Serde<data::command>::serialize(cmd));
-
-    return Serde<data::action>::deserialize(impl().reader());
+action make_decision(command cmd) {
+    return Impl::request<Request::MAKE_DECISION>(cmd);
 }
 
 void finish(int64_t ret_code) {
-    impl().write(Serde<data::Request>::serialize(data::Request::FINISH),
-                 Serde<int64_t>::serialize(ret_code));
-    return;
+    Impl::request<Request::FINISH>(ret_code);
 }
 
-void report_error(data::ipcid_t parent_id, std::string error_msg) noexcept {
+void report_error(ipcid_t parent_id, std::string error_msg) noexcept {
     try {
-        impl().write(Serde<data::Request>::serialize(data::Request::REPORT_ERROR),
-                     Serde<data::ipcid_t>::serialize(parent_id),
-                     Serde<std::string>::serialize(error_msg));
+        Impl::request<Request::REPORT_ERROR>(parent_id, error_msg);
     } catch(...) {
         // cannot do anything here
     }

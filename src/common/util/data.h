@@ -1,4 +1,5 @@
 #pragma once
+#include <cstddef>
 #include <cstdint>
 #include <string>
 
@@ -36,47 +37,40 @@ enum class Request : uint8_t {
     REPORT_ERROR,
     FINISH,
 };
+
+template <Request Req>
+struct RequestHelper {
+    using RequestType = void;
+};
+
+template <>
+struct RequestHelper<Request::CREATE> {
+    using RequestType = ipcid_t(ipcid_t parent_id);
+};
+
+template <>
+struct RequestHelper<Request::MAKE_DECISION> {
+    using RequestType = action(command cmd);
+};
+
+template <>
+struct RequestHelper<Request::REPORT_ERROR> {
+    using RequestType = void(ipcid_t parent_id, std::string error_msg);
+};
+
+template <>
+struct RequestHelper<Request::FINISH> {
+    using RequestType = void(int64_t ret_code);
+};
+
+template <Request Req>
+using RequestType = typename RequestHelper<Req>::RequestType;
+
+using packet = std::vector<char>;
+
 }  // namespace catter::data
 
 namespace catter {
-template <>
-struct Serde<data::Request> {
-    static std::vector<char> serialize(const data::Request& req) {
-        return Serde<uint8_t>::serialize(static_cast<uint8_t>(req));
-    }
-
-    template <Reader Invocable>
-    static data::Request deserialize(Invocable&& reader) {
-        uint8_t value = Serde<uint8_t>::deserialize(std::forward<Invocable>(reader));
-        return static_cast<data::Request>(value);
-    }
-
-    template <CoReader Invocable>
-    static eventide::task<data::Request> co_deserialize(Invocable&& reader) {
-        uint8_t value = co_await Serde<uint8_t>::co_deserialize(std::forward<Invocable>(reader));
-        co_return static_cast<data::Request>(value);
-    }
-};
-
-template <>
-struct Serde<data::ServiceMode> {
-    static std::vector<char> serialize(const data::ServiceMode& mode) {
-        return Serde<uint8_t>::serialize(static_cast<uint8_t>(mode));
-    }
-
-    template <Reader Invocable>
-    static data::ServiceMode deserialize(Invocable&& reader) {
-        uint8_t value = Serde<uint8_t>::deserialize(std::forward<Invocable>(reader));
-        return static_cast<data::ServiceMode>(value);
-    }
-
-    template <CoReader Invocable>
-    static eventide::task<data::ServiceMode> co_deserialize(Invocable&& reader) {
-        uint8_t value = co_await Serde<uint8_t>::co_deserialize(std::forward<Invocable>(reader));
-        co_return static_cast<data::ServiceMode>(value);
-    }
-};
-
 template <>
 struct Serde<data::command> {
     static std::vector<char> serialize(const data::command& cmd) {
@@ -95,19 +89,6 @@ struct Serde<data::command> {
         cmd.env = Serde<std::vector<std::string>>::deserialize(std::forward<Invocable>(reader));
         return cmd;
     }
-
-    template <CoReader Invocable>
-    static eventide::task<data::command> co_deserialize(Invocable&& reader) {
-        data::command cmd;
-        cmd.cwd = co_await Serde<std::string>::co_deserialize(std::forward<Invocable>(reader));
-        cmd.executable =
-            co_await Serde<std::string>::co_deserialize(std::forward<Invocable>(reader));
-        cmd.args = co_await Serde<std::vector<std::string>>::co_deserialize(
-            std::forward<Invocable>(reader));
-        cmd.env = co_await Serde<std::vector<std::string>>::co_deserialize(
-            std::forward<Invocable>(reader));
-        co_return cmd;
-    }
 };
 
 template <>
@@ -123,16 +104,6 @@ struct Serde<data::action> {
         return {
             static_cast<enum_type>(Serde<uint8_t>::deserialize(std::forward<Invocable>(reader))),
             Serde<data::command>::deserialize(std::forward<Invocable>(reader))};
-    }
-
-    template <CoReader Invocable>
-    static eventide::task<data::action> co_deserialize(Invocable&& reader) {
-        using enum_type = decltype(data::action::type);
-        data::action act;
-        act.type = static_cast<enum_type>(
-            co_await Serde<uint8_t>::co_deserialize(std::forward<Invocable>(reader)));
-        act.cmd = co_await Serde<data::command>::co_deserialize(std::forward<Invocable>(reader));
-        co_return act;
     }
 };
 }  // namespace catter
