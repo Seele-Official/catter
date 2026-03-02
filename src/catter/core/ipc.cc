@@ -71,13 +71,12 @@ eventide::task<void> accept(std::unique_ptr<DefaultService> service, eventide::p
     };
 
     try {
-        auto sm_buffer = co_await read_packet();
-        BufferReader sm_reader(sm_buffer);
-        auto service_mode = Serde<ServiceMode>::deserialize(sm_reader);
+        auto sm_packet = co_await read_packet();
+        auto service_mode = Serde<ServiceMode>::deserialize(BufferReader(sm_packet));
         assert(service_mode == ServiceMode::DEFAULT && "Unsupported service mode received");
         while(true) {
-            auto req_buffer = co_await read_packet();
-            BufferReader buf_reader(req_buffer);
+            auto req_packet = co_await read_packet();
+            BufferReader buf_reader(req_packet);
             Request req = Serde<Request>::deserialize(buf_reader);
             switch(req) {
                 case Request::CREATE: {
