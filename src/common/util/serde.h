@@ -1,11 +1,13 @@
 #pragma once
 #include <cstring>
 #include <ranges>
+#include <stdexcept>
 #include <string>
 #include <vector>
 #include <type_traits>
 
 #include <eventide/async/task.h>
+#include <eventide/reflection/struct.h>
 
 namespace catter {
 
@@ -16,6 +18,30 @@ template <typename T>
 concept CoReader = requires(T t, char* dst, size_t len) {
     { t(dst, len) };
     { t(dst, len).operator co_await() };
+};
+
+class BufferReader {
+    const char* m_data;
+    size_t m_remaining;
+
+public:
+    explicit BufferReader(const std::vector<char>& vec) noexcept :
+        m_data(vec.data()), m_remaining(vec.size()) {}
+
+    BufferReader(const char* data, size_t size) noexcept : m_data(data), m_remaining(size) {}
+
+    void operator() (char* dst, size_t len) {
+        if(len > m_remaining) {
+            throw std::runtime_error("BufferReader: insufficient data");
+        }
+        std::memcpy(dst, m_data, len);
+        m_data += len;
+        m_remaining -= len;
+    }
+
+    size_t remaining() const noexcept {
+        return m_remaining;
+    }
 };
 
 template <typename Range, typename T>
@@ -125,4 +151,49 @@ struct Serde<std::vector<T>> {
         co_return vec;
     }
 };
+
+template <typename T>
+    requires std::is_enum_v<T>
+struct Serde<T> {
+    static std::vector<char> serialize(const T& value) {
+        return Serde<std::underlying_type_t<T>>::serialize(
+            static_cast<std::underlying_type_t<T>>(value));
+    }
+
+    template <Reader Invocable>
+    static T deserialize(Invocable&& reader) {
+        using enum_type = std::underlying_type_t<T>;
+        enum_type value = Serde<enum_type>::deserialize(std::forward<Invocable>(reader));
+        return static_cast<T>(value);
+    }
+
+    template <CoReader Invocable>
+    static eventide::task<T> co_deserialize(Invocable&& reader) {
+        using enum_type = std::underlying_type_t<T>;
+        enum_type value =
+            co_await Serde<enum_type>::co_deserialize(std::forward<Invocable>(reader));
+        co_return static_cast<T>(value);
+    }
+};
+
+template <eventide::refl::reflectable_class T>
+struct Serde<T> {
+    static std::vector<char> serialize(const T& value) {
+        std::vector<char> buffer;
+        eventide::refl::for_each(value, [&]<typename FieldType>(FieldType& field) {
+            append_range_to_vector(buffer, Serde<FieldType>::serialize(field.value()));
+        });
+        return buffer;
+    }
+
+    template <Reader Invocable>
+    static T deserialize(Invocable&& reader) {
+        T value{};
+        eventide::refl::for_each(value, [&]<typename FieldType>(FieldType& field) {
+            field.value() = Serde<FieldType>::deserialize(reader);
+        });
+        return value;
+    }
+};
+
 };  // namespace catter

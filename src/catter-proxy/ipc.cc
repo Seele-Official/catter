@@ -13,6 +13,7 @@
 
 namespace catter::proxy::ipc {
 using namespace data;
+
 class Impl {
 public:
     Impl() noexcept {
@@ -37,12 +38,6 @@ public:
         return instance;
     }
 
-    auto reader() {
-        return [this](char* dst, size_t len) {
-            this->read(dst, len);
-        };
-    }
-
     void read(char* dst, size_t len) {
         size_t total_read = 0;
         while(total_read < len) {
@@ -54,17 +49,22 @@ public:
         }
     }
 
-    template <typename... Args>
-    void write(Args&&... payload) {
-        (this->write(std::forward<Args>(payload)), ...);
-    }
-
-    template <typename T>
-    void write(T&& payload) {
-        auto err = wait(this->client_pipe.write(std::forward<T>(payload)));
+    void write_packet(const std::vector<char>& payload) {
+        auto packet = merge_range_to_vector(Serde<size_t>::serialize(payload.size()), payload);
+        auto err = wait(this->client_pipe.write(std::move(packet)));
         if(err.has_error()) {
             throw std::runtime_error(std::format("ipc_handler write failed: {}", err.message()));
         }
+    }
+
+    template <typename Ret>
+    Ret read_packet() {
+        size_t packet_size;
+        this->read(reinterpret_cast<char*>(&packet_size), sizeof(size_t));
+        std::vector<char> buffer(packet_size);
+        this->read(buffer.data(), packet_size);
+        BufferReader buf_reader(buffer);
+        return Serde<Ret>::deserialize(buf_reader);
     }
 
     template <typename T>
@@ -79,16 +79,17 @@ public:
     static auto request(Args&&... args) {
         using Ret = typename request_helper<RequestType<Req>>::type;
 
-        instance().write(Serde<Request>::serialize(Req),
-                         Serde<std::remove_cvref_t<Args>>::serialize(args)...);
+        auto payload = merge_range_to_vector(Serde<Request>::serialize(Req),
+                                             Serde<std::remove_cvref_t<Args>>::serialize(args)...);
+        instance().write_packet(payload);
 
         if constexpr(!std::is_same_v<Ret, void>) {
-            return Serde<Ret>::deserialize(instance().reader());
+            return instance().read_packet<Ret>();
         }
     }
 
     static void set_service_mode(ServiceMode mode) {
-        instance().write(Serde<ServiceMode>::serialize(mode));
+        instance().write_packet(Serde<ServiceMode>::serialize(mode));
     }
 
 public:

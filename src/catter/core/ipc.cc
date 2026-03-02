@@ -3,7 +3,7 @@
 #include <format>
 #include <utility>
 
-#include <eventide/reflection/name.h>
+#include <eventide/reflection/enum.h>
 
 #include "ipc.h"
 
@@ -19,32 +19,32 @@ struct Helper {};
 
 template <Request Req, typename Ret, typename... Args>
 struct Helper<Req, Ret(Args...)> {
-    template <CoReader Reader, typename Writer>
+    template <typename Writer>
     eventide::task<void> operator() (util::function_ref<Ret(Args...)> callback,
-                                     Reader&& reader,
+                                     BufferReader& buf_reader,
                                      Writer&& writer) {
-
         if constexpr(!std::is_same_v<Ret, void>) {
+            auto response =
+                Serde<Ret>::serialize(callback(Serde<Args>::deserialize(buf_reader)...));
             auto ret = co_await writer(
-                Serde<Ret>::serialize(callback(co_await Serde<Args>::co_deserialize(reader)...)));
+                merge_range_to_vector(Serde<size_t>::serialize(response.size()), response));
             if(ret.has_error()) {
                 throw std::runtime_error(std::format("Failed to send response [{}] to client: {}",
                                                      eventide::refl::enum_name<Req>(),
                                                      ret.message()));
             }
         } else {
-            callback(co_await Serde<Args>::co_deserialize(reader)...);
+            callback(Serde<Args>::deserialize(buf_reader)...);
+            co_return;
         }
     }
 };
 
-template <Request Req, CoReader Reader, typename Writer>
+template <Request Req, typename Writer>
 eventide::task<void> handle_req(util::function_ref<RequestType<Req>> callback,
-                                Reader&& reader,
+                                BufferReader& buf_reader,
                                 Writer&& writer) {
-    return Helper<Req, RequestType<Req>>{}(callback,
-                                           std::forward<Reader>(reader),
-                                           std::forward<Writer>(writer));
+    return Helper<Req, RequestType<Req>>{}(callback, buf_reader, std::forward<Writer>(writer));
 }
 
 eventide::task<void> accept(std::unique_ptr<DefaultService> service, eventide::pipe client) {
@@ -61,20 +61,31 @@ eventide::task<void> accept(std::unique_ptr<DefaultService> service, eventide::p
         co_return;
     };
 
+    auto read_packet = [&]() -> eventide::task<std::vector<char>> {
+        size_t packet_size = co_await Serde<size_t>::co_deserialize(reader);
+        std::vector<char> buffer(packet_size);
+        co_await reader(buffer.data(), packet_size);
+        co_return buffer;
+    };
+
     auto writer = [&](auto&& payload) -> eventide::task<eventide::error> {
         return client.write(std::forward<decltype(payload)>(payload));
     };
 
     try {
-        auto service_mode = co_await Serde<ServiceMode>::co_deserialize(reader);
+        auto sm_buffer = co_await read_packet();
+        BufferReader sm_reader(sm_buffer);
+        auto service_mode = Serde<ServiceMode>::deserialize(sm_reader);
         assert(service_mode == ServiceMode::DEFAULT && "Unsupported service mode received");
         while(true) {
-            Request req = co_await Serde<Request>::co_deserialize(reader);
+            auto req_buffer = co_await read_packet();
+            BufferReader buf_reader(req_buffer);
+            Request req = Serde<Request>::deserialize(buf_reader);
             switch(req) {
                 case Request::CREATE: {
                     co_await handle_req<Request::CREATE>(
                         {service.get(), util::mem_fn<&DefaultService::create>{}},
-                        reader,
+                        buf_reader,
                         writer);
                     break;
                 }
@@ -82,21 +93,21 @@ eventide::task<void> accept(std::unique_ptr<DefaultService> service, eventide::p
                 case Request::MAKE_DECISION: {
                     co_await handle_req<Request::MAKE_DECISION>(
                         {service.get(), util::mem_fn<&DefaultService::make_decision>{}},
-                        reader,
+                        buf_reader,
                         writer);
                     break;
                 }
                 case Request::FINISH: {
                     co_await handle_req<Request::FINISH>(
                         {service.get(), util::mem_fn<&DefaultService::finish>{}},
-                        reader,
+                        buf_reader,
                         writer);
                     break;
                 }
                 case Request::REPORT_ERROR: {
                     co_await handle_req<Request::REPORT_ERROR>(
                         {service.get(), util::mem_fn<&DefaultService::report_error>{}},
-                        reader,
+                        buf_reader,
                         writer);
                     break;
                 }
