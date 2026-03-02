@@ -6,6 +6,7 @@
 #include <eventide/async/loop.h>
 #include <eventide/async/stream.h>
 #include <type_traits>
+#include <vector>
 
 #include "config/ipc.h"
 #include "util/data.h"
@@ -13,6 +14,14 @@
 
 namespace catter::proxy::ipc {
 using namespace data;
+
+void print_packet(std::string msg, const packet& pkt) {
+    std::println("Packet ({} bytes): {}", pkt.size(), msg);
+    for(auto byte: pkt) {
+        std::print("{:02x} ", static_cast<unsigned char>(byte));
+    }
+    std::println();
+}
 
 class Impl {
 public:
@@ -49,22 +58,25 @@ public:
         }
     }
 
-    void write_packet(const std::vector<char>& payload) {
-        auto packet = merge_range_to_vector(Serde<size_t>::serialize(payload.size()), payload);
-        auto err = wait(this->client_pipe.write(std::move(packet)));
+    void write(const std::vector<char>& payload) {
+        auto err = wait(this->client_pipe.write(payload));
         if(err.has_error()) {
             throw std::runtime_error(std::format("ipc_handler write failed: {}", err.message()));
         }
     }
 
-    template <typename Ret>
-    Ret read_packet() {
-        size_t packet_size;
-        this->read(reinterpret_cast<char*>(&packet_size), sizeof(size_t));
-        std::vector<char> buffer(packet_size);
-        this->read(buffer.data(), packet_size);
-        BufferReader buf_reader(buffer);
-        return Serde<Ret>::deserialize(buf_reader);
+    auto reader() {
+        return [this](char* dst, size_t len) {
+            this->read(dst, len);
+        };
+    }
+
+    void write_packet(const std::vector<char>& payload) {
+        this->write(Serde<packet>::serialize(payload));
+    }
+
+    packet read_packet() {
+        return Serde<packet>::deserialize(reader());
     }
 
     template <typename T>
@@ -84,7 +96,9 @@ public:
         instance().write_packet(payload);
 
         if constexpr(!std::is_same_v<Ret, void>) {
-            return instance().read_packet<Ret>();
+            auto packet = instance().read_packet();
+            BufferReader buf_reader(packet);
+            return Serde<Ret>::deserialize(buf_reader);
         }
     }
 

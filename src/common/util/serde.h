@@ -7,7 +7,6 @@
 #include <type_traits>
 
 #include <eventide/async/task.h>
-#include <eventide/reflection/struct.h>
 
 namespace catter {
 
@@ -25,7 +24,7 @@ class BufferReader {
     size_t m_remaining;
 
 public:
-    explicit BufferReader(const std::vector<char>& vec) noexcept :
+    explicit BufferReader(std::vector<char>& vec) noexcept :
         m_data(vec.data()), m_remaining(vec.size()) {}
 
     BufferReader(const char* data, size_t size) noexcept : m_data(data), m_remaining(size) {}
@@ -176,24 +175,24 @@ struct Serde<T> {
     }
 };
 
-template <eventide::refl::reflectable_class T>
-struct Serde<T> {
-    static std::vector<char> serialize(const T& value) {
-        std::vector<char> buffer;
-        eventide::refl::for_each(value, [&]<typename FieldType>(FieldType& field) {
-            append_range_to_vector(buffer, Serde<FieldType>::serialize(field.value()));
-        });
-        return buffer;
-    }
+// template <eventide::refl::reflectable_class T>
+// struct Serde<T> {
+//     static std::vector<char> serialize(const T& value) {
+//         std::vector<char> buffer;
+//         eventide::refl::for_each(value, [&]<typename FieldType>(FieldType& field) {
+//             append_range_to_vector(buffer, Serde<FieldType>::serialize(field.value()));
+//         });
+//         return buffer;
+//     }
 
-    template <Reader Invocable>
-    static T deserialize(Invocable&& reader) {
-        T value{};
-        eventide::refl::for_each(value, [&]<typename FieldType>(FieldType& field) {
-            field.value() = Serde<FieldType>::deserialize(reader);
-        });
-        return value;
-    }
-};
+//     template <Reader Invocable>
+//     static T deserialize(Invocable&& reader) {
+//         T value{};
+//         eventide::refl::for_each(value, [&]<typename FieldType>(FieldType& field) {
+//             field.value() = Serde<FieldType>::deserialize(reader);
+//         });
+//         return value;
+//     }
+// };
 
 };  // namespace catter
