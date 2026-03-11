@@ -3,6 +3,7 @@
 #include <span>
 #include <stdexcept>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include <eventide/async/loop.h>
@@ -40,10 +41,16 @@ private:
         size_t total_read = 0;
         while(total_read < len) {
             auto ret = wait(this->client_pipe.read_some({dst + total_read, len - total_read}));
-            if(ret == 0) {
-                throw std::runtime_error("ipc_handler read failed: EOF/invalid");
+            if(!ret) {
+                throw std::runtime_error(
+                    std::format("ipc_handler read failed: {}", ret.error().message()));
             }
-            total_read += ret;
+
+            if(ret.value() == 0) {
+                throw std::runtime_error("ipc_handler read failed: EOF");
+            }
+
+            total_read += ret.value();
         }
         LOG_DEBUG("Reading {} bytes: {}", len, log::to_hex(std::span<char>(dst, len)));
     }
@@ -85,11 +92,20 @@ public:
     };
 
     template <Request Req, typename... Args>
+    static auto serialize_request(Args&&... args) {
+        auto payload = Serde<Request>::serialize(Req);
+        (append_range_to_vector(
+             payload,
+             Serde<std::remove_cvref_t<Args>>::serialize(std::forward<Args>(args))),
+         ...);
+        return payload;
+    }
+
+    template <Request Req, typename... Args>
     static auto request(Args&&... args) {
         using Ret = typename request_helper<RequestType<Req>>::type;
 
-        auto payload = merge_range_to_vector(Serde<Request>::serialize(Req),
-                                             Serde<std::remove_cvref_t<Args>>::serialize(args)...);
+        auto payload = serialize_request<Req>(std::forward<Args>(args)...);
         instance().write_packet(payload);
 
         if constexpr(!std::is_same_v<Ret, void>) {

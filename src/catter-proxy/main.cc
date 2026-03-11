@@ -1,19 +1,20 @@
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
+#include <iostream>
 #include <stdexcept>
 #include <string>
 #include <system_error>
+#include <vector>
 
 #include <eventide/async/process.h>
-#include "config/catter-proxy.h"
-#include "opt/proxy/option.h"
-#include "eventide/deco/runtime.h"
-#include <vector>
+#include <eventide/deco/runtime.h>
 
 #include "ipc.h"
 #include "hook.h"
 
+#include "opt/proxy/option.h"
+#include "config/catter-proxy.h"
 #include "util/log.h"
 #include "util/eventide.h"
 #include "util/crossplat.h"
@@ -50,11 +51,10 @@ int64_t run(data::action act, data::ipcid_t id) {
 }
 
 int proxy_main(const catter::proxy::ProxyOption& opt) {
-    // This function is for the hook to call, it will never be called in this file.
-    // The implementation is in hook.cc
-    proxy::ipc::set_service_mode(data::ServiceMode::DEFAULT);
-
     try {
+        // This function is for the hook to call, it will never be called in this file.
+        // The implementation is in hook.cc
+        proxy::ipc::set_service_mode(data::ServiceMode::DEFAULT);
 
         data::command cmd = {
             .cwd = std::filesystem::current_path().string(),

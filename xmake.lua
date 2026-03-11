@@ -12,16 +12,24 @@ if has_config("dev") then
     -- Don't fetch system package
     set_policy("package.install_only", true)
     set_policy("build.ccache", true)
+    add_rules("plugin.compile_commands.autoupdate", {outputdir = "build", lsp = "clangd"})
+
+    local toolchain = get_config("toolchain")
+
     if is_mode("debug") then
-        set_policy("build.sanitizer.address", true)
+        if is_plat("windows") then
+            if toolchain == "msvc" then
+                set_policy("build.sanitizer.address", true)
+            end
+        else
+            set_policy("build.sanitizer.address", true)
+        end
+
     end
 
-    add_rules("plugin.compile_commands.autoupdate", {outputdir = "build", lsp = "clangd"})
 
     if is_plat("windows") then
         set_runtimes("MD")
-
-        local toolchain = get_config("toolchain")
         if toolchain == "clang" then
             add_ldflags("-fuse-ld=lld-link")
             add_shflags("-fuse-ld=lld-link")
@@ -47,9 +55,12 @@ if is_plat("macosx") then
 end
 
 
+if is_mode("debug") then
+    add_defines("DEBUG")
+end
+
 if is_mode("debug") and is_plat("linux", "macosx") then
     -- hook.so will use a static lib to log in debug mode
-    add_defines("DEBUG")
     add_cxxflags("-fPIC")
 end
 
@@ -59,7 +70,7 @@ elseif is_plat("macosx") then
     add_defines("CATTER_MAC")
 elseif is_plat("windows") then
     add_defines("CATTER_WINDOWS")
-    add_requires("microsoft-detours", {version = "2023.6.8"})
+    add_requires("minhook", {version = "v1.3.4"})
 end
 
 
@@ -103,10 +114,12 @@ target("catter-hook-win64")
     add_includedirs("src/catter-hook/")
     add_files("src/catter-hook/win/payload/main.cc")
     add_syslinks("user32", "advapi32")
-    add_packages("microsoft-detours")
-    add_cxxflags("-fno-exceptions", "-fno-rtti")
-
-
+    add_packages("minhook")
+    if get_config("toolchain") == "msvc" or get_config("toolchain") == "clang-cl" then
+        add_cxxflags("/EHs-c-", "/GR-")
+    else
+        add_cxxflags("-fno-exceptions", "-fno-rtti")
+    end
 
 
 target("catter-hook-unix")
@@ -154,8 +167,7 @@ target("catter-hook")
     add_includedirs("src/catter-hook/", {public = true})
     add_deps("common")
     if is_plat("windows") then
-        add_files("src/catter-hook/win/impl.cc")
-        add_packages("microsoft-detours")
+        add_files("src/catter-hook/win/*.cc")
     elseif is_plat("linux", "macosx") then
         add_files("src/catter-hook/unix/impl.cc")
     end
@@ -302,9 +314,9 @@ package("eventide")
 
     set_urls("https://github.com/clice-io/eventide.git")
     -- version from `git rev-list --count HEAD`
-    add_versions("48", "97b2ee5e93789cc90712fe1371474d0ad9d71bf6")
+    add_versions("66", "8c2ddef22667a2b6bc09045dad8f93707f839be4")
 
-    add_deps("libuv 1.51.0")
+    add_deps("libuv 1.52.0")
     add_deps("cpptrace v1.0.4")
 
     on_install(function (package)
