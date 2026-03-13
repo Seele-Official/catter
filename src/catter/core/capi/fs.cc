@@ -1,12 +1,13 @@
 #include <cstdint>
 #include <fstream>
-#include <quickjs.h>
 #include <string>
 #include <system_error>
-#include "../apitool.h"
+#include <filesystem>
+
 #include "js.h"
 #include "qjs.h"
-#include <filesystem>
+
+#include "../apitool.h"
 
 namespace fs = std::filesystem;
 using namespace catter::capi::util;
@@ -44,14 +45,14 @@ CAPI(fs_is_dir, (std::string path)->bool) {
 
 CAPI(fs_pwd, ()->std::string) {
     std::error_code ec;
-    return catter::core::js::get_global_runtime_config().pwd.string();
+    return catter::js::get_global_runtime_config().pwd.string();
 }
 
 CAPI(fs_path_join_all, (catter::qjs::Object path_parts)->std::string) {
     fs::path result;
-    auto len = path_parts["length"].to<uint32_t>().value();
+    auto len = path_parts["length"].as<uint32_t>();
     for(size_t i = 0; i < len; ++i) {
-        auto part = path_parts[std::to_string(i)].to<std::string>().value();
+        auto part = path_parts[std::to_string(i)].as<std::string>();
         if(i == 0) {
             result = fs::path(part);
         } else {

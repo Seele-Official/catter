@@ -1,7 +1,7 @@
+
+
+#include "js.h"
 #include "apitool.h"
-#include <cstdint>
-#include <cstdio>
-#include <print>
 
 namespace catter::apitool {
 using api_register = void (*)(const catter::qjs::CModule&, const catter::qjs::Context&);
@@ -19,7 +19,7 @@ std::filesystem::path absolute_of(std::string js_path) {
         return js_fs_path;
     }
     // base is js's base
-    auto abs_path = (core::js::get_global_runtime_config().pwd / js_fs_path).lexically_normal();
+    auto abs_path = (js::get_global_runtime_config().pwd / js_fs_path).lexically_normal();
     return abs_path;
 };
 }  // namespace catter::capi::util

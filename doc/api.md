@@ -1,5 +1,7 @@
 ```typescript
-
+// ------------------------------------------------------------
+// Internal API, not for plugin developers
+// ------------------------------------------------------------
 const ActionKind = ['skip', 'drop', 'abort', 'modify'] as const;
 
 /**
@@ -11,28 +13,28 @@ const ActionKind = ['skip', 'drop', 'abort', 'modify'] as const;
 type ActionType = (typeof ActionKind)[number];
 
 type Action = {
-    type: ActionType;
     // for modify
     data?: CommandData;
+    type: ActionType;
 };
 
 const EventKind = ['finish', 'output'] as const;
 type EventType = (typeof EventKind)[number];
 
 type ExecutionEvent = {
-    type: EventType;
-    code: number;
     // for output
     stdout?: string;
     stderr?: string;
+    code: number;
+    type: EventType;
 };
 
 type CatterRuntime = {
-    // eslogger: only in mac
-    // env: eg. CC=catter-proxy, then proxy report this cmd
-    type: 'hook' | 'eslogger' | 'env';
     supportActions: ActionType[];
     supportEvents: EventType[];
+    // eslogger: only in mac
+    // env: eg. CC=catter-proxy, then proxy report this cmd
+    type: 'inject' | 'eslogger' | 'env';
     supportParentId: boolean;
 };
 
@@ -45,14 +47,14 @@ type CatterRuntime = {
  * @field options - the options of catter, can be used to enable some features of catter, eg. log
  */
 type CatterConfig = {
-    scriptArgs: string[];
     scriptPath: string;
+    scriptArgs: string[];
     buildSystemCommand: string[];
     runtime: CatterRuntime;
-    isScriptSupported: boolean;
     options: {
         log: boolean;
     };
+    isScriptSupported: boolean;
 };
 
 type CatterErr = {
@@ -61,24 +63,28 @@ type CatterErr = {
 
 /**
  * @field parent - When supportParentId is true at runtime, this field is the ID of the parent command that generated this command; otherwise, this field is undefined.
+ * @field env - the environment variables of this command, in the format of ["KEY=VALUE", ...]
  */
 type CommandData = {
     cwd: string;
     exe: string;
     argv: string[];
-    env: Map<string, string>;
-    parent?: number;
+    env: string[];
     runtime: CatterRuntime;
+    parent?: number;
 };
 
-type ServiceRegister = {
-    onStart: (cb: (config: CatterConfig) => CatterConfig) => void;
-    onFinish: (cb: () => void) => void;
-    onCommand: (cb: (id: number, data: CommandData | CatterErr) => Action) => void;
-    onExecution: (cb: (id: number, event: ExecutionEvent) => void) => void;
-};
+export function service_on_start(cb: (config: CatterConfig) => CatterConfig): void;
+export function service_on_finish(cb: () => void): void;
+export function service_on_command(cb: (id: number, data: CommandData | CatterErr) => Action): void;
+export function service_on_execution(cb: (id: number, event: ExecutionEvent) => void): void;
 
-declare let serviceRegister: ServiceRegister;
+
+// ------------------------------------------------------------
+// Plugin API, for plugin developers
+// ------------------------------------------------------------
+
+import { service_on_start, service_on_finish, service_on_command, service_on_execution } from 'catter-c';
 
 /**
  * @method onStart - called when catter start, can modify config
@@ -97,11 +103,25 @@ interface CatterService {
     onExecution: (id: number, event: ExecutionEvent) => void;
 }
 
-function registerService(service: CatterService) {
-    serviceRegister.onStart(service.onStart);
-    serviceRegister.onFinish(service.onFinish);
-    serviceRegister.onCommand(service.onCommand);
-    serviceRegister.onExecution(service.onExecution);
+export function onStart(cb: (config: CatterConfig) => CatterConfig): void{
+    service_on_start(cb);
+}
+export function onFinish(cb: () => void): void {
+    service_on_finish(cb);
+}
+export function onCommand(cb: (id: number, data: CommandData | CatterErr) => Action): void {
+    service_on_command(cb);
+}
+export function onExecution(cb: (id: number, event: ExecutionEvent) => void): void {
+    service_on_execution(cb);
+}
+
+
+export function register(service: CatterService) {
+    onStart(service.onStart);
+    onFinish(service.onFinish);
+    onCommand(service.onCommand);
+    onExecution(service.onExecution);
 }
 
 // ------------------------------------------------------------
@@ -134,5 +154,5 @@ class MyCatterPlugin implements CatterService {
     }
 }
 
-registerService(new MyCatterPlugin());
+register(new MyCatterPlugin());
 ```

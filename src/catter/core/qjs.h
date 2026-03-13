@@ -1,11 +1,12 @@
 #pragma once
 #include <array>
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <exception>
-#include <expected>
 #include <optional>
+#include <ranges>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -17,9 +18,11 @@
 #include <format>
 
 #include <eventide/reflection/name.h>
-#include <quickjs.h>
+#include <eventide/common/meta.h>
+#include <eventide/common/functional.h>
 
-#include "util/meta.h"
+#include <cpptrace/cpptrace.hpp>
+#include <quickjs.h>
 
 // namespace meta
 
@@ -52,14 +55,10 @@ template <typename Ts, size_t I>
 using type_get = typename Ts::template get<I>::type;
 
 template <typename U>
-struct value_trans {
-    static_assert("Unsupported type for value_trans");
-};
+struct value_trans;
 
 template <typename U>
-struct object_trans {
-    static_assert("Unsupported type for object_trans");
-};
+struct object_trans;
 
 inline std::string dump(JSContext* ctx) {
     JSValue exception_val = JS_GetException(ctx);
@@ -96,7 +95,8 @@ inline std::string dump(JSContext* ctx) {
  */
 class Exception : public std::exception {
 public:
-    Exception(std::string&& details) : details(std::move(details)) {}
+    Exception(const std::string& details) :
+        details(std::format("{}\n{}", details, cpptrace::generate_trace().to_string())) {}
 
     const char* what() const noexcept override {
         return details.c_str();
@@ -104,6 +104,11 @@ public:
 
 private:
     std::string details;
+};
+
+class TypeError : public Exception {
+public:
+    TypeError(const std::string& details) : Exception(std::format("TypeError: {}", details)) {}
 };
 
 /**
@@ -164,8 +169,28 @@ public:
     }
 
     template <typename T>
-    std::optional<T> to() noexcept {
-        return detail::value_trans<T>::to(this->ctx, *this);
+    std::optional<T> to() const noexcept {
+        return detail::value_trans<T>::to(*this);
+    }
+
+    template <typename T>
+    T as() const {
+        return detail::value_trans<T>::as(*this);
+    }
+
+    std::string stringify() const {
+        auto json_str_val = qjs::Value{ctx, JS_JSONStringify(ctx, val, JS_UNDEFINED, JS_UNDEFINED)};
+        if(json_str_val.is_exception()) {
+            throw qjs::Exception(detail::dump(ctx));
+        }
+
+        const char* json_cstr = JS_ToCString(ctx, json_str_val.value());
+        if(json_cstr) {
+            std::string result{json_cstr};
+            JS_FreeCString(ctx, json_cstr);
+            return result;
+        }
+        throw qjs::Exception("Failed to stringify value");
     }
 
     bool is_object() const noexcept {
@@ -333,7 +358,10 @@ public:
     std::optional<Value> get_optional_property(const std::string& prop_name) const noexcept {
         auto ret = Value{this->context(),
                          JS_GetPropertyStr(this->context(), this->value(), prop_name.c_str())};
-        if(ret.is_exception() || ret.is_undefined()) {
+        if(ret.is_exception()) {
+            detail::dump(this->context());
+            return std::nullopt;
+        } else if(ret.is_undefined()) {
             return std::nullopt;
         }
         return ret;
@@ -350,19 +378,17 @@ public:
      */
     template <typename T>
     void set_property(const std::string& prop_name, T&& val) {
-        if constexpr(std::is_same_v<JSValue, std::remove_cv_t<T>>) {
-            JSValue js_val = val;
+        if constexpr(std::is_same_v<JSValue, std::remove_cvref_t<T>>) {
+            JSValue js_val = JS_DupValue(this->context(), val);
             int ret = JS_SetPropertyStr(this->context(), this->value(), prop_name.c_str(), js_val);
             if(ret < 0) {
                 throw qjs::Exception(detail::dump(this->context()));
             }
-        }
-        if constexpr(std::is_same_v<Value, std::remove_cv_t<T>>) {
-            Value js_val = std::forward<T>(val);
-            int ret = JS_SetPropertyStr(this->context(),
-                                        this->value(),
-                                        prop_name.c_str(),
-                                        js_val.release());
+        } else if constexpr(requires {
+                                { val.value() } -> std::convertible_to<JSValue>;
+                            }) {
+            JSValue js_val = JS_DupValue(this->context(), val.value());
+            int ret = JS_SetPropertyStr(this->context(), this->value(), prop_name.c_str(), js_val);
             if(ret < 0) {
                 throw qjs::Exception(detail::dump(this->context()));
             }
@@ -371,7 +397,7 @@ public:
             int ret = JS_SetPropertyStr(this->context(),
                                         this->value(),
                                         prop_name.c_str(),
-                                        js_val.value());
+                                        js_val.release());
             if(ret < 0) {
                 throw qjs::Exception(detail::dump(this->context()));
             }
@@ -385,7 +411,12 @@ public:
 
     template <typename T>
     std::optional<T> to() noexcept {
-        return detail::object_trans<T>::to(this->context(), *this);
+        return detail::object_trans<T>::to(*this);
+    }
+
+    template <typename T>
+    T as() {
+        return detail::object_trans<T>::as(*this);
     }
 
     template <typename T>
@@ -418,6 +449,10 @@ public:
     private:
         inline static std::unordered_map<JSRuntime*, JSClassID> class_ids{};
     };
+
+    static Object empty_one(JSContext* ctx) noexcept {
+        return Object{ctx, JS_NewObject(ctx)};
+    }
 };
 
 /**
@@ -444,9 +479,9 @@ template <typename R, typename... Args>
 class Function<R(Args...)> : protected Object {
 public:
     using AllowParamTypes =
-        detail::type_list<bool, int64_t, std::string, Object, int32_t, uint32_t, long, int>;
+        detail::type_list<bool, int32_t, uint32_t, int64_t, uint64_t, std::string, Object>;
     using AllowRetTypes =
-        detail::type_list<bool, int64_t, std::string, Object, int32_t, uint32_t, long, int>;
+        detail::type_list<bool, int32_t, uint32_t, int64_t, uint64_t, std::string, Object>;
 
     static_assert((AllowParamTypes::contains_v<Args> && ...),
                   "Function parameter types must be one of the allowed types");
@@ -470,6 +505,12 @@ public:
     Function& operator= (Function&& other) = default;
     ~Function() = default;
 
+    static Function from(JSContext* ctx, Sign*) {
+        static_assert(
+            eventide::dependent_false<Sign*>,
+            "Invocable type can't be function type, please use from_raw for function pointer");
+    }
+
     template <typename Invocable>
         requires std::is_invocable_r_v<R, Invocable, Args...>
     static Function from(JSContext* ctx, Invocable&& invocable) noexcept {
@@ -480,9 +521,9 @@ public:
         if(auto it = Register::find(rt); it != Register::end()) {
             id = it->second;
         } else {
-            auto class_name = std::format("qjs.{}", refl::type_name<Invocable&&>());
-            if constexpr(std::is_convertible_v<Invocable, Sign*> ||
-                         std::is_lvalue_reference_v<Invocable&&>) {
+            auto class_name =
+                std::format("qjs.{}", std::string_view{refl::type_name<Invocable&&>()});
+            if constexpr(std::is_lvalue_reference_v<Invocable&&>) {
                 JSClassDef def{class_name.c_str(),
                                nullptr,
                                nullptr,
@@ -505,9 +546,8 @@ public:
         }
         Function<Sign> result{ctx, JS_NewObjectClass(ctx, id)};
 
-        if constexpr(std::is_convertible_v<Invocable, Sign*> ||
-                     std::is_lvalue_reference_v<Invocable&&>) {
-            JS_SetOpaque(result.value(), static_cast<void*>(invocable));
+        if constexpr(std::is_lvalue_reference_v<Invocable&&>) {
+            JS_SetOpaque(result.value(), static_cast<void*>(std::addressof(invocable)));
         } else {
             JS_SetOpaque(result.value(), new Opaque(std::forward<Invocable>(invocable)));
         }
@@ -538,16 +578,23 @@ public:
         return result;
     }
 
-    auto to() noexcept {
+    auto as() noexcept {
         return [self = *this](Args... args) -> R {
             return self(args...);
         };
     }
 
     R invoke(const Object& this_obj, Args... args) const {
+        auto transformer = [&]<typename T>(T& value) -> JSValue {
+            if constexpr(std::is_same_v<T, Object>) {
+                return JS_DupValue(this->context(), value.value());
+            } else {
+                return qjs::Value::from(this->context(), value).release();
+            }
+        };
 
-        auto argv = std::array<JSValue, sizeof...(Args)>{
-            qjs::Value::from(this->context(), args).release()...};
+        auto argv =
+            std::array<JSValue, sizeof...(Args)>{transformer.template operator()<Args>(args)...};
 
         auto value = qjs::Value{this->context(),
                                 JS_Call(this->context(),
@@ -566,13 +613,7 @@ public:
         if constexpr(std::is_void_v<R>) {
             return;
         } else {
-            auto result = value.to<R>();
-            if(!result.has_value()) {
-                JS_ThrowTypeError(this->context(), "Failed to convert function return value");
-                throw qjs::Exception(detail::dump(this->context()));
-            }
-
-            return result.value();
+            return value.as<R>();
         }
     }
 
@@ -590,16 +631,7 @@ private:
         return [&]<size_t... Is>(std::index_sequence<Is...>) -> JSValue {
             auto transformer = [&]<size_t N>(std::in_place_index_t<N>) {
                 using T = detail::type_get<Params, N>;
-                if constexpr(std::is_same_v<T, Object>) {
-                    if(JS_IsObject(argv[N])) {
-                        return Object{ctx, argv[N]};
-                    }
-                } else {
-                    if(auto opt = qjs::Value{ctx, argv[N]}.to<T>(); opt.has_value()) {
-                        return opt.value();
-                    }
-                }
-                throw qjs::Exception("Failed to convert function parameter");
+                return qjs::Value{ctx, argv[N]}.as<T>();
             };
             try {
                 if constexpr(std::is_void_v<R>) {
@@ -659,8 +691,213 @@ private:
     }
 };
 
+using Parameters = std::vector<Value>;
+
+template <typename R>
+class Function<R(Parameters)> : protected Object {
+public:
+    using AllowRetTypes =
+        detail::type_list<bool, int32_t, uint32_t, int64_t, uint64_t, std::string, Object>;
+    static_assert(AllowRetTypes::contains_v<R> || std::is_void_v<R>,
+                  "Function return type must be one of the allowed types");
+
+    using Params = Parameters;
+    using Sign = R(Params);
+
+    using Object::Object;
+    using Object::is_valid;
+    using Object::value;
+    using Object::context;
+    using Object::operator bool;
+    using Object::release;
+
+    Function() = default;
+    Function(const Function&) = default;
+    Function(Function&& other) = default;
+    Function& operator= (const Function&) = default;
+    Function& operator= (Function&& other) = default;
+    ~Function() = default;
+
+    static Function from(JSContext* ctx, Sign*) {
+        static_assert(
+            eventide::dependent_false<Sign*>,
+            "Invocable type can't be function type, please use from_raw for function pointer");
+    }
+
+    template <typename Invocable>
+        requires std::is_invocable_r_v<R, Invocable, Params>
+    static Function from(JSContext* ctx, Invocable&& invocable) noexcept {
+        using Register = Object::Register<Invocable&&>;
+        using Opaque = std::remove_cvref_t<Invocable>;
+        auto rt = JS_GetRuntime(ctx);
+        JSClassID id = 0;
+        if(auto it = Register::find(rt); it != Register::end()) {
+            id = it->second;
+        } else {
+            auto class_name =
+                std::format("qjs.{}", std::string_view{refl::type_name<Invocable&&>()});
+            if constexpr(std::is_lvalue_reference_v<Invocable&&>) {
+                JSClassDef def{class_name.c_str(),
+                               nullptr,
+                               nullptr,
+                               proxy<Opaque, Register>,
+                               nullptr};
+                id = Register::create(rt, &def);
+            } else {
+                JSClassDef def{class_name.c_str(),
+                               [](JSRuntime* rt, JSValue obj) {
+                                   auto* ptr =
+                                       static_cast<Opaque*>(JS_GetOpaque(obj, Register::get(rt)));
+                                   delete ptr;
+                               },
+                               nullptr,
+                               proxy<Opaque, Register>,
+                               nullptr};
+
+                id = Register::create(rt, &def);
+            }
+        }
+        Function<Sign> result{ctx, JS_NewObjectClass(ctx, id)};
+
+        if constexpr(std::is_lvalue_reference_v<Invocable&&>) {
+            JS_SetOpaque(result.value(), static_cast<void*>(std::addressof(invocable)));
+        } else {
+            JS_SetOpaque(result.value(), new Opaque(std::forward<Invocable>(invocable)));
+        }
+        return result;
+    }
+
+    using SignCtx = R(JSContext*, Params);
+
+    /**
+     * @brief Create a Function from a C function pointer.
+     * This method wraps a C function pointer so that it can be called from JavaScript.
+     * You should ensure that FnPtr is a valid function pointer type.
+
+     *
+     * @tparam FnPtr The C function pointer to wrap, the first parameter can be JSContext*.
+     * @param ctx The QuickJS context.
+     * @return A Function object representing the wrapped C function.
+     */
+    template <SignCtx* FnPtr>
+    static Function from_raw(JSContext* ctx, const char* name) noexcept {
+        Function<Sign> result{ctx, JS_NewCFunction(ctx, proxy<FnPtr>, name, 0)};
+        return result;
+    }
+
+    template <Sign* FnPtr>
+    static Function from_raw(JSContext* ctx, const char* name) noexcept {
+        Function<Sign> result{ctx, JS_NewCFunction(ctx, proxy<FnPtr>, name, 0)};
+        return result;
+    }
+
+    auto as() noexcept {
+        return [self = *this](Params args) -> R {
+            return self(args);
+        };
+    }
+
+    R invoke(const Object& this_obj, const Params& args) const {
+        std::vector<JSValue> argv{};
+        argv.reserve(args.size());
+
+        for(const auto& arg: args) {
+            if(!arg.is_valid()) {
+                throw TypeError("Function argument contains an invalid value");
+            }
+            argv.push_back(JS_DupValue(this->context(), arg.value()));
+        }
+
+        auto value = qjs::Value{
+            this->context(),
+            JS_Call(this->context(), this->value(), this_obj.value(), argv.size(), argv.data())};
+        for(auto& v: argv) {
+            JS_FreeValue(this->context(), v);
+        }
+
+        if(value.is_exception()) {
+            throw qjs::Exception(detail::dump(this->context()));
+        }
+
+        if constexpr(std::is_void_v<R>) {
+            return;
+        } else {
+            return value.as<R>();
+        }
+    }
+
+    R operator() (Params args) const {
+        return this->invoke(Object{this->context(), JS_GetGlobalObject(this->context())}, args);
+    }
+
+private:
+    template <typename Invocable>
+    static JSValue invoke_helper(JSContext* ctx, int argc, JSValueConst* argv, Invocable&& fn) {
+        Params args{};
+        args.reserve(argc);
+        for(int i = 0; i < argc; ++i) {
+            args.emplace_back(ctx, argv[i]);
+        }
+
+        try {
+            if constexpr(std::is_void_v<R>) {
+                fn(std::move(args));
+                return JS_UNDEFINED;
+            } else {
+                auto res = fn(std::move(args));
+
+                if constexpr(std::is_same_v<R, Object>) {
+                    return res.release();
+                } else {
+                    return qjs::Value::from(ctx, res).release();
+                }
+            }
+        } catch(const qjs::Exception& e) {
+            return JS_ThrowInternalError(ctx, "Exception in C++ function: %s", e.what());
+        } catch(const std::exception& e) {
+            return JS_ThrowInternalError(ctx, "Unexpected exception: %s", e.what());
+        }
+    }
+
+    template <typename Opaque, typename Register>
+    static JSValue proxy(JSContext* ctx,
+                         JSValueConst func_obj,
+                         JSValueConst this_val,
+                         int argc,
+                         JSValueConst* argv,
+                         [[maybe_unused]] int flags) noexcept {
+
+        auto* ptr = static_cast<Opaque*>(JS_GetOpaque(func_obj, Register::get(JS_GetRuntime(ctx))));
+
+        if(!ptr) {
+            return JS_ThrowInternalError(ctx, "Internal error: C++ functor is null");
+        }
+
+        return invoke_helper(ctx, argc, argv, [&]<typename... Ts>(Ts&&... args) -> decltype(auto) {
+            return (*ptr)(std::forward<Ts>(args)...);
+        });
+    }
+
+    template <Sign* FnPtr>
+    static JSValue
+        proxy(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) noexcept {
+
+        return invoke_helper(ctx, argc, argv, [&]<typename... Ts>(Ts&&... args) -> decltype(auto) {
+            return (*FnPtr)(std::forward<Ts>(args)...);
+        });
+    }
+
+    template <SignCtx* FnPtr>
+    static JSValue
+        proxy(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) noexcept {
+        return invoke_helper(ctx, argc, argv, [&]<typename... Ts>(Ts&&... args) -> decltype(auto) {
+            return (*FnPtr)(ctx, std::forward<Ts>(args)...);
+        });
+    }
+};
+
 template <typename T>
-    requires detail::type_list<bool, int64_t, std::string>::contains_v<T>
+    requires detail::type_list<int32_t, uint32_t, int64_t, uint64_t, std::string>::contains_v<T>
 class Array : protected Object {
 public:
     using Object::Object;
@@ -679,33 +916,90 @@ public:
 
     uint32_t length() const {
         qjs::Value len_val = this->get_property("length");
-        auto len_opt = len_val.to<uint32_t>();
-        if(!len_opt.has_value()) {
-            throw qjs::Exception("Fail to get array length property!");
+        if(len_val.is_exception()) {
+            throw qjs::Exception(detail::dump(this->context()));
         }
-        return len_opt.value();
+        return len_val.as<uint32_t>();
     }
 
-    T get(uint32_t index) const {
+    T operator[] (uint32_t index) const {
         auto val = catter::qjs::Value{this->context(),
                                       JS_GetPropertyUint32(this->context(), this->value(), index)};
         if(val.is_exception()) {
-            throw qjs::Exception(detail::dump(this->context()));
+            throw qjs::TypeError(detail::dump(this->context()));
         }
-        auto result = val.to<T>();
-        if(!result.has_value()) {
-            throw qjs::Exception("Fail to convert a js value!");
-        }
-        return result.value();
+        return val.as<T>();
     }
 
-    void push(T&& item) {
-        auto js_val = qjs::Value::from(this->context(), std::forward<T>(item));
+    std::optional<T> get(uint32_t index) const noexcept {
+        try {
+            return this->operator[] (index);
+        } catch(const qjs::TypeError&) {
+            return std::nullopt;
+        }
+    }
+
+    template <typename V>
+    void push(V&& item) {
+        auto js_val = qjs::Value::from(this->context(), T{std::forward<V>(item)});
         uint32_t len = this->length();
         auto res = JS_SetPropertyUint32(this->context(), this->value(), len, js_val.release());
         if(res < 0) {
-            throw qjs::Exception(detail::dump(this->context()));
+            throw qjs::TypeError(detail::dump(this->context()));
         }
+    }
+
+    template <typename TT>
+    struct array_trans {
+        static_assert(eventide::dependent_false<TT>,
+                      "Unsupported array element type for array_trans");
+    };
+
+    template <typename R>
+        requires std::ranges::range<R> && std::same_as<T, std::ranges::range_value_t<R>>
+    struct array_trans<R> {
+        static Array<T> from(JSContext* ctx, const R& range) noexcept {
+            using Range = std::remove_cvref_t<R>;
+            auto size = std::ranges::size(range);
+            std::vector<JSValue> js_values;
+            js_values.reserve(size);
+            for(auto&& item: range) {
+                js_values.push_back(qjs::Value::from(ctx, item).release());
+            }
+            return Array<T>{ctx, JS_NewArrayFrom(ctx, static_cast<int>(size), js_values.data())};
+        }
+
+        static R as(const Array<T>& arr) {
+            R result;
+            uint32_t len = arr.length();
+            for(uint32_t i = 0; i < len; ++i) {
+                result.push_back(arr[i]);
+            }
+            return result;
+        }
+
+        static std::optional<R> to(const Array<T>& arr) noexcept {
+            try {
+                R result;
+                uint32_t len = arr.length();
+                for(uint32_t i = 0; i < len; ++i) {
+                    result.push_back(arr[i]);
+                }
+                return result;
+            } catch(const qjs::TypeError&) {
+                return std::nullopt;
+            }
+        }
+    };
+
+    template <typename R>
+    static Array<T> from(JSContext* ctx, R&& range) noexcept {
+        return array_trans<std::remove_cvref_t<R>>::from(ctx, std::forward<R>(range));
+    }
+
+    template <typename R>
+    R as() {
+        return array_trans<std::remove_cvref_t<R>>::as(*this);
     }
 
     static qjs::Array<T> empty_one(JSContext* ctx) noexcept {
@@ -720,11 +1014,19 @@ struct value_trans<bool> {
         return Value{ctx, JS_NewBool(ctx, value)};
     }
 
-    static std::optional<bool> to(JSContext* ctx, const Value& val) noexcept {
+    static bool as(const Value& val) {
         if(!JS_IsBool(val.value())) {
+            throw TypeError("Value is not a boolean");
+        }
+        return JS_ToBool(val.context(), val.value());
+    }
+
+    static std::optional<bool> to(const Value& val) noexcept {
+        try {
+            return as(val);
+        } catch(const TypeError&) {
             return std::nullopt;
         }
-        return JS_ToBool(ctx, val.value());
     }
 };
 
@@ -735,33 +1037,56 @@ struct value_trans<Num> {
         if constexpr(std::is_unsigned_v<Num> && sizeof(Num) <= sizeof(uint32_t)) {
             return Value{ctx, JS_NewUint32(ctx, static_cast<uint32_t>(value))};
         } else if constexpr(std::is_signed_v<Num>) {
-            return Value{ctx, JS_NewInt64(ctx, static_cast<int32_t>(value))};
+            return Value{ctx, JS_NewInt64(ctx, static_cast<int64_t>(value))};
         } else {
-            static_assert(meta::dep_true<Num>, "Unsupported integral type for value");
+            static_assert(eventide::dependent_false<Num>, "Unsupported integral type for value");
         }
     }
 
-    static std::optional<Num> to(JSContext* ctx, const Value& val) noexcept {
+    static Num as(const Value& val) {
         if(!JS_IsNumber(val.value())) {
+            throw TypeError("Value is not a number");
+        }
+        if constexpr(std::is_unsigned_v<Num>) {
+            if constexpr(sizeof(Num) <= sizeof(uint32_t)) {
+                uint32_t temp;
+                if(JS_ToUint32(val.context(), &temp, val.value()) < 0) {
+                    throw TypeError("Failed to convert value to uint32_t");
+                }
+                return static_cast<Num>(temp);
+            } else {
+                uint64_t temp;
+                if(JS_ToIndex(val.context(), &temp, val.value()) < 0) {
+                    throw TypeError("Failed to convert value to uint32_t");
+                }
+                return static_cast<Num>(temp);
+            }
+        } else if constexpr(std::is_signed_v<Num>) {
+            if constexpr(sizeof(Num) <= sizeof(int32_t)) {
+                int32_t temp;
+                if(JS_ToInt32(val.context(), &temp, val.value()) < 0) {
+                    throw TypeError("Failed to convert value to uint32_t");
+                }
+                return static_cast<Num>(temp);
+            } else {
+                int64_t temp;
+                if(JS_ToInt64(val.context(), &temp, val.value()) < 0) {
+                    throw TypeError("Failed to convert value to int64_t");
+                }
+                return static_cast<Num>(temp);
+            }
+
+        } else {
+            static_assert(eventide::dependent_false<Num>, "Unsupported integral type for value");
+        }
+    }
+
+    static std::optional<Num> to(const Value& val) noexcept {
+        try {
+            return as(val);
+        } catch(const TypeError&) {
             return std::nullopt;
         }
-        Num result;
-        if constexpr(std::is_unsigned_v<Num> && sizeof(Num) <= sizeof(uint32_t)) {
-            uint32_t temp;
-            if(JS_ToUint32(ctx, &temp, val.value()) < 0) {
-                return std::nullopt;
-            }
-            result = static_cast<Num>(temp);
-        } else if(std::is_signed_v<Num>) {
-            int64_t temp;
-            if(JS_ToInt64(ctx, &temp, val.value()) < 0) {
-                return std::nullopt;
-            }
-            result = static_cast<Num>(temp);
-        } else {
-            static_assert(meta::dep_true<Num>, "Unsupported integral type for value");
-        }
-        return result;
     }
 };
 
@@ -771,18 +1096,26 @@ struct value_trans<std::string> {
         return Value{ctx, JS_NewStringLen(ctx, value.data(), value.size())};
     }
 
-    static std::optional<std::string> to(JSContext* ctx, const Value& val) noexcept {
+    static std::string as(const Value& val) {
         if(!JS_IsString(val.value())) {
-            return std::nullopt;
+            throw TypeError("Value is not a string");
         }
         size_t len;
-        const char* str = JS_ToCStringLen(ctx, &len, val.value());
+        const char* str = JS_ToCStringLen(val.context(), &len, val.value());
         if(str == nullptr) {
-            return std::nullopt;
+            throw TypeError("Failed to convert value to string");
         }
         std::string result{str, len};
-        JS_FreeCString(ctx, str);
+        JS_FreeCString(val.context(), str);
         return result;
+    }
+
+    static std::optional<std::string> to(const Value& val) noexcept {
+        try {
+            return as(val);
+        } catch(const TypeError&) {
+            return std::nullopt;
+        }
     }
 };
 
@@ -797,37 +1130,69 @@ struct value_trans<Object> {
         return Value{ctx, value.release()};
     }
 
-    static std::optional<Object> to(JSContext* ctx, const Value& val) noexcept {
+    static Object as(const Value& val) {
         if(!JS_IsObject(val.value())) {
+            throw TypeError("Value is not an object");
+        }
+        return Object{val.context(), val.value()};
+    }
+
+    static std::optional<Object> to(const Value& val) noexcept {
+        try {
+            return as(val);
+        } catch(const TypeError&) {
             return std::nullopt;
         }
-        return Object{ctx, val.value()};
+    }
+};
+
+template <typename T>
+struct value_trans<Array<T>> {
+    static Value from(const Array<T>& value) noexcept {
+        return Value{value.context(), value.value()};
+    }
+
+    static Value from(Array<T>&& value) noexcept {
+        auto ctx = value.context();
+        return Value{ctx, value.release()};
+    }
+
+    static Array<T> as(const Value& val) {
+        return val.as<Object>().as<Array<T>>();
+    }
+
+    static std::optional<Array<T>> to(const Value& val) noexcept {
+        try {
+            return as(val);
+        } catch(const TypeError&) {
+            return std::nullopt;
+        }
     }
 };
 
 template <typename R, typename... Args>
-struct object_trans<Function<R(Args...)>> {
+struct value_trans<Function<R(Args...)>> {
     using FuncType = Function<R(Args...)>;
 
-    static Object from(const FuncType& value) noexcept {
-        return Object{value.context(), value.value()};
+    static Value from(const FuncType& value) noexcept {
+        return Value{value.context(), value.value()};
     }
 
-    static Object from(FuncType&& value) noexcept {
+    static Value from(FuncType&& value) noexcept {
         auto ctx = value.context();
-        return Object{ctx, value.release()};
+        return Value{ctx, value.release()};
     }
 
-    static std::optional<FuncType> to(JSContext* ctx, const Object& val) noexcept {
-        if(!JS_IsFunction(ctx, val.value())) {
+    static FuncType as(const Value& val) {
+        return val.as<Object>().as<FuncType>();
+    }
+
+    static std::optional<FuncType> to(const Value& val) noexcept {
+        try {
+            return as(val);
+        } catch(const TypeError&) {
             return std::nullopt;
         }
-
-        if(val.get_property("length").to<int64_t>() != sizeof...(Args)) {
-            return std::nullopt;
-        }
-
-        return FuncType{ctx, val.value()};
     }
 };
 
@@ -844,13 +1209,86 @@ struct object_trans<Array<T>> {
         return Object{ctx, value.release()};
     }
 
-    static std::optional<ArrTy> to(JSContext* ctx, const Object& val) noexcept {
-        if(!JS_IsArray(val.value())) {
+    static ArrTy as(const Object& obj) {
+        if(!JS_IsArray(obj.value())) {
+            throw TypeError("Object is not an array");
+        }
+        return ArrTy{obj.context(), obj.value()};
+    }
+
+    static std::optional<ArrTy> to(const Object& obj) noexcept {
+        try {
+            return as(obj);
+        } catch(const TypeError&) {
             return std::nullopt;
         }
-        return ArrTy{ctx, val.value()};
     }
 };
+
+template <typename R, typename... Args>
+struct object_trans<Function<R(Args...)>> {
+    using FuncType = Function<R(Args...)>;
+
+    static Object from(const FuncType& value) noexcept {
+        return Object{value.context(), value.value()};
+    }
+
+    static Object from(FuncType&& value) noexcept {
+        auto ctx = value.context();
+        return Object{ctx, value.release()};
+    }
+
+    static FuncType as(const Object& obj) {
+        if(!JS_IsFunction(obj.context(), obj.value())) {
+            throw TypeError("Object is not a function");
+        }
+
+        if(obj.get_property("length").as<int64_t>() != sizeof...(Args)) {
+            throw TypeError("Function has incorrect number of arguments");
+        }
+
+        return FuncType{obj.context(), obj.value()};
+    }
+
+    static std::optional<FuncType> to(const Object& val) noexcept {
+        try {
+            return as(val);
+        } catch(const TypeError&) {
+            return std::nullopt;
+        }
+    }
+};
+
+template <typename R>
+struct object_trans<Function<R(Parameters)>> {
+    using FuncType = Function<R(Parameters)>;
+
+    static Object from(const FuncType& value) noexcept {
+        return Object{value.context(), value.value()};
+    }
+
+    static Object from(FuncType&& value) noexcept {
+        auto ctx = value.context();
+        return Object{ctx, value.release()};
+    }
+
+    static FuncType as(const Object& obj) {
+        if(!JS_IsFunction(obj.context(), obj.value())) {
+            throw TypeError("Object is not a function");
+        }
+
+        return FuncType{obj.context(), obj.value()};
+    }
+
+    static std::optional<FuncType> to(const Object& val) noexcept {
+        try {
+            return as(val);
+        } catch(const TypeError&) {
+            return std::nullopt;
+        }
+    }
+};
+
 }  // namespace detail
 
 /**
@@ -1111,5 +1549,11 @@ private:
 
     std::unique_ptr<Raw> raw = nullptr;
 };
+
+namespace json {
+inline std::string stringify(const qjs::Value& val) {
+    return val.stringify();
+}
+};  // namespace json
 
 }  // namespace catter::qjs
