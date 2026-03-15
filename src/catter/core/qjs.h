@@ -178,21 +178,6 @@ public:
         return detail::value_trans<T>::as(*this);
     }
 
-    std::string stringify() const {
-        auto json_str_val = qjs::Value{ctx, JS_JSONStringify(ctx, val, JS_UNDEFINED, JS_UNDEFINED)};
-        if(json_str_val.is_exception()) {
-            throw qjs::Exception(detail::dump(ctx));
-        }
-
-        const char* json_cstr = JS_ToCString(ctx, json_str_val.value());
-        if(json_cstr) {
-            std::string result{json_cstr};
-            JS_FreeCString(ctx, json_cstr);
-            return result;
-        }
-        throw qjs::Exception("Failed to stringify value");
-    }
-
     bool is_object() const noexcept {
         return JS_IsObject(this->val);
     }
@@ -955,22 +940,21 @@ public:
                       "Unsupported array element type for array_trans");
     };
 
-    template <typename R>
-        requires std::ranges::range<R> && std::same_as<T, std::ranges::range_value_t<R>>
-    struct array_trans<R> {
-        static Array<T> from(JSContext* ctx, const R& range) noexcept {
-            using Range = std::remove_cvref_t<R>;
-            auto size = std::ranges::size(range);
+    template <typename TT>
+        requires std::same_as<TT, T>
+    struct array_trans<std::vector<TT>> {
+        static Array<T> from(JSContext* ctx, const std::vector<T>& vec) noexcept {
             std::vector<JSValue> js_values;
-            js_values.reserve(size);
-            for(auto&& item: range) {
+            js_values.reserve(vec.size());
+            for(auto&& item: vec) {
                 js_values.push_back(qjs::Value::from(ctx, item).release());
             }
-            return Array<T>{ctx, JS_NewArrayFrom(ctx, static_cast<int>(size), js_values.data())};
+            return Array<T>{ctx,
+                            JS_NewArrayFrom(ctx, static_cast<int>(vec.size()), js_values.data())};
         }
 
-        static R as(const Array<T>& arr) {
-            R result;
+        static std::vector<T> as(const Array<T>& arr) {
+            std::vector<T> result;
             uint32_t len = arr.length();
             for(uint32_t i = 0; i < len; ++i) {
                 result.push_back(arr[i]);
@@ -978,9 +962,9 @@ public:
             return result;
         }
 
-        static std::optional<R> to(const Array<T>& arr) noexcept {
+        static std::optional<std::vector<T>> to(const Array<T>& arr) noexcept {
             try {
-                R result;
+                std::vector<T> result;
                 uint32_t len = arr.length();
                 for(uint32_t i = 0; i < len; ++i) {
                     result.push_back(arr[i]);
@@ -1551,9 +1535,40 @@ private:
 };
 
 namespace json {
-inline std::string stringify(const qjs::Value& val) {
-    return val.stringify();
-}
+
+template <typename T>
+    requires requires(T&& t) {
+        { t.value() } -> std::convertible_to<JSValue>;
+        { t.context() } -> std::convertible_to<JSContext*>;
+    }
+std::string stringify(T&& v) {
+    auto ctx = v.context();
+    auto val = v.value();
+    auto json_str_val = qjs::Value{ctx, JS_JSONStringify(ctx, val, JS_UNDEFINED, JS_UNDEFINED)};
+    if(json_str_val.is_exception()) {
+        throw qjs::Exception(detail::dump(ctx));
+    }
+
+    const char* json_cstr = JS_ToCString(ctx, json_str_val.value());
+    if(json_cstr) {
+        std::string result{json_cstr};
+        JS_FreeCString(ctx, json_cstr);
+        return result;
+    }
+    throw qjs::Exception("Failed to stringify value");
 };  // namespace json
+
+inline qjs::Value parse(const std::string& json_str, const Context& ctx) {
+
+    auto ret = qjs::Value{
+        ctx.js_context(),
+        JS_ParseJSON(ctx.js_context(), json_str.data(), json_str.size(), "<json input>")};
+
+    if(ret.is_exception()) {
+        throw qjs::Exception(detail::dump(ctx.js_context()));
+    }
+    return ret;
+}
+}  // namespace json
 
 }  // namespace catter::qjs
