@@ -127,7 +127,7 @@ T read_property(const qjs::Object& object, std::string_view property_name) {
     if constexpr(is_optional_v<T>) {
         using value_type = typename is_optional<T>::value_type;
         auto optional_value = object.get_optional_property(std::string(property_name));
-        if(!optional_value.has_value() || optional_value->is_nothing()) {
+        if(!optional_value.has_value()) {
             return std::nullopt;
         }
         return from_property_value<value_type>(*optional_value);
