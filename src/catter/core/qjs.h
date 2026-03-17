@@ -68,8 +68,13 @@ struct object_trans;
  */
 class Exception : public std::exception {
 public:
-    Exception(const std::string& details) :
-        details(std::format("{}\n{}", details, cpptrace::generate_trace().to_string())) {}
+    Exception(const std::string& details) : details(details) {}
+
+    Exception(std::string&& details) : details(std::move(details)) {}
+
+    template <typename... Args>
+    Exception(std::format_string<Args...> fmt, Args&&... args) :
+        Exception(std::format(fmt, std::forward<Args>(args)...)) {}
 
     const char* what() const noexcept override {
         return details.c_str();
@@ -1375,8 +1380,7 @@ public:
             Value{this->ctx, func.value()}
         });
         if(JS_AddModuleExport(this->ctx, m, name.c_str()) < 0) {
-            throw std::runtime_error(
-                std::format("Failed to add export '{}' to module '{}'", name, this->name));
+            throw qjs::Exception("Failed to add export '{}' to module '{}'", name, this->name);
         }
         return *this;
     }
@@ -1387,8 +1391,7 @@ public:
             Value{this->ctx, JS_NewCFunction(this->ctx, func, name.c_str(), argc)}
         });
         if(JS_AddModuleExport(this->ctx, m, name.c_str()) < 0) {
-            throw std::runtime_error(
-                std::format("Failed to add export '{}' to module '{}'", name, this->name));
+            throw qjs::Exception("Failed to add export '{}' to module '{}'", name, this->name);
         }
         return *this;
     }
@@ -1459,7 +1462,7 @@ public:
                     return 0;
                 });
             if(m == nullptr) {
-                throw std::runtime_error("Failed to create new C module");
+                throw qjs::Exception("Failed to create new C module");
             }
 
             return this->raw->modules.emplace(name, CModule(this->js_context(), m, name))
@@ -1554,7 +1557,7 @@ public:
     static Runtime create() {
         auto js_rt = JS_NewRuntime();
         if(!js_rt) {
-            throw std::runtime_error("Failed to create new JS runtime");
+            throw qjs::Exception("Failed to create new JS runtime");
         }
         return Runtime(js_rt);
     }
@@ -1567,7 +1570,7 @@ public:
         } else {
             auto js_ctx = JS_NewContext(this->js_runtime());
             if(!js_ctx) {
-                throw std::runtime_error("Failed to create new JS context");
+                throw qjs::Exception("Failed to create new JS context");
             }
             return this->raw->ctxs.emplace(name, Context(js_ctx)).first->second;
         }
