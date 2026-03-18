@@ -506,7 +506,7 @@ TEST_SUITE(qjs_tests) {
             EXPECT_TRUE(error.name() == "TypeError");
             EXPECT_TRUE(error.message() == "boom");
             EXPECT_TRUE(error.stack().contains("<eval>:1:4"));
-            EXPECT_TRUE(error.to_string().contains("Stack Trace:"));
+            EXPECT_TRUE(error.format().contains("Stack Trace:"));
 
             auto parsed = qjs::json::parse(R"({"number":1,"text":"ok"})", ctx).as<qjs::Object>();
             auto dumped = qjs::json::stringify(parsed);

@@ -457,7 +457,7 @@ public:
         return this->get_property("name").as<std::string>();
     }
 
-    std::string to_string() const {
+    std::string format() const {
         return std::format("{}: {}\nStack Trace:\n{}",
                            this->name(),
                            this->message(),
@@ -465,7 +465,7 @@ public:
     }
 };
 
-inline JSException::JSException(const Error& error) : Exception(error.to_string()) {}
+inline JSException::JSException(const Error& error) : Exception(error.format()) {}
 
 inline JSException JSException::dump(JSContext* ctx) {
     return JSException(Error(ctx, JS_GetException(ctx)));
