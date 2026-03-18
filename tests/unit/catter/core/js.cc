@@ -197,9 +197,9 @@ TEST_SUITE(js_tests) {
             } catch(const catter::qjs::Exception& ex) {
                 caught = true;
                 std::string message = ex.what();
-                EXPECT_TRUE(message.find("Error Message: async boom") != std::string::npos);
-                EXPECT_TRUE(message.find("Stack Trace:") != std::string::npos);
-                EXPECT_TRUE(message.find("reject.js") != std::string::npos);
+                EXPECT_TRUE(message.contains("async boom"));
+                EXPECT_TRUE(message.contains("Stack Trace:"));
+                EXPECT_TRUE(message.contains("reject.js"));
             }
 
             EXPECT_TRUE(caught);

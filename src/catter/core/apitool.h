@@ -80,20 +80,20 @@ static R invoke_with_log(const std::string& args_s, CallArgs&&... call_args) {
     try {
         if constexpr(std::is_void_v<R>) {
             V(std::forward<CallArgs>(call_args)...);
-            LOG_INFO("Invoke C API [{}]:\n    -> args = {}\n    -> ret = <void>",
+            LOG_INFO("Invoke C API `{}`:\n    -> args = {}\n    -> ret = <void>",
                      capi_name<V>(),
                      args_s);
             return;
         } else {
             auto ret = V(std::forward<CallArgs>(call_args)...);
-            LOG_INFO("Invoke C API [{}]:\n    -> args = {}\n    -> ret = {}",
+            LOG_INFO("Invoke C API `{}`:\n    -> args = {}\n    -> ret = {}",
                      capi_name<V>(),
                      args_s,
                      serialize_value(ret));
             return ret;
         }
     } catch(const std::exception& e) {
-        LOG_INFO("Invoke C API [{}]:\n    -> args = {}\n    -> throw = {}",
+        LOG_INFO("Invoke C API `{}`:\n    -> args = {}\n    -> throw = {}",
                  capi_name<V>(),
                  args_s,
                  e.what());
