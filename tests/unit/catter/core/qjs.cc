@@ -493,6 +493,41 @@ TEST_SUITE(qjs_tests) {
                                         "Value is not a number"));
     };
 
+    TEST_CASE(error_and_json_helpers_cover_metadata_stringify_and_invalid_variadic_args) {
+        auto f = [&]() {
+            auto runtime = qjs::Runtime::create();
+            auto& ctx = runtime.context();
+
+            auto error = ctx.eval("new TypeError('boom')", "<eval>", eval_flags)
+                             .as<qjs::Object>()
+                             .as<qjs::Error>();
+
+            EXPECT_TRUE(error.name() == "TypeError");
+            EXPECT_TRUE(error.message() == "boom");
+            EXPECT_TRUE(error.stack().contains("<eval>:1:4"));
+            EXPECT_TRUE(error.format().contains("Stack Trace:"));
+
+            auto parsed = qjs::json::parse(R"({"number":1,"text":"ok"})", ctx).as<qjs::Object>();
+            auto dumped = qjs::json::stringify(parsed);
+            EXPECT_TRUE(dumped.contains(R"("number":1)"));
+            EXPECT_TRUE(dumped.contains(R"("text":"ok")"));
+
+            auto cyclic =
+                ctx.eval("const x = {}; x.self = x; x;", "<eval>", eval_flags).as<qjs::Object>();
+            EXPECT_TRUE(
+                throws_with_message([&]() { (void)qjs::json::stringify(cyclic); }, "TypeError"));
+
+            auto count_args = qjs::Function<int64_t(qjs::Parameters)>::from(
+                ctx.js_context(),
+                [](qjs::Parameters args) { return static_cast<int64_t>(args.size()); });
+            qjs::Parameters invalid_args{};
+            invalid_args.emplace_back();
+            EXPECT_TRUE(
+                throws_with_message([&]() { (void)count_args(invalid_args); }, "invalid value"));
+        };
+        EXPECT_NOTHROWS(f());
+    };
+
     TEST_CASE(object_register_reuses_class_id_per_runtime_and_separates_runtimes) {
         auto runtime_a = qjs::Runtime::create();
         auto& ctx_a = runtime_a.context();

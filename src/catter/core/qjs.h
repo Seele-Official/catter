@@ -59,33 +59,6 @@ struct value_trans;
 
 template <typename U>
 struct object_trans;
-
-inline std::string dump(JSContext* ctx) {
-    JSValue exception_val = JS_GetException(ctx);
-
-    // Get the error name
-    JSValue name = JS_GetPropertyStr(ctx, exception_val, "name");
-    const char* error_name = JS_ToCString(ctx, name);
-
-    // Get the stack trace
-    JSValue stack = JS_GetPropertyStr(ctx, exception_val, "stack");
-    const char* stack_str = JS_ToCString(ctx, stack);
-
-    // Get the message
-    const char* msg = JS_ToCString(ctx, exception_val);
-    std::string result = std::format("Error Name: {}\nMessage: {}\nStack Trace:\n{}",
-                                     error_name ? error_name : "Unknown",
-                                     msg ? msg : "No message",
-                                     stack_str ? stack_str : "No stack trace");
-
-    JS_FreeCString(ctx, error_name);
-    JS_FreeCString(ctx, stack_str);
-    JS_FreeCString(ctx, msg);
-    JS_FreeValue(ctx, name);
-    JS_FreeValue(ctx, stack);
-    JS_FreeValue(ctx, exception_val);
-    return result;
-}
 }  // namespace detail
 
 /**
@@ -95,8 +68,13 @@ inline std::string dump(JSContext* ctx) {
  */
 class Exception : public std::exception {
 public:
-    Exception(const std::string& details) :
-        details(std::format("{}\n{}", details, cpptrace::generate_trace().to_string())) {}
+    Exception(const std::string& details) : details(details) {}
+
+    Exception(std::string&& details) : details(std::move(details)) {}
+
+    template <typename... Args>
+    Exception(std::format_string<Args...> fmt, Args&&... args) :
+        Exception(std::format(fmt, std::forward<Args>(args)...)) {}
 
     const char* what() const noexcept override {
         return details.c_str();
@@ -106,9 +84,17 @@ private:
     std::string details;
 };
 
-class TypeError : public Exception {
+class TypeException : public Exception {
 public:
-    TypeError(const std::string& details) : Exception(std::format("TypeError: {}", details)) {}
+    TypeException(const std::string& details) : Exception(std::format("TypeError: {}", details)) {}
+};
+
+class Error;
+
+class JSException : public Exception {
+public:
+    inline JSException(const Error& error);
+    inline static JSException dump(JSContext* ctx);
 };
 
 /**
@@ -319,7 +305,7 @@ public:
         auto ret = Value{this->context(),
                          JS_GetPropertyStr(this->context(), this->value(), prop_name.c_str())};
         if(ret.is_exception()) {
-            throw qjs::Exception(detail::dump(this->context()));
+            throw qjs::JSException::dump(this->context());
         }
         return ret;
     }
@@ -341,15 +327,15 @@ public:
      * @return std::optional<Value>
      */
     std::optional<Value> get_optional_property(const std::string& prop_name) const noexcept {
-        auto ret = Value{this->context(),
-                         JS_GetPropertyStr(this->context(), this->value(), prop_name.c_str())};
-        if(ret.is_exception()) {
-            detail::dump(this->context());
-            return std::nullopt;
-        } else if(ret.is_undefined()) {
+        try {
+            if(auto ret = get_property(prop_name); ret.is_undefined()) {
+                return std::nullopt;
+            } else {
+                return ret;
+            }
+        } catch(const qjs::Exception&) {
             return std::nullopt;
         }
-        return ret;
     }
 
     /**
@@ -367,7 +353,7 @@ public:
             JSValue js_val = JS_DupValue(this->context(), val);
             int ret = JS_SetPropertyStr(this->context(), this->value(), prop_name.c_str(), js_val);
             if(ret < 0) {
-                throw qjs::Exception(detail::dump(this->context()));
+                throw qjs::JSException::dump(this->context());
             }
         } else if constexpr(requires {
                                 { val.value() } -> std::convertible_to<JSValue>;
@@ -375,7 +361,7 @@ public:
             JSValue js_val = JS_DupValue(this->context(), val.value());
             int ret = JS_SetPropertyStr(this->context(), this->value(), prop_name.c_str(), js_val);
             if(ret < 0) {
-                throw qjs::Exception(detail::dump(this->context()));
+                throw qjs::JSException::dump(this->context());
             }
         } else {
             auto js_val = Value::from<std::remove_cv_t<T>>(this->context(), std::forward<T>(val));
@@ -384,7 +370,7 @@ public:
                                         prop_name.c_str(),
                                         js_val.release());
             if(ret < 0) {
-                throw qjs::Exception(detail::dump(this->context()));
+                throw qjs::JSException::dump(this->context());
             }
         }
     }
@@ -439,6 +425,51 @@ public:
         return Object{ctx, JS_NewObject(ctx)};
     }
 };
+
+class Error : protected Object {
+public:
+    using Object::Object;
+    using Object::is_valid;
+    using Object::value;
+    using Object::context;
+    using Object::operator bool;
+    using Object::release;
+
+    Error(JSContext* ctx, const JSValue& val) : Object(ctx, val) {}
+
+    Error(JSContext* ctx, JSValue&& val) : Object(ctx, std::move(val)) {}
+
+    Error(const Error&) = default;
+    Error(Error&& other) = default;
+    Error& operator= (const Error&) = default;
+    Error& operator= (Error&& other) = default;
+    ~Error() = default;
+
+    std::string message() const {
+        return this->get_property("message").as<std::string>();
+    }
+
+    std::string stack() const {
+        return this->get_property("stack").as<std::string>();
+    }
+
+    std::string name() const {
+        return this->get_property("name").as<std::string>();
+    }
+
+    std::string format() const {
+        return std::format("{}: {}\nStack Trace:\n{}",
+                           this->name(),
+                           this->message(),
+                           this->stack());
+    }
+};
+
+inline JSException::JSException(const Error& error) : Exception(error.format()) {}
+
+inline JSException JSException::dump(JSContext* ctx) {
+    return JSException(Error(ctx, JS_GetException(ctx)));
+}
 
 /**
  * @brief A typed wrapper for JavaScript functions.
@@ -592,7 +623,7 @@ public:
         }
 
         if(value.is_exception()) {
-            throw qjs::Exception(detail::dump(this->context()));
+            throw qjs::JSException::dump(this->context());
         }
 
         if constexpr(std::is_void_v<R>) {
@@ -788,7 +819,7 @@ public:
 
         for(const auto& arg: args) {
             if(!arg.is_valid()) {
-                throw TypeError("Function argument contains an invalid value");
+                throw TypeException("Function argument contains an invalid value");
             }
             argv.push_back(JS_DupValue(this->context(), arg.value()));
         }
@@ -801,7 +832,7 @@ public:
         }
 
         if(value.is_exception()) {
-            throw qjs::Exception(detail::dump(this->context()));
+            throw qjs::JSException::dump(this->context());
         }
 
         if constexpr(std::is_void_v<R>) {
@@ -902,7 +933,7 @@ public:
     uint32_t length() const {
         qjs::Value len_val = this->get_property("length");
         if(len_val.is_exception()) {
-            throw qjs::Exception(detail::dump(this->context()));
+            throw qjs::JSException::dump(this->context());
         }
         return len_val.as<uint32_t>();
     }
@@ -911,7 +942,7 @@ public:
         auto val = catter::qjs::Value{this->context(),
                                       JS_GetPropertyUint32(this->context(), this->value(), index)};
         if(val.is_exception()) {
-            throw qjs::TypeError(detail::dump(this->context()));
+            throw qjs::JSException::dump(this->context());
         }
         return val.as<T>();
     }
@@ -919,7 +950,7 @@ public:
     std::optional<T> get(uint32_t index) const noexcept {
         try {
             return this->operator[] (index);
-        } catch(const qjs::TypeError&) {
+        } catch(const qjs::TypeException&) {
             return std::nullopt;
         }
     }
@@ -930,7 +961,7 @@ public:
         uint32_t len = this->length();
         auto res = JS_SetPropertyUint32(this->context(), this->value(), len, js_val.release());
         if(res < 0) {
-            throw qjs::TypeError(detail::dump(this->context()));
+            throw qjs::JSException::dump(this->context());
         }
     }
 
@@ -970,7 +1001,7 @@ public:
                     result.push_back(arr[i]);
                 }
                 return result;
-            } catch(const qjs::TypeError&) {
+            } catch(const qjs::TypeException&) {
                 return std::nullopt;
             }
         }
@@ -1000,7 +1031,7 @@ struct value_trans<bool> {
 
     static bool as(const Value& val) {
         if(!JS_IsBool(val.value())) {
-            throw TypeError("Value is not a boolean");
+            throw TypeException("Value is not a boolean");
         }
         return JS_ToBool(val.context(), val.value());
     }
@@ -1008,7 +1039,7 @@ struct value_trans<bool> {
     static std::optional<bool> to(const Value& val) noexcept {
         try {
             return as(val);
-        } catch(const TypeError&) {
+        } catch(const TypeException&) {
             return std::nullopt;
         }
     }
@@ -1029,19 +1060,19 @@ struct value_trans<Num> {
 
     static Num as(const Value& val) {
         if(!JS_IsNumber(val.value())) {
-            throw TypeError("Value is not a number");
+            throw TypeException("Value is not a number");
         }
         if constexpr(std::is_unsigned_v<Num>) {
             if constexpr(sizeof(Num) <= sizeof(uint32_t)) {
                 uint32_t temp;
                 if(JS_ToUint32(val.context(), &temp, val.value()) < 0) {
-                    throw TypeError("Failed to convert value to uint32_t");
+                    throw TypeException("Failed to convert value to uint32_t");
                 }
                 return static_cast<Num>(temp);
             } else {
                 uint64_t temp;
                 if(JS_ToIndex(val.context(), &temp, val.value()) < 0) {
-                    throw TypeError("Failed to convert value to uint32_t");
+                    throw TypeException("Failed to convert value to uint32_t");
                 }
                 return static_cast<Num>(temp);
             }
@@ -1049,13 +1080,13 @@ struct value_trans<Num> {
             if constexpr(sizeof(Num) <= sizeof(int32_t)) {
                 int32_t temp;
                 if(JS_ToInt32(val.context(), &temp, val.value()) < 0) {
-                    throw TypeError("Failed to convert value to uint32_t");
+                    throw TypeException("Failed to convert value to uint32_t");
                 }
                 return static_cast<Num>(temp);
             } else {
                 int64_t temp;
                 if(JS_ToInt64(val.context(), &temp, val.value()) < 0) {
-                    throw TypeError("Failed to convert value to int64_t");
+                    throw TypeException("Failed to convert value to int64_t");
                 }
                 return static_cast<Num>(temp);
             }
@@ -1068,7 +1099,7 @@ struct value_trans<Num> {
     static std::optional<Num> to(const Value& val) noexcept {
         try {
             return as(val);
-        } catch(const TypeError&) {
+        } catch(const TypeException&) {
             return std::nullopt;
         }
     }
@@ -1082,12 +1113,12 @@ struct value_trans<std::string> {
 
     static std::string as(const Value& val) {
         if(!JS_IsString(val.value())) {
-            throw TypeError("Value is not a string");
+            throw TypeException("Value is not a string");
         }
         size_t len;
         const char* str = JS_ToCStringLen(val.context(), &len, val.value());
         if(str == nullptr) {
-            throw TypeError("Failed to convert value to string");
+            throw TypeException("Failed to convert value to string");
         }
         std::string result{str, len};
         JS_FreeCString(val.context(), str);
@@ -1097,7 +1128,7 @@ struct value_trans<std::string> {
     static std::optional<std::string> to(const Value& val) noexcept {
         try {
             return as(val);
-        } catch(const TypeError&) {
+        } catch(const TypeException&) {
             return std::nullopt;
         }
     }
@@ -1116,7 +1147,7 @@ struct value_trans<Object> {
 
     static Object as(const Value& val) {
         if(!JS_IsObject(val.value())) {
-            throw TypeError("Value is not an object");
+            throw TypeException("Value is not an object");
         }
         return Object{val.context(), val.value()};
     }
@@ -1124,7 +1155,31 @@ struct value_trans<Object> {
     static std::optional<Object> to(const Value& val) noexcept {
         try {
             return as(val);
-        } catch(const TypeError&) {
+        } catch(const TypeException&) {
+            return std::nullopt;
+        }
+    }
+};
+
+template <>
+struct value_trans<Error> {
+    static Value from(const Error& value) noexcept {
+        return Value{value.context(), value.value()};
+    }
+
+    static Value from(Error&& value) noexcept {
+        auto ctx = value.context();
+        return Value{ctx, value.release()};
+    }
+
+    static Error as(const Value& val) {
+        return val.as<Object>().as<Error>();
+    }
+
+    static std::optional<Error> to(const Value& val) noexcept {
+        try {
+            return as(val);
+        } catch(const TypeException&) {
             return std::nullopt;
         }
     }
@@ -1148,7 +1203,7 @@ struct value_trans<Array<T>> {
     static std::optional<Array<T>> to(const Value& val) noexcept {
         try {
             return as(val);
-        } catch(const TypeError&) {
+        } catch(const TypeException&) {
             return std::nullopt;
         }
     }
@@ -1174,7 +1229,34 @@ struct value_trans<Function<R(Args...)>> {
     static std::optional<FuncType> to(const Value& val) noexcept {
         try {
             return as(val);
-        } catch(const TypeError&) {
+        } catch(const TypeException&) {
+            return std::nullopt;
+        }
+    }
+};
+
+template <>
+struct object_trans<Error> {
+    static Object from(const Error& value) noexcept {
+        return Object{value.context(), value.value()};
+    }
+
+    static Object from(Error&& value) noexcept {
+        auto ctx = value.context();
+        return Object{ctx, value.release()};
+    }
+
+    static Error as(const Object& obj) {
+        if(!JS_IsError(obj.value())) {
+            throw TypeException("Object is not an error");
+        }
+        return Error{obj.context(), obj.value()};
+    }
+
+    static std::optional<Error> to(const Object& obj) noexcept {
+        try {
+            return as(obj);
+        } catch(const TypeException&) {
             return std::nullopt;
         }
     }
@@ -1195,7 +1277,7 @@ struct object_trans<Array<T>> {
 
     static ArrTy as(const Object& obj) {
         if(!JS_IsArray(obj.value())) {
-            throw TypeError("Object is not an array");
+            throw TypeException("Object is not an array");
         }
         return ArrTy{obj.context(), obj.value()};
     }
@@ -1203,7 +1285,7 @@ struct object_trans<Array<T>> {
     static std::optional<ArrTy> to(const Object& obj) noexcept {
         try {
             return as(obj);
-        } catch(const TypeError&) {
+        } catch(const TypeException&) {
             return std::nullopt;
         }
     }
@@ -1224,11 +1306,11 @@ struct object_trans<Function<R(Args...)>> {
 
     static FuncType as(const Object& obj) {
         if(!JS_IsFunction(obj.context(), obj.value())) {
-            throw TypeError("Object is not a function");
+            throw TypeException("Object is not a function");
         }
 
         if(obj.get_property("length").as<int64_t>() != sizeof...(Args)) {
-            throw TypeError("Function has incorrect number of arguments");
+            throw TypeException("Function has incorrect number of arguments");
         }
 
         return FuncType{obj.context(), obj.value()};
@@ -1237,7 +1319,7 @@ struct object_trans<Function<R(Args...)>> {
     static std::optional<FuncType> to(const Object& val) noexcept {
         try {
             return as(val);
-        } catch(const TypeError&) {
+        } catch(const TypeException&) {
             return std::nullopt;
         }
     }
@@ -1258,7 +1340,7 @@ struct object_trans<Function<R(Parameters)>> {
 
     static FuncType as(const Object& obj) {
         if(!JS_IsFunction(obj.context(), obj.value())) {
-            throw TypeError("Object is not a function");
+            throw TypeException("Object is not a function");
         }
 
         return FuncType{obj.context(), obj.value()};
@@ -1267,7 +1349,7 @@ struct object_trans<Function<R(Parameters)>> {
     static std::optional<FuncType> to(const Object& val) noexcept {
         try {
             return as(val);
-        } catch(const TypeError&) {
+        } catch(const TypeException&) {
             return std::nullopt;
         }
     }
@@ -1298,8 +1380,7 @@ public:
             Value{this->ctx, func.value()}
         });
         if(JS_AddModuleExport(this->ctx, m, name.c_str()) < 0) {
-            throw std::runtime_error(
-                std::format("Failed to add export '{}' to module '{}'", name, this->name));
+            throw qjs::Exception("Failed to add export '{}' to module '{}'", name, this->name);
         }
         return *this;
     }
@@ -1310,8 +1391,7 @@ public:
             Value{this->ctx, JS_NewCFunction(this->ctx, func, name.c_str(), argc)}
         });
         if(JS_AddModuleExport(this->ctx, m, name.c_str()) < 0) {
-            throw std::runtime_error(
-                std::format("Failed to add export '{}' to module '{}'", name, this->name));
+            throw qjs::Exception("Failed to add export '{}' to module '{}'", name, this->name);
         }
         return *this;
     }
@@ -1382,7 +1462,7 @@ public:
                     return 0;
                 });
             if(m == nullptr) {
-                throw std::runtime_error("Failed to create new C module");
+                throw qjs::Exception("Failed to create new C module");
             }
 
             return this->raw->modules.emplace(name, CModule(this->js_context(), m, name))
@@ -1395,7 +1475,7 @@ public:
 
         if(this->has_exception()) {
             JS_FreeValue(this->js_context(), val);
-            throw qjs::Exception(detail::dump(this->js_context()));
+            throw qjs::JSException::dump(this->js_context());
         }
         return Value{this->js_context(), std::move(val)};
     }
@@ -1477,7 +1557,7 @@ public:
     static Runtime create() {
         auto js_rt = JS_NewRuntime();
         if(!js_rt) {
-            throw std::runtime_error("Failed to create new JS runtime");
+            throw qjs::Exception("Failed to create new JS runtime");
         }
         return Runtime(js_rt);
     }
@@ -1490,7 +1570,7 @@ public:
         } else {
             auto js_ctx = JS_NewContext(this->js_runtime());
             if(!js_ctx) {
-                throw std::runtime_error("Failed to create new JS context");
+                throw qjs::Exception("Failed to create new JS context");
             }
             return this->raw->ctxs.emplace(name, Context(js_ctx)).first->second;
         }
@@ -1546,7 +1626,7 @@ std::string stringify(T&& v) {
     auto val = v.value();
     auto json_str_val = qjs::Value{ctx, JS_JSONStringify(ctx, val, JS_UNDEFINED, JS_UNDEFINED)};
     if(json_str_val.is_exception()) {
-        throw qjs::Exception(detail::dump(ctx));
+        throw qjs::JSException::dump(ctx);
     }
 
     const char* json_cstr = JS_ToCString(ctx, json_str_val.value());
@@ -1555,7 +1635,7 @@ std::string stringify(T&& v) {
         JS_FreeCString(ctx, json_cstr);
         return result;
     }
-    throw qjs::Exception("Failed to stringify value");
+    throw qjs::TypeException("Failed to convert value to JSON string");
 };  // namespace json
 
 inline qjs::Value parse(const std::string& json_str, const Context& ctx) {
@@ -1565,7 +1645,7 @@ inline qjs::Value parse(const std::string& json_str, const Context& ctx) {
         JS_ParseJSON(ctx.js_context(), json_str.data(), json_str.size(), "<json input>")};
 
     if(ret.is_exception()) {
-        throw qjs::Exception(detail::dump(ctx.js_context()));
+        throw qjs::JSException::dump(ctx.js_context());
     }
     return ret;
 }

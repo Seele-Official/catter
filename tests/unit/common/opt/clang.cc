@@ -93,29 +93,24 @@ TEST_SUITE(clang_option_table_tests) {
         EXPECT_EQ(parsed.args[2].option_id.id(), opt::clang::ID_INPUT);
         EXPECT_EQ(parsed.args[2].get_spelling_view(), "-dash.cc");
     };
+    TEST_CASE(parse_unknown_and_missing_value) {
 
-    TEST_CASE(parse_unknown_and_missing_value){
-        {const auto argv =
-             std::to_array<std::string>({"clang++", "--definitely-not-a-real-clang-flag"});
+        {
+            const auto argv =
+                std::to_array<std::string>({"clang++", "--definitely-not-a-real-clang-flag"});
+            auto parsed = parse_command(argv);
+            EXPECT_TRUE(parsed.errors.empty());
+            ASSERT_EQ(parsed.args.size(), 1U);
+            EXPECT_EQ(parsed.args[0].option_id.id(), opt::clang::ID_UNKNOWN);
+            EXPECT_EQ(parsed.args[0].get_spelling_view(), "--definitely-not-a-real-clang-flag");
+        };
 
-    auto parsed = parse_command(argv);
-
-    EXPECT_TRUE(parsed.errors.empty());
-    ASSERT_EQ(parsed.args.size(), 1U);
-    EXPECT_EQ(parsed.args[0].option_id.id(), opt::clang::ID_UNKNOWN);
-    EXPECT_EQ(parsed.args[0].get_spelling_view(), "--definitely-not-a-real-clang-flag");
-}
-
-{
-    const auto argv = std::to_array<std::string>({"clang++", "-o"});
-
-    auto parsed = parse_command(argv);
-
-    EXPECT_TRUE(parsed.args.empty());
-    ASSERT_EQ(parsed.errors.size(), 1U);
-    EXPECT_TRUE(parsed.errors[0].contains("missing argument value"));
-}
-}
-;
-}
-;
+        {
+            const auto argv = std::to_array<std::string>({"clang++", "-o"});
+            auto parsed = parse_command(argv);
+            EXPECT_TRUE(parsed.args.empty());
+            ASSERT_EQ(parsed.errors.size(), 1U);
+            EXPECT_TRUE(parsed.errors[0].contains("missing argument value"));
+        };
+    }
+};

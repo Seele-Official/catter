@@ -1,4 +1,4 @@
-import { option } from "../index.js";
+import * as option from "../option/index.js";
 import { ClangID } from "../option/clang.js";
 
 /**
