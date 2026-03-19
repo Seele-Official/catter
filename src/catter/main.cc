@@ -8,6 +8,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <fstream>
 
 #include <eventide/async/async.h>
 #include <eventide/reflection/name.h>
@@ -20,7 +21,6 @@
 #include "ipc.h"
 #include "qjs.h"
 #include "session.h"
-#include "util/crossplat.h"
 #include "util/data.h"
 #include "util/log.h"
 
@@ -144,11 +144,24 @@ Config parse_config(const core::Option::CatterOption& opt) {
 }
 
 void inject(const Config& config) {
-    std::string_view script = R"(
+    if(config.script_path == "script::cdb") {
+        std::string_view script = R"(
     import { scripts, service } from "catter";
     service.register(new scripts.CDB("cdb.json"));
     )";
-    js::run_js_file(script, config.script_path);
+        js::run_js_file(script, config.script_path);
+    } else {
+        std::ifstream ifs{config.script_path};
+        if(!ifs.good()) {
+            throw std::runtime_error(
+                std::format("Failed to open script file: {}", config.script_path));
+        }
+
+        std::string content((std::istreambuf_iterator<char>(ifs)),
+                            std::istreambuf_iterator<char>());
+        catter::js::run_js_file(content, config.script_path);
+    }
+
     js::on_start({
         .scriptPath = config.script_path,
         .scriptArgs = {},
@@ -183,7 +196,6 @@ void dispatch(const core::Option::CatterOption& opt) {
     }
 }
 
-// catter -m inject -s ./test.js -- make -j8
 int main(int argc, char* argv[]) {
     auto args = deco::util::argvify(argc, argv, 1);
 
