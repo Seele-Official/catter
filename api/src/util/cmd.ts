@@ -27,15 +27,11 @@ export function nvcc2clang(args: string[]): string | string[] {
 export const CompilerKind = [
   "gcc",
   "clang",
-  "msvc",
+  "flang",
+  "ifort",
+  "crayftn",
   "nvcc",
-  "dlltool",
-  "llvm-lib",
-  "lld-coff",
-  "lld-elf",
-  "lld-macho",
-  "lld-mingw",
-  "lld-wasm",
+  "wrapper",
   "unknown",
 ] as const;
 
