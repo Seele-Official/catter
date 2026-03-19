@@ -206,8 +206,8 @@ export function onExecution(
  * ```
  */
 export function register(service: CatterService): void {
-  onStart(service.onStart);
-  onFinish(service.onFinish);
-  onCommand(service.onCommand);
-  onExecution(service.onExecution);
+  onStart(service.onStart.bind(service));
+  onFinish(service.onFinish.bind(service));
+  onCommand(service.onCommand.bind(service));
+  onExecution(service.onExecution.bind(service));
 }

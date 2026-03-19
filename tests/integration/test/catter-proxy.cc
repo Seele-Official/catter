@@ -90,23 +90,14 @@ public:
     data::ipcid_t id;
 };
 
-class SessionImpl : public Session {
-public:
-    bool start(data::ServiceMode mode) override {
-        std::println("Session started.");
-        return true;
-    }
-
-    void finish(int64_t code) override {
-        std::println("Session finished with code: {}", code);
-    }
-};
-
 int main(int argc, char* argv[]) {
     // catter::log::mute_logger();
     try {
-        SessionImpl session;
-        session.run({"echo", "Hello, World!"}, ServiceImpl::Factory{});
+        Session session;
+        std::println("Session started.");
+        auto ret = session.run({"echo", "Hello, World!"}, ServiceImpl::Factory{});
+        std::println("Session finished with code: {}", ret);
+        return 0;
     } catch(const std::exception& ex) {
         std::println("Fatal error: {}", ex.what());
         return 1;
