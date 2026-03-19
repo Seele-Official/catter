@@ -131,7 +131,7 @@ void dispatch(const core::Option::CatterOption& opt) {
         config.runtime = catter_runtime_map.at(config.mode);
         std::string_view script = R"(
         import { scripts, service } from "catter";
-        service.register(new scripts.CDB());
+        service.register(new scripts.CDB("cdb.json"));
         )";
         js::run_js_file(script, config.script_path);
     } else {

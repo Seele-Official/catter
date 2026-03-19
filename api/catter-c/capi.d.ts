@@ -304,3 +304,15 @@ export function option_parse(
   args: string[],
   cb: (parseRes: string | OptionItem) => boolean,
 ): void;
+
+export type Compiler =
+  | "gcc"
+  | "clang"
+  | "flang"
+  | "ifort"
+  | "crayftn"
+  | "nvcc"
+  | "wrapper"
+  | "unknown";
+
+export function identify_compiler(compiler_name: string): Compiler;

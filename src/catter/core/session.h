@@ -50,11 +50,11 @@ public:
         requires ServiceFactoryLike<ServiceFactoryType>
     int64_t run(const std::vector<std::string>& shell, ServiceFactoryType&& factory) {
 #ifndef _WIN32
-        if(std::filesystem::exists(config::ipc::PIPE_NAME)) {
-            std::filesystem::remove(config::ipc::PIPE_NAME);
+        if(std::filesystem::exists(config::ipc::pipe_name())) {
+            std::filesystem::remove(config::ipc::pipe_name());
         }
 #endif
-        auto acc_ret = eventide::pipe::listen(config::ipc::PIPE_NAME,
+        auto acc_ret = eventide::pipe::listen(config::ipc::pipe_name(),
                                               eventide::pipe::options(),
                                               default_loop());
 

@@ -45,9 +45,9 @@ struct Option {
 
         DecoFlag(names = {"-h", "--help"}, help = "show this help message")
         help;
-    };    
-    
-    
+    };
+
+
     DECO_CFG(category = CatterOption::category_info)
     CatterOption proxy_opt;
 
@@ -56,4 +56,4 @@ struct Option {
 };
 
 // clang-format on
-}  // namespace catter::proxy
+}  // namespace catter::core

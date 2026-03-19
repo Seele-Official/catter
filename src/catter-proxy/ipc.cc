@@ -19,7 +19,7 @@ using namespace data;
 class Impl {
 public:
     Impl() noexcept {
-        auto ret = wait(eventide::pipe::connect(config::ipc::PIPE_NAME,
+        auto ret = wait(eventide::pipe::connect(config::ipc::pipe_name(),
                                                 eventide::pipe::options(),
                                                 default_loop()));
         if(!ret) {
