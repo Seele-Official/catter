@@ -27,6 +27,13 @@ struct Option {
             required = true
         ) <std::string> mode;
 
+        DecoKV(
+            names = {"-d", "--dir"},
+            meta_var = "<Working Directory>",
+            help = "working directory for the target program, default to current directory",
+            required = false
+        ) <std::string> working_dir;
+
         DecoPack(
             meta_var = "<Args>",
             help = "build system arguments for the executable, must be after a '--'",
@@ -49,7 +56,7 @@ struct Option {
 
 
     DECO_CFG(category = CatterOption::category_info)
-    CatterOption proxy_opt;
+    CatterOption main_opt;
 
     DECO_CFG(category = HelpOpt::category_info)
     HelpOpt help_opt;

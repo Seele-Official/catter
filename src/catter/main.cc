@@ -1,17 +1,18 @@
+#include <cstdint>
+#include <filesystem>
 #include <iostream>
 #include <print>
-#include <ranges>
-#include <algorithm>
 #include <cassert>
 #include <format>
 #include <print>
+#include <string>
+#include <string_view>
+#include <unordered_map>
 
 #include <eventide/async/async.h>
 #include <eventide/reflection/name.h>
 #include <eventide/deco/runtime.h>
-#include <sstream>
-#include <string_view>
-#include <unordered_map>
+
 #include "capi/type.h"
 #include "opt/main/option.h"
 
@@ -24,16 +25,6 @@
 #include "util/log.h"
 
 using namespace catter;
-
-static std::unordered_map<data::ServiceMode, js::CatterRuntime> catter_runtime_map = {
-    {data::ServiceMode::INJECT,
-     js::CatterRuntime{
-         .supportActions = {js::ActionType::drop, js::ActionType::skip, js::ActionType::modify},
-         .supportEvents = {js::EventType::finish},
-         .type = js::CatterRuntime::Type::inject,
-         .supportParentId = true,
-     }},
-};
 
 class ServiceImpl : public ipc::InjectService {
 public:
@@ -52,6 +43,7 @@ public:
                                       .exe = cmd.executable,
                                       .argv = cmd.args,
                                       .env = cmd.env,
+                                      //   .runtime =
                                       .parent = this->parent_id,
                                   });
 
@@ -89,10 +81,7 @@ public:
     }
 
     void report_error(data::ipcid_t parent_id, std::string error_msg) override {
-        std::println("[{}] Error reported for command with parent id {} : {}",
-                     this->id,
-                     parent_id,
-                     error_msg);
+        js::on_command(id, js::CatterErr{.msg = error_msg});
     }
 
     struct Factory {
@@ -106,16 +95,33 @@ private:
     data::ipcid_t parent_id = 0;
 };
 
-void dispatch(const core::Option::CatterOption& opt) {
-    log::mute_logger();
+struct Config {
+    bool log;
+    ipc::ServiceMode mode;
+    std::string script_path;
+    std::vector<std::string> script_args;
+    std::vector<std::string> build_system_command;
+    std::filesystem::path working_dir;
+    js::CatterRuntime runtime;
+};
 
-    struct Config {
-        bool log;
+Config parse_config(const core::Option::CatterOption& opt) {
+    struct mode_meta {
         ipc::ServiceMode mode;
-        std::string script_path;
-        std::vector<std::string> script_args;
-        std::vector<std::string> build_system_command;
         js::CatterRuntime runtime;
+    };
+
+    static std::unordered_map<std::string_view, mode_meta> mode_map = {
+        {"inject",
+         {.mode = ipc::ServiceMode::INJECT,
+          .runtime = {
+              .supportActions = {js::ActionType::drop,
+                                 js::ActionType::skip,
+                                 js::ActionType::modify},
+              .supportEvents = {js::EventType::finish},
+              .type = js::CatterRuntime::Type::inject,
+              .supportParentId = true,
+          }}}
     };
 
     Config config{
@@ -123,21 +129,26 @@ void dispatch(const core::Option::CatterOption& opt) {
         .script_path = *opt.script_path,
         .script_args = {},
         .build_system_command = *opt.args,
+        .working_dir = opt.working_dir.value.has_value()
+                           ? std::filesystem::absolute(*opt.working_dir)
+                           : std::filesystem::current_path(),
     };
-    js::init_qjs({.pwd = std::filesystem::current_path()});
 
-    if(*opt.mode == "inject") {
-        config.mode = data::ServiceMode::INJECT;
-        config.runtime = catter_runtime_map.at(config.mode);
-        std::string_view script = R"(
-        import { scripts, service } from "catter";
-        service.register(new scripts.CDB("cdb.json"));
-        )";
-        js::run_js_file(script, config.script_path);
+    if(auto it = mode_map.find(*opt.mode); it != mode_map.end()) {
+        config.mode = it->second.mode;
+        config.runtime = it->second.runtime;
     } else {
         throw std::runtime_error(std::format("Unsupported mode: {}", *opt.mode));
     }
+    return config;
+}
 
+void inject(const Config& config) {
+    std::string_view script = R"(
+    import { scripts, service } from "catter";
+    service.register(new scripts.CDB("cdb.json"));
+    )";
+    js::run_js_file(script, config.script_path);
     js::on_start({
         .scriptPath = config.script_path,
         .scriptArgs = {},
@@ -152,9 +163,24 @@ void dispatch(const core::Option::CatterOption& opt) {
 
     Session session;
 
-    session.run(*opt.args, ServiceImpl::Factory{});
+    session.run(config.build_system_command, ServiceImpl::Factory{});
 
     js::on_finish();
+}
+
+void dispatch(const core::Option::CatterOption& opt) {
+    auto config = parse_config(opt);
+    js::init_qjs({.pwd = config.working_dir});
+
+    switch(config.mode) {
+        case ipc::ServiceMode::INJECT: {
+            inject(config);
+            break;
+        }
+        default: {
+            throw std::runtime_error(std::format("UnExpected mode: {:0x}", (uint8_t)config.mode));
+        }
+    }
 }
 
 // catter -m inject -s ./test.js -- make -j8
@@ -162,11 +188,12 @@ int main(int argc, char* argv[]) {
     auto args = deco::util::argvify(argc, argv, 1);
 
     try {
-        deco::cli::Dispatcher<core::Option> cli("catter [options] -- <target program> [args...]");
+        log::init_logger("catter", std::filesystem::current_path() / "catter.log");
+        deco::cli::Dispatcher<core::Option> cli("catter [options] -- [build system command]");
         cli.dispatch(core::Option::HelpOpt::category_info,
                      [&](const core::Option& opt) { cli.usage(std::cout); })
             .dispatch(core::Option::CatterOption::category_info,
-                      [&](const auto& opt) { dispatch(opt.proxy_opt); })
+                      [&](const auto& opt) { dispatch(opt.main_opt); })
             .dispatch([&](const auto&) { cli.usage(std::cout); })
             .when_err([&](const deco::cli::ParseError& err) {
                 std::println("Error parsing options: {}", err.message);
