@@ -21,8 +21,10 @@
 #include "ipc.h"
 #include "qjs.h"
 #include "session.h"
+#include "util/crossplat.h"
 #include "util/data.h"
 #include "util/log.h"
+#include "config/catter.h"
 
 using namespace catter;
 
@@ -200,7 +202,7 @@ int main(int argc, char* argv[]) {
     auto args = deco::util::argvify(argc, argv, 1);
 
     try {
-        log::init_logger("catter", std::filesystem::current_path() / "catter.log");
+        log::init_logger("catter", util::get_catter_data_path() / config::core::LOG_PATH_REL);
         deco::cli::Dispatcher<core::Option> cli("catter [options] -- [build system command]");
         cli.dispatch(core::Option::HelpOpt::category_info,
                      [&](const core::Option& opt) { cli.usage(std::cout); })

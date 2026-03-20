@@ -55,6 +55,7 @@ export class CDB implements service.CatterService {
               });
             }
           }
+          break;
         default:
           throw new Error(`Unsupported compiler: ${compiler}`);
       }
