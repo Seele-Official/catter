@@ -1,7 +1,10 @@
 #pragma once
+#include <vector>
+#include <string>
+
 #include <eventide/deco/decl.h>
 #include <eventide/deco/macro.h>
-#include <vector>
+
 
 namespace catter::core {
 // clang-format off

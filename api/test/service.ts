@@ -23,10 +23,12 @@ service.register({
     };
   },
 
-  onFinish() {
+  onFinish(event) {
     debug.assertThrow(outputEventSeen);
     debug.assertThrow(finishEventSeen);
     debug.assertThrow(commandErrorBranchSeen);
+    debug.assertThrow(event.type === "finish");
+    debug.assertThrow(event.code === 0);
   },
 
   onCommand(id, data) {

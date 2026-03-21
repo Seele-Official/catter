@@ -40,7 +40,12 @@ export class CDB implements service.CatterService {
     return config;
   }
 
-  onFinish() {
+  onFinish(event: service.ExecutionEvent) {
+    if (event.code !== 0) {
+      io.println(`Build failed with exit code ${event.code}. CDB will not be saved.`);
+      return;
+    }
+
     fs.removeAll(this.save_path);
     fs.createFile(this.save_path);
     const cdb: CDBItem[] = [];

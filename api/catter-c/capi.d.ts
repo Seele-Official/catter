@@ -175,7 +175,7 @@ export type CommandData = {
 export function service_on_start(
   cb: (config: CatterConfig) => CatterConfig,
 ): void;
-export function service_on_finish(cb: () => void): void;
+export function service_on_finish(cb: (event: ExecutionEvent) => void): void;
 export function service_on_command(
   cb: (id: number, data: CommandData | CatterErr) => Action,
 ): void;

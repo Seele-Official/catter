@@ -5,7 +5,6 @@
 #include <print>
 #include <cassert>
 #include <format>
-#include <print>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -177,10 +176,13 @@ void inject(const Config& config) {
     });
 
     Session session;
+    
+    auto ret = session.run(config.build_system_command, ServiceImpl::Factory{});
 
-    session.run(config.build_system_command, ServiceImpl::Factory{});
-
-    js::on_finish();
+    js::on_finish({
+        .code = ret,
+        .type = js::EventType::finish,
+    });
 }
 
 void dispatch(const core::Option::CatterOption& opt) {
