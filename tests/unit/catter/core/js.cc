@@ -171,7 +171,7 @@ TEST_SUITE(js_tests) {
             };
             catter::js::on_execution(7, finish_event);
 
-            catter::js::on_finish();
+            catter::js::on_finish(finish_event);
         };
 
         EXPECT_NOTHROWS(f());

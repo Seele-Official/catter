@@ -64,7 +64,9 @@ const _EventKindTypeCheck: (typeof EventKind)[number] = {} as EventType;
  *   onStart(config) {
  *     return config;
  *   },
- *   onFinish() {},
+ *   onFinish(event) {
+ *     println("exit code = " + event.code);
+ *   },
  *   onCommand() {
  *     return { type: "skip" };
  *   },
@@ -85,8 +87,10 @@ export interface CatterService {
 
   /**
    * Called after catter finishes processing.
+   *
+   * @param event - Final execution event for the current catter run.
    */
-  onFinish: () => void;
+  onFinish: (event: ExecutionEvent) => void;
 
   /**
    * Called when catter captures a command.
@@ -128,16 +132,16 @@ export function onStart(cb: (config: CatterConfig) => CatterConfig): void {
 /**
  * Registers a callback that runs after catter finishes.
  *
- * @param cb - Callback invoked once when the current catter run is shutting down.
+ * @param cb - Callback invoked once when the current catter run is shutting down, with the final execution event.
  *
  * @example
  * ```typescript
- * onFinish(() => {
- *   println("build interception finished");
+ * onFinish((event) => {
+ *   println("build interception finished with code " + event.code);
  * });
  * ```
  */
-export function onFinish(cb: () => void): void {
+export function onFinish(cb: (event: ExecutionEvent) => void): void {
   service_on_finish(cb);
 }
 
@@ -197,7 +201,9 @@ export function onExecution(
  *   onStart(config) {
  *     return config;
  *   },
- *   onFinish() {},
+ *   onFinish(event) {
+ *     println("exit code = " + event.code);
+ *   },
  *   onCommand(id, data) {
  *     return { type: "skip" };
  *   },
@@ -206,8 +212,8 @@ export function onExecution(
  * ```
  */
 export function register(service: CatterService): void {
-  onStart(service.onStart);
-  onFinish(service.onFinish);
-  onCommand(service.onCommand);
-  onExecution(service.onExecution);
+  onStart(service.onStart.bind(service));
+  onFinish(service.onFinish.bind(service));
+  onCommand(service.onCommand.bind(service));
+  onExecution(service.onExecution.bind(service));
 }

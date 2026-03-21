@@ -43,7 +43,7 @@ TEST_SUITE(cmd_builder) {
             auto parse_res = deco::cli::parse<catter::proxy::ProxyOption>(cmd.argv)->options;
             EXPECT_TRUE(*parse_res.parent_id == 99);
             EXPECT_TRUE(*parse_res.exec == target_path);
-            EXPECT_TRUE(parse_res.args.value.has_value());
+            EXPECT_TRUE(parse_res.args.has_value());
             auto& args = *parse_res.args;
             EXPECT_TRUE(args.size() == 3);
             EXPECT_TRUE(args.at(0) == "gcc");
@@ -78,7 +78,7 @@ TEST_SUITE(cmd_builder) {
 
         auto f = [&]() {
             auto parse_res = deco::cli::parse<catter::proxy::ProxyOption>(cmd.argv);
-            EXPECT_FALSE(parse_res->options.args.value.has_value());
+            EXPECT_FALSE(parse_res->options.args.has_value());
         };
 
         EXPECT_NOTHROWS(f());

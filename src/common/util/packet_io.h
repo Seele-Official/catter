@@ -41,7 +41,7 @@ public:
         co_return payload;
     }
 
-    eventide::task<eventide::error> write_packet(const std::vector<char>& payload) {
+    eventide::task<void, eventide::error> write_packet(const std::vector<char>& payload) {
         auto serialized = Serde<data::packet>::serialize(payload);
         LOG_DEBUG("Writing {} bytes: {}", serialized.size(), log::to_hex(serialized));
         co_return co_await this->pipe.write(serialized);

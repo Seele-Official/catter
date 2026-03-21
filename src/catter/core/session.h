@@ -26,7 +26,7 @@ template <typename ServiceFactoryResult>
 struct ServiceFactoryLike_helper : std::false_type {};
 
 template <typename ServiceType>
-    requires std::derived_from<ServiceType, ipc::Service>
+    requires std::derived_from<ServiceType, ipc::ServiceBase>
 struct ServiceFactoryLike_helper<std::unique_ptr<ServiceType>> : std::true_type {};
 
 template <typename ServiceFactoryType>
@@ -41,9 +41,6 @@ class Session {
 public:
     using Acceptor = eventide::acceptor<eventide::pipe>;
 
-    virtual bool start(data::ServiceMode mode) = 0;
-    virtual void finish(int64_t code) = 0;
-
     /**
      * Run a session with the given shell and service factory.
      * @param factory The factory should be a callable that takes an ipcid_t and returns a
@@ -51,13 +48,13 @@ public:
      */
     template <typename ServiceFactoryType>
         requires ServiceFactoryLike<ServiceFactoryType>
-    void run(const std::vector<std::string>& shell, ServiceFactoryType&& factory) {
+    int64_t run(const std::vector<std::string>& shell, ServiceFactoryType&& factory) {
 #ifndef _WIN32
-        if(std::filesystem::exists(config::ipc::PIPE_NAME)) {
-            std::filesystem::remove(config::ipc::PIPE_NAME);
+        if(std::filesystem::exists(config::ipc::pipe_name())) {
+            std::filesystem::remove(config::ipc::pipe_name());
         }
 #endif
-        auto acc_ret = eventide::pipe::listen(config::ipc::PIPE_NAME,
+        auto acc_ret = eventide::pipe::listen(config::ipc::pipe_name(),
                                               eventide::pipe::options(),
                                               default_loop());
 
@@ -76,9 +73,6 @@ public:
             executable = (util::get_catter_root_path() / config::proxy::EXE_NAME).string();
             args = {executable, "-p", "0", "--exec", shell[0], "--"};
             append_range_to_vector(args, shell);
-            if(!this->start(data::ServiceMode::INJECT)) {
-                throw std::runtime_error("Failed to start session in INJECT mode");
-            }
         } else {
             static_assert(false, "Unsupported service factory type");
         }
@@ -96,7 +90,7 @@ public:
         default_loop().run();
 
         loop_task.result();  // Propagate exceptions from loop task
-        this->finish(spawn_task.result());
+        return spawn_task.result();
     }
 
 private:

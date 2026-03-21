@@ -1,6 +1,10 @@
 import * as option from "../option/index.js";
 import { ClangID } from "../option/clang.js";
 
+import { type Compiler } from "catter-c";
+
+export { identify_compiler, Compiler } from "catter-c";
+
 /**
  * Filters an `nvcc` argument list down to the segments that are not valid
  * `clang` options.
@@ -19,3 +23,16 @@ import { ClangID } from "../option/clang.js";
 export function nvcc2clang(args: string[]): string | string[] {
   return option.table2table("clang", "nvcc", args);
 }
+
+export const CompilerKind = [
+  "gcc",
+  "clang",
+  "flang",
+  "ifort",
+  "crayftn",
+  "nvcc",
+  "wrapper",
+  "unknown",
+] as const;
+
+const _CompilerKindCheck: (typeof CompilerKind)[number] = {} as Compiler;

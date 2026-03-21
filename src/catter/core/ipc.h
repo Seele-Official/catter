@@ -7,26 +7,32 @@
 
 namespace catter::ipc {
 
-class Service {
-public:
-    Service() = default;
-    Service(const Service&) = default;
-    Service(Service&&) = default;
-    Service& operator= (const Service&) = default;
-    Service& operator= (Service&&) = default;
+using ServiceMode = data::ServiceMode;
+using ipcid_t = data::ipcid_t;
 
-    virtual ~Service() = default;
+class ServiceBase {
+public:
+    ServiceBase() = default;
+    ServiceBase(const ServiceBase&) = default;
+    ServiceBase(ServiceBase&&) = default;
+    ServiceBase& operator= (const ServiceBase&) = default;
+    ServiceBase& operator= (ServiceBase&&) = default;
+
+    virtual ~ServiceBase() = default;
+
+private:
+    ServiceMode m_mode;
 };
 
-class InjectService : public Service {
+class InjectService : public ServiceBase {
 public:
     InjectService() = default;
     virtual ~InjectService() override = default;
 
-    virtual data::ipcid_t create(data::ipcid_t parent_id) = 0;
+    virtual ipcid_t create(ipcid_t parent_id) = 0;
     virtual data::action make_decision(data::command cmd) = 0;
     virtual void finish(int64_t code) = 0;
-    virtual void report_error(data::ipcid_t parent_id, std::string error_msg) = 0;
+    virtual void report_error(ipcid_t parent_id, std::string error_msg) = 0;
 };
 
 eventide::task<void> accept(std::unique_ptr<InjectService> service, eventide::pipe client);

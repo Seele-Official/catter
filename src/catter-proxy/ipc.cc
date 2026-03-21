@@ -19,7 +19,7 @@ using namespace data;
 class Impl {
 public:
     Impl() noexcept {
-        auto ret = wait(eventide::pipe::connect(config::ipc::PIPE_NAME,
+        auto ret = wait(eventide::pipe::connect(config::ipc::pipe_name(),
                                                 eventide::pipe::options(),
                                                 default_loop()));
         if(!ret) {
@@ -39,7 +39,8 @@ private:
     void write_packet_checked(const std::vector<char>& payload) {
         auto err = wait(channel.write_packet(payload));
         if(err.has_error()) {
-            throw std::runtime_error(std::format("ipc_handler write failed: {}", err.message()));
+            throw std::runtime_error(
+                std::format("ipc_handler write failed: {}", err.error().message()));
         }
     }
 

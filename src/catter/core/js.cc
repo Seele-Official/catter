@@ -15,7 +15,7 @@ namespace catter::js {
 
 using OnStart = qjs::Function<qjs::Object(qjs::Object config)>;
 
-using OnFinish = qjs::Function<void()>;
+using OnFinish = qjs::Function<void(qjs::Object event)>;
 
 using OnCommand = qjs::Function<qjs::Object(uint32_t id, qjs::Object data)>;
 
@@ -42,11 +42,11 @@ CatterConfig on_start(CatterConfig config) {
     return CatterConfig::make(self.on_start(config.to_object(self.on_start.context())));
 }
 
-void on_finish() {
+void on_finish(ExecutionEvent event) {
     if(!self.on_finish) {
         throw std::runtime_error("service.onFinish is not registered");
     }
-    return self.on_finish();
+    return self.on_finish(event.to_object(self.on_finish.context()));
 }
 
 Action on_command(uint32_t id, std::variant<CommandData, CatterErr> data) {

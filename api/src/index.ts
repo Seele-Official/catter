@@ -17,9 +17,10 @@ import * as io from "./io.js";
 import * as os from "./os.js";
 import * as fs from "./fs.js";
 import * as service from "./service.js";
+import * as option from "./option/index.js";
+import * as scripts from "./scripts/index.js";
 
-export * as option from "./option/index.js";
-export { debug, io, os, fs, service };
+export { debug, io, os, fs, option, service, scripts };
 export * from "./service.js";
 export * from "./option/types.js";
 export * from "./util/index.js";

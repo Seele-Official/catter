@@ -38,7 +38,7 @@ void set_on_command(qjs::Object cb);
 void set_on_execution(qjs::Object cb);
 
 CatterConfig on_start(CatterConfig config);
-void on_finish();
+void on_finish(ExecutionEvent event);
 Action on_command(uint32_t id, std::variant<CommandData, CatterErr> data);
 void on_execution(uint32_t id, ExecutionEvent event);
 
