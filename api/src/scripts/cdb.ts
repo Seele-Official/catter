@@ -42,7 +42,9 @@ export class CDB implements service.CatterService {
 
   onFinish(event: service.ExecutionEvent) {
     if (event.code !== 0) {
-      io.println(`Build failed with exit code ${event.code}. CDB will not be saved.`);
+      io.println(
+        `Build failed with exit code ${event.code}. CDB will not be saved.`,
+      );
       return;
     }
 

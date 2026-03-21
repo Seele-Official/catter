@@ -87,10 +87,10 @@ export interface CatterService {
 
   /**
    * Called after catter finishes processing.
-    *
-    * @param event - Final execution event for the current catter run.
+   *
+   * @param event - Final execution event for the current catter run.
    */
-    onFinish: (event: ExecutionEvent) => void;
+  onFinish: (event: ExecutionEvent) => void;
 
   /**
    * Called when catter captures a command.

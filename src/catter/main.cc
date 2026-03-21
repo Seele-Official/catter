@@ -176,7 +176,7 @@ void inject(const Config& config) {
     });
 
     Session session;
-    
+
     auto ret = session.run(config.build_system_command, ServiceImpl::Factory{});
 
     js::on_finish({

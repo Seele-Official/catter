@@ -5,7 +5,6 @@
 #include <eventide/deco/decl.h>
 #include <eventide/deco/macro.h>
 
-
 namespace catter::core {
 // clang-format off
 struct Option {
