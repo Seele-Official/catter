@@ -55,14 +55,16 @@ export class CDB implements service.CatterService {
     for (const [compiler, command] of this.commandArray) {
       switch (compiler) {
         case "clang":
-          const parsed = this.parse(compiler, command.argv.slice(1));
-          for (const item of parsed) {
-            if (item.id === option.ClangID.ID_INPUT) {
-              cdb.push({
-                directory: command.cwd,
-                file: item.key,
-                command: command.argv.join(" "),
-              });
+          {
+            const parsed = this.parse(compiler, command.argv.slice(1));
+            for (const item of parsed) {
+              if (item.id === option.ClangID.ID_INPUT) {
+                cdb.push({
+                  directory: command.cwd,
+                  file: item.key,
+                  command: command.argv.join(" "),
+                });
+              }
             }
           }
           break;
