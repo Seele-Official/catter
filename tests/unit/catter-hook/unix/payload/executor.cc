@@ -42,7 +42,7 @@ TEST_SUITE(executor) {
                 deco::cli::parse<catter::proxy::ProxyOption>(linker.last_argv)->options;
             EXPECT_TRUE(std::to_string(*parse_res.parent_id) == session.self_id);
             EXPECT_TRUE(*parse_res.exec == "/bin/ls");
-            EXPECT_TRUE(parse_res.args.value.has_value());
+            EXPECT_TRUE(parse_res.args.has_value());
             auto& raw_args = *parse_res.args;
             EXPECT_TRUE(raw_args.size() == 2);
             EXPECT_TRUE(raw_args[0] == "ls");

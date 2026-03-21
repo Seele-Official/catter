@@ -17,8 +17,8 @@ export class CDB implements service.CatterService {
   save_path: string;
   commandArray: Array<[Compiler, service.CommandData]> = [];
 
-  constructor(save_path: string) {
-    this.save_path = save_path;
+  constructor(save_path?: string) {
+    this.save_path = save_path ?? "compile_commands.json";
   }
 
   parse(table: option.OptionTable, args: string[]): option.OptionItem[] {
@@ -34,6 +34,9 @@ export class CDB implements service.CatterService {
   }
 
   onStart(config: service.CatterConfig): service.CatterConfig {
+    if (config.scriptArgs.length > 0) {
+      this.save_path = config.scriptArgs[0];
+    }
     return config;
   }
 
@@ -63,6 +66,9 @@ export class CDB implements service.CatterService {
 
     io.TextFileStream.with(this.save_path, "ascii", (stream) => {
       stream.write(JSON.stringify(cdb, null, 2));
+      io.println(
+        `CDB saved to ${fs.path.absolute(this.save_path)} with ${cdb.length} entries.`,
+      );
     });
   }
 

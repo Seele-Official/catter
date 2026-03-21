@@ -1,4 +1,5 @@
 #include <cstdint>
+#include <fcntl.h>
 #include <filesystem>
 #include <iostream>
 #include <print>
@@ -107,7 +108,7 @@ struct Config {
     js::CatterRuntime runtime;
 };
 
-Config parse_config(const core::Option::CatterOption& opt) {
+Config extract_config(const core::Option::CatterOption& opt) {
     struct mode_meta {
         ipc::ServiceMode mode;
         js::CatterRuntime runtime;
@@ -129,11 +130,10 @@ Config parse_config(const core::Option::CatterOption& opt) {
     Config config{
         .log = true,
         .script_path = *opt.script_path,
-        .script_args = {},
+        .script_args = opt.script_args.has_value() ? *opt.script_args : std::vector<std::string>{},
         .build_system_command = *opt.args,
-        .working_dir = opt.working_dir.value.has_value()
-                           ? std::filesystem::absolute(*opt.working_dir)
-                           : std::filesystem::current_path(),
+        .working_dir = opt.working_dir.has_value() ? std::filesystem::absolute(*opt.working_dir)
+                                                   : std::filesystem::current_path(),
     };
 
     if(auto it = mode_map.find(*opt.mode); it != mode_map.end()) {
@@ -149,7 +149,7 @@ void inject(const Config& config) {
     if(config.script_path == "script::cdb") {
         std::string_view script = R"(
     import { scripts, service } from "catter";
-    service.register(new scripts.CDB("cdb.json"));
+    service.register(new scripts.CDB());
     )";
         js::run_js_file(script, config.script_path);
     } else {
@@ -166,13 +166,13 @@ void inject(const Config& config) {
 
     js::on_start({
         .scriptPath = config.script_path,
-        .scriptArgs = {},
+        .scriptArgs = config.script_args,
         .buildSystemCommand = config.build_system_command,
         .runtime = config.runtime,
         .options =
             {
-                       .log = config.log,
-                       },
+                      .log = config.log,
+                      },
         .isScriptSupported = true
     });
 
@@ -184,7 +184,8 @@ void inject(const Config& config) {
 }
 
 void dispatch(const core::Option::CatterOption& opt) {
-    auto config = parse_config(opt);
+    auto config = extract_config(opt);
+
     js::init_qjs({.pwd = config.working_dir});
 
     switch(config.mode) {

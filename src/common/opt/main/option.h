@@ -1,6 +1,7 @@
 #pragma once
 #include <eventide/deco/decl.h>
 #include <eventide/deco/macro.h>
+#include <vector>
 
 namespace catter::core {
 // clang-format off
@@ -19,6 +20,14 @@ struct Option {
             help = "path to the js script to run",
             required = true
         ) <std::string> script_path;
+
+        DecoComma(
+            names = {"-args", "--script-args"},
+            // meta_var = "<Script Args>",
+            help = "arguments for the js script, separated by comma, e.g. --script-args=arg1,arg2,arg3",
+            required = false
+        )
+        <std::vector<std::string>> script_args;
 
         DecoKV(
             names = {"-m", "--mode"},

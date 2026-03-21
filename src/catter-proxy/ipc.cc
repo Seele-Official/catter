@@ -39,7 +39,8 @@ private:
     void write_packet_checked(const std::vector<char>& payload) {
         auto err = wait(channel.write_packet(payload));
         if(err.has_error()) {
-            throw std::runtime_error(std::format("ipc_handler write failed: {}", err.message()));
+            throw std::runtime_error(
+                std::format("ipc_handler write failed: {}", err.error().message()));
         }
     }
 
