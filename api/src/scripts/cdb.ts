@@ -81,16 +81,14 @@ export class CDB implements service.CatterService {
     });
   }
 
-  onCommand(
-    id: number,
-    data: service.CommandData | service.CatterErr,
-  ): service.Action {
-    if ("msg" in data) {
-      io.println(`CDB received error: ${data.msg}`);
+  onCommand(id: number, data: service.CommandCaptureResult): service.Action {
+    if (!data.success) {
+      io.println(`CDB received error: ${data.error.msg}`);
     } else {
-      const compiler = identify_compiler(data.exe);
+      const command = data.data;
+      const compiler = identify_compiler(command.exe);
       if (compiler !== "unknown") {
-        this.commandArray.push([compiler, data]);
+        this.commandArray.push([compiler, command]);
       }
     }
     return {

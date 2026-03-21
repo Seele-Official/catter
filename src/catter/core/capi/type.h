@@ -8,6 +8,7 @@
 #include <utility>
 #include <vector>
 
+#include <eventide/common/meta.h>
 #include <eventide/reflection/enum.h>
 #include <eventide/reflection/struct.h>
 
@@ -52,31 +53,6 @@ std::vector<std::string> enum_names(const std::vector<E>& values) {
 }
 
 template <typename T>
-struct is_optional : std::false_type {};
-
-template <typename T>
-struct is_optional<std::optional<T>> : std::true_type {
-    using value_type = T;
-};
-
-template <typename T>
-constexpr inline bool is_optional_v = is_optional<T>::value;
-
-template <typename T>
-struct is_vector : std::false_type {};
-
-template <typename T, typename Alloc>
-struct is_vector<std::vector<T, Alloc>> : std::true_type {
-    using value_type = T;
-};
-
-template <typename T>
-constexpr inline bool is_vector_v = is_vector<T>::value;
-
-template <typename T>
-concept ReflectableObject = et::refl::reflectable_class<T>;
-
-template <typename T>
 struct property_name_mapper {
     constexpr static std::string_view map(std::string_view field_name) {
         return field_name;
@@ -90,49 +66,76 @@ template <typename T>
 qjs::Object to_reflected_object(JSContext* ctx, const T& value);
 
 template <typename T>
-auto to_property_value(JSContext* ctx, const T& value) {
-    if constexpr(std::is_enum_v<T>) {
-        return qjs::Value::from(ctx, std::string(enum_name(value)));
-    } else if constexpr(is_vector_v<T> && std::is_enum_v<typename is_vector<T>::value_type>) {
-        return qjs::Array<std::string>::from(ctx, enum_names(value));
-    } else if constexpr(is_vector_v<T> &&
-                        std::same_as<typename is_vector<T>::value_type, std::string>) {
-        return qjs::Array<std::string>::from(ctx, value);
-    } else if constexpr(ReflectableObject<T>) {
-        return to_reflected_object(ctx, value);
-    } else {
-        return qjs::Value::from(ctx, value);
-    }
-}
-
-template <typename T>
-T from_property_value(const qjs::Value& value) {
-    if constexpr(std::is_enum_v<T>) {
-        return enum_value<T>(value.as<std::string>());
-    } else if constexpr(is_vector_v<T> && std::is_enum_v<typename is_vector<T>::value_type>) {
-        auto names = value.as<qjs::Array<std::string>>().as<std::vector<std::string>>();
-        return enum_values<typename is_vector<T>::value_type>(names);
-    } else if constexpr(is_vector_v<T> &&
-                        std::same_as<typename is_vector<T>::value_type, std::string>) {
-        return value.as<qjs::Array<std::string>>().as<std::vector<std::string>>();
-    } else if constexpr(ReflectableObject<T>) {
-        return make_reflected_object<T>(value.as<qjs::Object>());
-    } else {
+struct Bridge {
+    static T from_js(const qjs::Value& value) {
         return value.as<T>();
     }
-}
+
+    static auto to_js(JSContext* ctx, const T& value) {
+        return qjs::Value::from(ctx, value);
+    }
+};
+
+template <typename T>
+    requires et::refl::reflectable_class<T>
+struct Bridge<T> {
+    static T from_js(const qjs::Value& value) {
+        return make_reflected_object<T>(value.as<qjs::Object>());
+    }
+
+    static auto to_js(JSContext* ctx, const T& value) {
+        return to_reflected_object(ctx, value);
+    }
+};
+
+template <typename T>
+    requires std::is_enum_v<T>
+struct Bridge<T> {
+    static T from_js(const qjs::Value& value) {
+        return enum_value<T>(value.as<std::string>());
+    }
+
+    static auto to_js(JSContext* ctx, const T& value) {
+        return qjs::Value::from(ctx, std::string(enum_name(value)));
+    }
+};
+
+template <typename T>
+    requires std::is_enum_v<T>
+struct Bridge<std::vector<T>> {
+    static std::vector<T> from_js(const qjs::Value& value) {
+        auto names = value.as<qjs::Array<std::string>>().as<std::vector<std::string>>();
+        return enum_values<T>(names);
+    }
+
+    static auto to_js(JSContext* ctx, const std::vector<T>& vec) {
+        return qjs::Array<std::string>::from(ctx, enum_names(vec));
+    }
+};
+
+template <typename T>
+struct Bridge<std::vector<T>> {
+    static std::vector<T> from_js(const qjs::Value& value) {
+        return value.as<qjs::Array<T>>().template as<std::vector<T>>();
+    }
+
+    static auto to_js(JSContext* ctx, const std::vector<T>& vec) {
+        return qjs::Array<T>::from(ctx, vec);
+    }
+};
 
 template <typename T>
 T read_property(const qjs::Object& object, std::string_view property_name) {
-    if constexpr(is_optional_v<T>) {
-        using value_type = typename is_optional<T>::value_type;
-        auto optional_value = object.get_optional_property(std::string(property_name));
-        if(!optional_value.has_value()) {
+    if constexpr(et::is_optional_v<T>) {
+        using value_type = typename T::value_type;
+        auto prop_val = object[std::string(property_name)];
+        if(!prop_val.is_undefined()) {
+            return Bridge<value_type>::from_js(prop_val);
+        } else {
             return std::nullopt;
         }
-        return from_property_value<value_type>(*optional_value);
     } else {
-        return from_property_value<T>(object[std::string(property_name)]);
+        return Bridge<T>::from_js(object[std::string(property_name)]);
     }
 }
 
@@ -141,12 +144,13 @@ void write_property(qjs::Object& object,
                     std::string_view property_name,
                     JSContext* ctx,
                     const T& value) {
-    if constexpr(is_optional_v<T>) {
+    if constexpr(et::is_optional_v<T>) {
+        using value_type = typename T::value_type;
         if(value.has_value()) {
-            object.set_property(std::string(property_name), to_property_value(ctx, value.value()));
+            object.set_property(std::string(property_name), Bridge<value_type>::to_js(ctx, *value));
         }
     } else {
-        object.set_property(std::string(property_name), to_property_value(ctx, value));
+        object.set_property(std::string(property_name), Bridge<T>::to_js(ctx, value));
     }
 }
 

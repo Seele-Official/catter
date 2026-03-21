@@ -11,6 +11,7 @@ export type {
   CatterConfig,
   CatterErr,
   CatterRuntime,
+  CommandCaptureResult,
   CommandData,
   EventType,
   ExecutionEvent,
@@ -20,10 +21,9 @@ import type {
   Action,
   ActionType,
   CatterConfig,
-  CatterErr,
   CatterRuntime,
-  CommandData,
   EventType,
+  CommandCaptureResult,
   ExecutionEvent,
 } from "catter-c";
 
@@ -37,9 +37,12 @@ import type {
  * const kind = ActionKind[0]; // "skip"
  * ```
  */
-export const ActionKind = ["skip", "drop", "abort", "modify"] as const;
-
-const _ActionKindTypeCheck: (typeof ActionKind)[number] = {} as ActionType;
+export const ActionKind = [
+  "skip",
+  "drop",
+  "abort",
+  "modify",
+] as const satisfies readonly ActionType[];
 
 /**
  * Supported execution event kinds.
@@ -51,9 +54,10 @@ const _ActionKindTypeCheck: (typeof ActionKind)[number] = {} as ActionType;
  * const isOutputEvent = EventKind.includes("output");
  * ```
  */
-export const EventKind = ["finish", "output"] as const;
-
-const _EventKindTypeCheck: (typeof EventKind)[number] = {} as EventType;
+export const EventKind = [
+  "finish",
+  "output",
+] as const satisfies readonly EventType[];
 
 /**
  * Callback group for subscribing to catter lifecycle and command events.
@@ -96,9 +100,9 @@ export interface CatterService {
    * Called when catter captures a command.
    *
    * @param id - Unique command identifier that can be correlated with execution events.
-   * @param data - Captured command data, or a {@link CatterErr} when capture fails.
+   * @param data - Tagged command capture result with a `success` discriminator.
    */
-  onCommand: (id: number, data: CommandData | CatterErr) => Action;
+  onCommand: (id: number, data: CommandCaptureResult) => Action;
 
   /**
    * Called when a captured command emits execution events.
@@ -148,20 +152,26 @@ export function onFinish(cb: (event: ExecutionEvent) => void): void {
 /**
  * Registers a callback that handles each captured command.
  *
- * @param cb - Callback invoked for each command. The first argument is the stable command ID, and the second is either the captured command payload or a capture error.
+ * @param cb - Callback invoked for each command. The first argument is the stable command ID, and the second is a tagged capture result (`success: true` for command data, `success: false` for capture errors).
  *
  * @example
  * ```typescript
  * onCommand((id, data) => {
- *   if ("msg" in data) {
+ *   if (!data.success) {
  *     return { type: "skip" };
  *   }
- *   return { type: "modify", data: { ...data, argv: [...data.argv, "--verbose"] } };
+ *   return {
+ *     type: "modify",
+ *     data: {
+ *       ...data.data,
+ *       argv: [...data.data.argv, "--verbose"],
+ *     },
+ *   };
  * });
  * ```
  */
 export function onCommand(
-  cb: (id: number, data: CommandData | CatterErr) => Action,
+  cb: (id: number, data: CommandCaptureResult) => Action,
 ): void {
   service_on_command(cb);
 }

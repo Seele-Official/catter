@@ -154,6 +154,14 @@ public:
         return detail::value_trans<std::remove_cvref_t<T>>::from(std::forward<T>(value));
     }
 
+    static Value undefined(JSContext* ctx) noexcept {
+        return Value{ctx, JS_UNDEFINED};
+    }
+
+    static Value null(JSContext* ctx) noexcept {
+        return Value{ctx, JS_NULL};
+    }
+
     template <typename T>
     std::optional<T> to() const noexcept {
         return detail::value_trans<T>::to(*this);
