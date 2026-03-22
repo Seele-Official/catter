@@ -76,12 +76,12 @@ struct TaggedUnion : public std::variant<Tag<Es>...> {
     }
 
     template <typename V>
-    auto visit(V&& visitor) const {
+    decltype(auto) visit(V&& visitor) const {
         return std::visit(std::forward<V>(visitor), this->variant());
     }
 
     template <typename V>
-    auto visit(V&& visitor) {
+    decltype(auto) visit(V&& visitor) {
         return std::visit(std::forward<V>(visitor), this->variant());
     }
 
@@ -90,27 +90,26 @@ struct TaggedUnion : public std::variant<Tag<Es>...> {
     }
 
     template <auto E>
-    auto get_if() {
+    decltype(auto) get_if() {
         return std::get_if<Tag<E>>(&this->variant());
     }
 
     template <auto E>
-    auto get_if() const {
+    decltype(auto) get_if() const {
         return std::get_if<Tag<E>>(&this->variant());
     }
 
     template <auto E>
-    auto get() {
+    decltype(auto) get() {
         return std::get<Tag<E>>(this->variant());
     }
 
     template <auto E>
-    auto get() const {
+    decltype(auto) get() const {
         return std::get<Tag<E>>(this->variant());
     }
 
     bool operator== (const TaggedUnion& other) const {
-        // return this->index() == other.index();
         return this->visit([&]<typename T>(const T& tag) -> bool {
             return other.visit([&]<typename U>(const U& other_tag) -> bool {
                 if constexpr(std::is_same_v<T, U>) {
@@ -241,13 +240,11 @@ struct Bridge<TaggedUnion<Es...>> {
     }
 
     static auto to_js(JSContext* ctx, const Union& union_value) {
-        return std::visit(
-            [&]<auto E>(const Tag<E>& tag) {
-                auto object = to_reflected_object(ctx, tag);
-                object.set_property("type", std::string(enum_name(E)));
-                return object;
-            },
-            union_value);
+        return union_value.visit([&]<auto E>(const Tag<E>& tag) {
+            auto object = to_reflected_object(ctx, tag);
+            object.set_property("type", std::string(enum_name(E)));
+            return object;
+        });
     }
 };
 

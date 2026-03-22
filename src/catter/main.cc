@@ -157,7 +157,7 @@ void inject(const Config& config) {
         catter::js::run_js_file(content, config.script_path);
     }
 
-    js::on_start({
+    auto new_config = js::on_start({
         .scriptPath = config.script_path,
         .scriptArgs = config.script_args,
         .buildSystemCommand = config.build_system_command,
@@ -171,7 +171,7 @@ void inject(const Config& config) {
 
     Session session;
 
-    auto ret = session.run(config.build_system_command, ServiceImpl::Factory{});
+    auto ret = session.run(new_config.buildSystemCommand, ServiceImpl::Factory{});
 
     js::on_finish(js::Tag<js::EventType::finish>{
         .code = ret,
