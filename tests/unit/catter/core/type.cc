@@ -7,6 +7,7 @@
 #include "capi/type.h"
 
 using namespace catter;
+using namespace catter::js;
 
 namespace {
 
@@ -56,10 +57,11 @@ TEST_SUITE(api_tests) {
                 .parent = 42
             };
 
-            catter::js::Action modify_action{.data = command_data,
-                                             .type = catter::js::ActionType::modify};
-            catter::js::Action skip_action{.data = std::nullopt,
-                                           .type = catter::js::ActionType::skip};
+            Action modify_action = Tag<ActionType::modify>{.data = command_data};
+
+            Action skip_action = Tag<ActionType::skip>{
+
+            };
 
             EXPECT_TRUE(is_roundtrip_equal(ctx, command_data));
             EXPECT_TRUE(is_roundtrip_equal(ctx, modify_action));
@@ -74,14 +76,16 @@ TEST_SUITE(api_tests) {
             auto runtime = qjs::Runtime::create();
             auto& ctx = runtime.context();
 
-            catter::js::ExecutionEvent output_event{.stdOut = std::string{"hello"},
-                                                    .stdErr = std::string{"warn"},
-                                                    .code = 0,
-                                                    .type = catter::js::EventType::output};
-            catter::js::ExecutionEvent finish_event{.stdOut = std::nullopt,
-                                                    .stdErr = std::nullopt,
-                                                    .code = 1,
-                                                    .type = catter::js::EventType::finish};
+            catter::js::ExecutionEvent output_event =
+                catter::js::Tag<catter::js::EventType::output>{
+                    .stdOut = "hello",
+                    .stdErr = "warn",
+                    .code = 0,
+                };
+            catter::js::ExecutionEvent finish_event =
+                catter::js::Tag<catter::js::EventType::finish>{
+                    .code = 1,
+                };
 
             catter::js::CatterConfig config{
                 .scriptPath = "scripts/demo.js",

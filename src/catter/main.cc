@@ -49,24 +49,22 @@ public:
                                       .parent = this->parent_id,
                                   });
 
-        switch(act.type) {
+        switch(act.type()) {
             case js::ActionType::drop:
             case js::ActionType::skip: {
                 return data::action{.type = data::action::INJECT, .cmd = cmd};
             }
 
             case js::ActionType::modify: {
-                if(!act.data.has_value()) {
-                    throw std::runtime_error("Modify action must have data");
-                }
+                auto tag = act.get<js::ActionType::modify>();
 
                 return data::action{
                     .type = data::action::INJECT,
                     .cmd = {
-                            .cwd = std::move(act.data->cwd),
-                            .executable = std::move(act.data->exe),
-                            .args = std::move(act.data->argv),
-                            .env = std::move(act.data->env),
+                            .cwd = std::move(tag.data.cwd),
+                            .executable = std::move(tag.data.exe),
+                            .args = std::move(tag.data.argv),
+                            .env = std::move(tag.data.env),
                             }
                 };
             }
@@ -75,11 +73,7 @@ public:
     }
 
     void finish(int64_t code) override {
-        js::on_execution(this->id,
-                         {
-                             .code = code,
-                             .type = js::EventType::finish,
-                         });
+        js::on_execution(this->id, js::Tag<js::EventType::finish>{.code = code});
     }
 
     void report_error(data::ipcid_t parent_id, std::string error_msg) override {
@@ -179,9 +173,8 @@ void inject(const Config& config) {
 
     auto ret = session.run(config.build_system_command, ServiceImpl::Factory{});
 
-    js::on_finish({
+    js::on_finish(js::Tag<js::EventType::finish>{
         .code = ret,
-        .type = js::EventType::finish,
     });
 }
 

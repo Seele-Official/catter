@@ -13,6 +13,8 @@
 #include <stdexcept>
 
 namespace fs = std::filesystem;
+using namespace catter;
+using namespace catter::js;
 
 namespace {
 
@@ -143,32 +145,33 @@ TEST_SUITE(js_tests) {
             };
 
             auto action = catter::js::on_command(7, data);
-            EXPECT_TRUE(action.type == catter::js::ActionType::modify);
-            EXPECT_TRUE(action.data.has_value());
-            EXPECT_TRUE(action.data->argv.size() == 4);
-            EXPECT_TRUE(action.data->argv.back() == "--from-service");
-            EXPECT_TRUE(action.data->parent.has_value());
-            EXPECT_TRUE(action.data->parent.value() == 41);
+            action.visit([&]<auto E>(const Tag<E>& tag) {
+                if constexpr(E == catter::js::ActionType::modify) {
+                    EXPECT_TRUE(tag.data.argv.size() == 4);
+                    EXPECT_TRUE(tag.data.argv.back() == "--from-service");
+                    EXPECT_TRUE(tag.data.parent.has_value());
+                    EXPECT_TRUE(tag.data.parent.value() == 41);
+                } else {
+                    EXPECT_TRUE(E == catter::js::ActionType::modify);
+                }
+            });
 
             catter::js::CatterErr err{.msg = "spawn failed"};
             auto error_action = catter::js::on_command(7, err);
-            EXPECT_TRUE(error_action.type == catter::js::ActionType::skip);
-            EXPECT_TRUE(!error_action.data.has_value());
+            EXPECT_TRUE(error_action.type() == catter::js::ActionType::skip);
 
-            catter::js::ExecutionEvent output_event{
-                .stdOut = std::string{"hello from stdout"},
-                .stdErr = std::string{"hello from stderr"},
-                .code = 0,
-                .type = catter::js::EventType::output,
-            };
+            catter::js::ExecutionEvent output_event =
+                catter::js::Tag<catter::js::EventType::output>{
+                    .stdOut = "hello from stdout",
+                    .stdErr = "hello from stderr",
+                    .code = 0,
+                };
             catter::js::on_execution(7, output_event);
 
-            catter::js::ExecutionEvent finish_event{
-                .stdOut = std::nullopt,
-                .stdErr = std::nullopt,
-                .code = 0,
-                .type = catter::js::EventType::finish,
-            };
+            catter::js::ExecutionEvent finish_event =
+                catter::js::Tag<catter::js::EventType::finish>{
+                    .code = 0,
+                };
             catter::js::on_execution(7, finish_event);
 
             catter::js::on_finish(finish_event);

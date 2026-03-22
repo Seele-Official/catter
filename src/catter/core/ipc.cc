@@ -16,6 +16,7 @@
 
 #include "ipc.h"
 
+#include "util/enum.h"
 #include "util/log.h"
 #include "util/serde.h"
 #include "util/data.h"
@@ -79,29 +80,22 @@ struct Dispatcher {
         using ReflRequest = eventide::refl::reflection<Request>;
         Request req = Serde<Request>::deserialize(buf_reader);
         LOG_INFO("Handling request of type: {}", eventide::refl::enum_name(req));
-        return [&]<size_t I = 0>(this const auto& self) -> std::optional<std::vector<char>> {
-            if constexpr(I < ReflRequest::member_count) {
-                constexpr auto val = ReflRequest::member_values[I];
-                if(val == req) {
-                    constexpr auto mem_fn = match_mem_fn<val>();
-                    if constexpr(mem_fn == nullptr) {
-                        LOG_INFO("No matching member function found for request type: {}",
-                                 eventide::refl::enum_name(req));
-                        throw std::runtime_error(
-                            std::format("No matching member function found for request type: {}",
-                                        eventide::refl::enum_name(req)));
-                    } else {
-                        return Helper<RequestType<val>>::call(eventide::bind_ref<mem_fn>(obj),
-                                                              buf_reader);
-                    }
+
+        return catter::dispatch(
+            req,
+            [&]<auto E>(in_palce_enum<E>) -> std::optional<std::vector<char>> {
+                constexpr auto mem_fn = match_mem_fn<E>();
+                if constexpr(mem_fn == nullptr) {
+                    LOG_INFO("No matching member function found for request type: {}",
+                             eventide::refl::enum_name(req));
+                    throw std::runtime_error(
+                        std::format("No matching member function found for request type: {}",
+                                    eventide::refl::enum_name(req)));
+                } else {
+                    return Helper<RequestType<E>>::call(eventide::bind_ref<mem_fn>(obj),
+                                                        buf_reader);
                 }
-                return self.template operator()<I + 1>();
-            } else {
-                throw std::runtime_error(
-                    std::format("Unknown request type received: {}",
-                                static_cast<std::underlying_type_t<Request>>(req)));
-            }
-        }();
+            });
     }
 };
 

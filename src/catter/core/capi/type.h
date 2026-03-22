@@ -1,11 +1,13 @@
 #pragma once
 #include <cstdint>
+#include <fcntl.h>
 #include <format>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <type_traits>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include <eventide/common/meta.h>
@@ -13,14 +15,119 @@
 #include <eventide/reflection/struct.h>
 
 #include "qjs.h"
+#include "util/enum.h"
 
 namespace catter::js {
+
+namespace detail {
+template <typename T>
+struct Bridge;
+template <typename T>
+T make_reflected_object(qjs::Object object);
+
+template <typename T>
+qjs::Object to_reflected_object(JSContext* ctx, const T& value);
+}  // namespace detail
+
+template <auto E>
+    requires std::is_enum_v<std::decay_t<decltype(E)>>
+struct Tag {
+    bool operator== (const Tag& other) const = default;
+};
+
+template <auto... ES>
+concept EnumValues =
+    (std::is_enum_v<std::decay_t<decltype(ES)>> && ...) &&
+    (std::same_as<std::decay_t<decltype(ES)>, std::decay_t<decltype((ES, ...))>> && ...);
+
+template <auto... Es>
+    requires EnumValues<Es...>
+struct TaggedUnion;
+
+#define TAG                                                                                        \
+    template <>                                                                                    \
+    struct Tag
+
+template <auto... Es>
+    requires EnumValues<Es...>
+struct TaggedUnion : public std::variant<Tag<Es>...> {
+    using TagType = std::common_type_t<std::decay_t<decltype(Es)>...>;
+    using std::variant<Tag<Es>...>::variant;
+    TaggedUnion() = default;
+    TaggedUnion(const TaggedUnion&) = default;
+    TaggedUnion(TaggedUnion&&) = default;
+    TaggedUnion& operator= (const TaggedUnion&) = default;
+    TaggedUnion& operator= (TaggedUnion&&) = default;
+
+    static TaggedUnion make(qjs::Object object) {
+        return detail::Bridge<TaggedUnion>::from_js(qjs::Value::from(object));
+    }
+
+    qjs::Object to_object(JSContext* ctx) const {
+        return detail::Bridge<TaggedUnion>::to_js(ctx, *this);
+    }
+
+    std::variant<Tag<Es>...>& variant() {
+        return static_cast<std::variant<Tag<Es>...>&>(*this);
+    }
+
+    const std::variant<Tag<Es>...>& variant() const {
+        return static_cast<const std::variant<Tag<Es>...>&>(*this);
+    }
+
+    template <typename V>
+    auto visit(V&& visitor) const {
+        return std::visit(std::forward<V>(visitor), this->variant());
+    }
+
+    template <typename V>
+    auto visit(V&& visitor) {
+        return std::visit(std::forward<V>(visitor), this->variant());
+    }
+
+    TagType type() const {
+        return visit([]<auto E>(const Tag<E>&) -> TagType { return E; });
+    }
+
+    template <auto E>
+    auto get_if() {
+        return std::get_if<Tag<E>>(&this->variant());
+    }
+
+    template <auto E>
+    auto get_if() const {
+        return std::get_if<Tag<E>>(&this->variant());
+    }
+
+    template <auto E>
+    auto get() {
+        return std::get<Tag<E>>(this->variant());
+    }
+
+    template <auto E>
+    auto get() const {
+        return std::get<Tag<E>>(this->variant());
+    }
+
+    bool operator== (const TaggedUnion& other) const {
+        // return this->index() == other.index();
+        return this->visit([&]<typename T>(const T& tag) -> bool {
+            return other.visit([&]<typename U>(const U& other_tag) -> bool {
+                if constexpr(std::is_same_v<T, U>) {
+                    return tag == other_tag;
+                } else {
+                    return false;
+                }
+            });
+        });
+    }
+};
 
 namespace detail {
 namespace et = eventide;
 
 template <typename E>
-E enum_value(std::string_view name) {
+constexpr E enum_value(std::string_view name) {
     if(auto val = et::refl::enum_value<E>(name); val.has_value()) {
         return *val;
     }
@@ -28,7 +135,7 @@ E enum_value(std::string_view name) {
 }
 
 template <typename E>
-std::string_view enum_name(E value) {
+constexpr std::string_view enum_name(E value) {
     return et::refl::enum_name(value, "unknown");
 }
 
@@ -58,12 +165,6 @@ struct property_name_mapper {
         return field_name;
     }
 };
-
-template <typename T>
-T make_reflected_object(qjs::Object object);
-
-template <typename T>
-qjs::Object to_reflected_object(JSContext* ctx, const T& value);
 
 template <typename T>
 struct Bridge {
@@ -121,6 +222,32 @@ struct Bridge<std::vector<T>> {
 
     static auto to_js(JSContext* ctx, const std::vector<T>& vec) {
         return qjs::Array<T>::from(ctx, vec);
+    }
+};
+
+template <auto... Es>
+    requires EnumValues<Es...>
+struct Bridge<TaggedUnion<Es...>> {
+    using Union = TaggedUnion<Es...>;
+
+    static Union from_js(const qjs::Value& value) {
+        auto object = value.as<qjs::Object>();
+
+        auto tag = object["type"].as<std::string>();
+
+        return dispatch<typename Union::TagType>(tag, [&]<auto E>(in_palce_enum<E>) -> Union {
+            return make_reflected_object<Tag<E>>(object);
+        });
+    }
+
+    static auto to_js(JSContext* ctx, const Union& union_value) {
+        return std::visit(
+            [&]<auto E>(const Tag<E>& tag) {
+                auto object = to_reflected_object(ctx, tag);
+                object.set_property("type", std::string(enum_name(E)));
+                return object;
+            },
+            union_value);
     }
 };
 
@@ -270,42 +397,30 @@ public:
     std::string msg;
 };
 
-struct Action {
-    static Action make(qjs::Object object) {
-        return detail::make_reflected_object<Action>(std::move(object));
-    }
+using Action =
+    TaggedUnion<ActionType::skip, ActionType::drop, ActionType::abort, ActionType::modify>;
 
-    qjs::Object to_object(JSContext* ctx) const {
-        return detail::to_reflected_object(ctx, *this);
-    }
+using ExecutionEvent = TaggedUnion<EventType::output, EventType::finish>;
 
-    bool operator== (const Action&) const = default;
-
-public:
-    std::optional<CommandData> data;
-    ActionType type;
+TAG<ActionType::modify> {
+    CommandData data;
+    bool operator== (const Tag& other) const = default;
 };
 
-struct ExecutionEvent {
-    static ExecutionEvent make(qjs::Object object) {
-        return detail::make_reflected_object<ExecutionEvent>(std::move(object));
-    }
-
-    qjs::Object to_object(JSContext* ctx) const {
-        return detail::to_reflected_object(ctx, *this);
-    }
-
-    bool operator== (const ExecutionEvent&) const = default;
-
-public:
-    std::optional<std::string> stdOut;
-    std::optional<std::string> stdErr;
+TAG<EventType::output> {
+    std::string stdOut;
+    std::string stdErr;
     int64_t code;
-    EventType type;
+    bool operator== (const Tag& other) const = default;
+};
+
+TAG<EventType::finish> {
+    int64_t code;
+    bool operator== (const Tag& other) const = default;
 };
 
 template <>
-struct detail::property_name_mapper<ExecutionEvent> {
+struct detail::property_name_mapper<Tag<EventType::output>> {
     constexpr static std::string_view map(std::string_view field_name) {
         if(field_name == "stdOut") {
             return "stdout";
@@ -317,4 +432,5 @@ struct detail::property_name_mapper<ExecutionEvent> {
     }
 };
 
+#undef TAG
 }  // namespace catter::js
