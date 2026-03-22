@@ -1,60 +1,85 @@
 export {};
 
 /**
- * Action to apply to a captured command.
- *
- * Possible values:
- * - `"skip"`: Ignore the command in catter, but still execute the original command.
- * - `"drop"`: Skip execution of the original command.
- * - `"abort"`: Abort the whole execution and report an error.
- * - `"modify"`: Replace the original command with a modified command.
- */
-export type ActionType = "skip" | "drop" | "abort" | "modify";
-
-/**
  * Result returned from a command handler.
  */
-export type Action = {
-  /**
-   * Replacement command data used when the action type is `"modify"`.
-   */
-  data?: CommandData;
+export type Action =
+  | {
+      /**
+       * Ignore the command in catter, but still execute the original command.
+       */
+      type: "skip";
+    }
+  | {
+      /**
+       * Skip execution of the original command.
+       */
+      type: "drop";
+    }
+  | {
+      /**
+       * Abort the whole execution and report an error.
+       */
+      type: "abort";
+    }
+  | {
+      /**
+       * Replace the original command with a modified command.
+       */
+      type: "modify";
 
-  /**
-   * Action to apply to the captured command.
-   */
-  type: ActionType;
-};
+      /**
+       * Replacement command data for the modified command.
+       */
+      data: CommandData;
+    };
 
 /**
- * Execution event kind.
+ * Action discriminator extracted from {@link Action}.
  */
-export type EventType = "finish" | "output";
+export type ActionType = Action["type"];
 
 /**
  * Event emitted while a command is executing.
  */
-export type ExecutionEvent = {
-  /**
-   * Standard output content for an `"output"` event.
-   */
-  stdout?: string;
+export type ExecutionEvent =
+  | {
+      /**
+       * Event category.
+       */
+      type: "output";
 
-  /**
-   * Standard error content for an `"output"` event.
-   */
-  stderr?: string;
+      /**
+       * Standard output content for an `"output"` event.
+       */
+      stdout: string;
 
-  /**
-   * Process exit code. For non-finished output events, this is runtime-defined.
-   */
-  code: number;
+      /**
+       * Standard error content for an `"output"` event.
+       */
+      stderr: string;
 
-  /**
-   * Event category.
-   */
-  type: EventType;
-};
+      /**
+       * Runtime-defined status code for this output event.
+       */
+      code: number;
+    }
+  | {
+      /**
+       * Event category.
+       */
+      type: "finish";
+
+      /**
+       * Final process exit code.
+       */
+      code: number;
+    };
+
+/**
+ * Execution event discriminator extracted from {@link ExecutionEvent}.
+ */
+export type EventType = ExecutionEvent["type"];
 
 /**
  * Runtime capabilities exposed to the script.
@@ -172,12 +197,39 @@ export type CommandData = {
   parent?: number;
 };
 
+/**
+ * Tagged command capture result passed to `service_on_command`.
+ */
+export type CommandCaptureResult =
+  | {
+      /**
+       * Indicates command capture succeeded.
+       */
+      success: true;
+
+      /**
+       * Captured command payload.
+       */
+      data: CommandData;
+    }
+  | {
+      /**
+       * Indicates command capture failed.
+       */
+      success: false;
+
+      /**
+       * Failure details for command capture.
+       */
+      error: CatterErr;
+    };
+
 export function service_on_start(
   cb: (config: CatterConfig) => CatterConfig,
 ): void;
 export function service_on_finish(cb: (event: ExecutionEvent) => void): void;
 export function service_on_command(
-  cb: (id: number, data: CommandData | CatterErr) => Action,
+  cb: (id: number, data: CommandCaptureResult) => Action,
 ): void;
 export function service_on_execution(
   cb: (id: number, event: ExecutionEvent) => void,
