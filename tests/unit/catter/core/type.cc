@@ -25,10 +25,10 @@ TEST_SUITE(api_tests) {
             auto runtime = qjs::Runtime::create();
             auto& ctx = runtime.context();
 
-            catter::js::CatterRuntime catter_runtime{
-                .supportActions = {catter::js::ActionType::skip, catter::js::ActionType::modify},
-                .supportEvents = {catter::js::EventType::finish},
-                .type = catter::js::CatterRuntime::Type::inject,
+            js::CatterRuntime catter_runtime{
+                .supportActions = {js::ActionType::skip, js::ActionType::modify},
+                .supportEvents = {js::EventType::finish},
+                .type = js::CatterRuntime::Type::inject,
                 .supportParentId = true
             };
 
@@ -43,16 +43,14 @@ TEST_SUITE(api_tests) {
             auto runtime = qjs::Runtime::create();
             auto& ctx = runtime.context();
 
-            catter::js::CommandData command_data{
+            js::CommandData command_data{
                 .cwd = "D:/Code/hook/catter",
                 .exe = "clang++",
                 .argv = {"clang++", "main.cc", "-c"},
                 .env = {"CC=clang++", "CATTER_LOG=1"},
-                .runtime = {.supportActions = {catter::js::ActionType::skip,
-                                               catter::js::ActionType::modify},
-                         .supportEvents = {catter::js::EventType::finish,
-                                              catter::js::EventType::output},
-                         .type = catter::js::CatterRuntime::Type::env,
+                .runtime = {.supportActions = {js::ActionType::skip, js::ActionType::modify},
+                         .supportEvents = {js::EventType::finish, js::EventType::output},
+                         .type = js::CatterRuntime::Type::env,
                          .supportParentId = true},
                 .parent = 42
             };
@@ -76,25 +74,22 @@ TEST_SUITE(api_tests) {
             auto runtime = qjs::Runtime::create();
             auto& ctx = runtime.context();
 
-            catter::js::ExecutionEvent output_event =
-                catter::js::Tag<catter::js::EventType::output>{
-                    .stdOut = "hello",
-                    .stdErr = "warn",
-                    .code = 0,
-                };
-            catter::js::ExecutionEvent finish_event =
-                catter::js::Tag<catter::js::EventType::finish>{
-                    .code = 1,
-                };
+            js::ExecutionEvent output_event = js::Tag<js::EventType::output>{
+                .stdOut = "hello",
+                .stdErr = "warn",
+                .code = 0,
+            };
+            js::ExecutionEvent finish_event = js::Tag<js::EventType::finish>{
+                .code = 1,
+            };
 
-            catter::js::CatterConfig config{
+            js::CatterConfig config{
                 .scriptPath = "scripts/demo.js",
                 .scriptArgs = {"--input", "compile_commands.json"},
                 .buildSystemCommand = {"xmake", "build"},
-                .runtime = {.supportActions = {catter::js::ActionType::drop,
-                                               catter::js::ActionType::abort},
-                               .supportEvents = {catter::js::EventType::finish},
-                               .type = catter::js::CatterRuntime::Type::inject,
+                .runtime = {.supportActions = {js::ActionType::drop, js::ActionType::abort},
+                               .supportEvents = {js::EventType::finish},
+                               .type = js::CatterRuntime::Type::inject,
                                .supportParentId = false},
                 .options = {.log = true},
                 .isScriptSupported = true

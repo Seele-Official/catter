@@ -77,7 +77,7 @@ public:
     }
 
     void report_error(data::ipcid_t parent_id, std::string error_msg) override {
-        js::on_command(id, js::CatterErr{.msg = error_msg});
+        js::on_command(id, std::unexpected(js::CatterErr{.msg = std::move(error_msg)}));
     }
 
     struct Factory {

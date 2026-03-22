@@ -21,7 +21,7 @@ namespace {
 void ensure_qjs_initialized(const fs::path& js_path) {
     static bool initialized = false;
     if(!initialized) {
-        catter::js::init_qjs({.pwd = js_path});
+        js::init_qjs({.pwd = js_path});
         initialized = true;
     }
 }
@@ -35,17 +35,17 @@ void run_js_file_by_name(const fs::path& js_path, std::string_view file_name) {
     }
 
     std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
-    catter::js::run_js_file(content, full_path.string());
+    js::run_js_file(content, full_path.string());
 }
 
 void run_basic_js_case(std::string_view file_name, bool with_fs_test_env = false) {
     try {
-        auto js_path = fs::path(catter::config::data::js_test_path.data());
+        auto js_path = fs::path(config::data::js_test_path.data());
         ensure_qjs_initialized(js_path);
 
         if(with_fs_test_env) {
-            auto js_path_res = fs::path(catter::config::data::js_test_res_path.data());
-            catter::TempFileManager manager(js_path_res / "fs-test-env");
+            auto js_path_res = fs::path(config::data::js_test_res_path.data());
+            TempFileManager manager(js_path_res / "fs-test-env");
 
             std::error_code ec;
             manager.create("a/tmp.txt", ec, "Alpha!\nBeta!\nKid A;\nend;");
@@ -70,8 +70,8 @@ void run_basic_js_case(std::string_view file_name, bool with_fs_test_env = false
         }
 
         run_js_file_by_name(js_path, file_name);
-    } catch(catter::qjs::Exception& ex) {
-        catter::output::redLn("{}", ex.what());
+    } catch(qjs::Exception& ex) {
+        output::redLn("{}", ex.what());
         throw ex;
     }
 }
@@ -105,21 +105,21 @@ TEST_SUITE(js_tests) {
 
     TEST_CASE(run_service_js_file_and_callbacks) {
         auto f = [&]() {
-            auto js_path = fs::path(catter::config::data::js_test_path.data());
+            auto js_path = fs::path(config::data::js_test_path.data());
             ensure_qjs_initialized(js_path);
             run_js_file_by_name(js_path, "service.js");
 
-            catter::js::CatterRuntime runtime{
-                .supportActions = {catter::js::ActionType::skip,
-                                   catter::js::ActionType::drop,
-                                   catter::js::ActionType::abort,
-                                   catter::js::ActionType::modify},
-                .supportEvents = {catter::js::EventType::finish, catter::js::EventType::output},
-                .type = catter::js::CatterRuntime::Type::inject,
+            js::CatterRuntime runtime{
+                .supportActions = {js::ActionType::skip,
+                                   js::ActionType::drop,
+                                   js::ActionType::abort,
+                                   js::ActionType::modify},
+                .supportEvents = {js::EventType::finish, js::EventType::output},
+                .type = js::CatterRuntime::Type::inject,
                 .supportParentId = true,
             };
 
-            catter::js::CatterConfig config{
+            js::CatterConfig config{
                 .scriptPath = "script.ts",
                 .scriptArgs = {"--input", "compile_commands.json"},
                 .buildSystemCommand = {"xmake", "build"},
@@ -128,14 +128,14 @@ TEST_SUITE(js_tests) {
                 .isScriptSupported = true,
             };
 
-            auto updated_config = catter::js::on_start(config);
+            auto updated_config = js::on_start(config);
             EXPECT_TRUE(updated_config.scriptPath == config.scriptPath);
             EXPECT_TRUE(updated_config.scriptArgs.size() == 3);
             EXPECT_TRUE(updated_config.scriptArgs.back() == "--from-service");
             EXPECT_TRUE(updated_config.options.log == false);
             EXPECT_TRUE(updated_config.isScriptSupported == false);
 
-            catter::js::CommandData data{
+            js::CommandData data{
                 .cwd = "/tmp",
                 .exe = "clang++",
                 .argv = {"clang++", "main.cc", "-c"},
@@ -144,37 +144,35 @@ TEST_SUITE(js_tests) {
                 .parent = 41,
             };
 
-            auto action = catter::js::on_command(7, data);
+            auto action = js::on_command(7, data);
             action.visit([&]<auto E>(const Tag<E>& tag) {
-                if constexpr(E == catter::js::ActionType::modify) {
+                if constexpr(E == js::ActionType::modify) {
                     EXPECT_TRUE(tag.data.argv.size() == 4);
                     EXPECT_TRUE(tag.data.argv.back() == "--from-service");
                     EXPECT_TRUE(tag.data.parent.has_value());
                     EXPECT_TRUE(tag.data.parent.value() == 41);
                 } else {
-                    EXPECT_TRUE(E == catter::js::ActionType::modify);
+                    EXPECT_TRUE(E == js::ActionType::modify);
                 }
             });
 
-            catter::js::CatterErr err{.msg = "spawn failed"};
-            auto error_action = catter::js::on_command(7, err);
-            EXPECT_TRUE(error_action.type() == catter::js::ActionType::skip);
+            js::CatterErr err{.msg = "spawn failed"};
+            auto error_action = js::on_command(7, std::unexpected(err));
+            EXPECT_TRUE(error_action.type() == js::ActionType::skip);
 
-            catter::js::ExecutionEvent output_event =
-                catter::js::Tag<catter::js::EventType::output>{
-                    .stdOut = "hello from stdout",
-                    .stdErr = "hello from stderr",
-                    .code = 0,
-                };
-            catter::js::on_execution(7, output_event);
+            js::ExecutionEvent output_event = js::Tag<js::EventType::output>{
+                .stdOut = "hello from stdout",
+                .stdErr = "hello from stderr",
+                .code = 0,
+            };
+            js::on_execution(7, output_event);
 
-            catter::js::ExecutionEvent finish_event =
-                catter::js::Tag<catter::js::EventType::finish>{
-                    .code = 0,
-                };
-            catter::js::on_execution(7, finish_event);
+            js::ExecutionEvent finish_event = js::Tag<js::EventType::finish>{
+                .code = 0,
+            };
+            js::on_execution(7, finish_event);
 
-            catter::js::on_finish(finish_event);
+            js::on_finish(finish_event);
         };
 
         EXPECT_NOTHROWS(f());
@@ -190,14 +188,13 @@ TEST_SUITE(js_tests) {
 
     TEST_CASE(run_js_file_reports_async_error_message_and_stack) {
         auto f = [&]() {
-            auto js_path = fs::path(catter::config::data::js_test_path.data());
+            auto js_path = fs::path(config::data::js_test_path.data());
             ensure_qjs_initialized(js_path);
 
             bool caught = false;
             try {
-                catter::js::run_js_file("await Promise.reject(new Error('async boom'));\n",
-                                        "reject.js");
-            } catch(const catter::qjs::Exception& ex) {
+                js::run_js_file("await Promise.reject(new Error('async boom'));\n", "reject.js");
+            } catch(const qjs::Exception& ex) {
                 caught = true;
                 std::string message = ex.what();
                 EXPECT_TRUE(message.contains("async boom"));

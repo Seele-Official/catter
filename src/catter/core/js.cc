@@ -49,18 +49,17 @@ void on_finish(ExecutionEvent event) {
     return self.on_finish(event.to_object(self.on_finish.context()));
 }
 
-Action on_command(uint32_t id, std::variant<CommandData, CatterErr> data) {
+Action on_command(uint32_t id, std::expected<CommandData, CatterErr> data) {
     if(!self.on_command) {
         throw std::runtime_error("service.onCommand is not registered");
     }
     auto command_result = qjs::Object::empty_one(self.on_command.context());
-    if(auto* command_data = std::get_if<CommandData>(&data); command_data != nullptr) {
+    if(data.has_value()) {
         command_result.set_property("success", true);
-        command_result.set_property("data", command_data->to_object(self.on_command.context()));
+        command_result.set_property("data", data->to_object(self.on_command.context()));
     } else {
-        auto& err = std::get<CatterErr>(data);
         command_result.set_property("success", false);
-        command_result.set_property("error", err.to_object(self.on_command.context()));
+        command_result.set_property("error", data.error().to_object(self.on_command.context()));
     }
     return Action::make(self.on_command(id, std::move(command_result)));
 }
