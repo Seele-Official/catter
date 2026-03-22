@@ -83,7 +83,7 @@ struct Dispatcher {
 
         return catter::dispatch(
             req,
-            [&]<auto E>(in_palce_enum<E>) -> std::optional<std::vector<char>> {
+            [&]<auto E>(in_place_enum<E>) -> std::optional<std::vector<char>> {
                 constexpr auto mem_fn = match_mem_fn<E>();
                 if constexpr(mem_fn == nullptr) {
                     LOG_INFO("No matching member function found for request type: {}",

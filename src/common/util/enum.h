@@ -14,16 +14,16 @@ namespace catter {
 
 template <auto E>
     requires std::is_enum_v<std::decay_t<decltype(E)>>
-struct in_palce_enum {
+struct in_place_enum {
     using type = std::decay_t<decltype(E)>;
     constexpr static type value = E;
 };
 
 template <typename E, typename F>
-    requires std::is_enum_v<E> && std::is_invocable_v<F, in_palce_enum<E{}>>
+    requires std::is_enum_v<E> && std::is_invocable_v<F, in_place_enum<E{}>>
 auto dispatch(E e, F&& f) {
     using Enum = eventide::refl::reflection<E>;
-    using R = std::invoke_result_t<F, in_palce_enum<E{}>>;
+    using R = std::invoke_result_t<F, in_place_enum<E{}>>;
     using Callback = R(F && f);
 
     struct Data {
@@ -34,7 +34,7 @@ auto dispatch(E e, F&& f) {
     constexpr auto map = []<size_t... I>(std::index_sequence<I...>) {
         return std::to_array<Data>({
             {Enum::member_values[I], [](F&& f) -> R {
-                 return std::invoke(std::forward<F>(f), in_palce_enum<Enum::member_values[I]>{});
+                 return std::invoke(std::forward<F>(f), in_place_enum<Enum::member_values[I]>{});
              }}
             ...
         });
@@ -58,10 +58,10 @@ auto dispatch(E e, F&& f) {
 }
 
 template <typename E, typename F>
-    requires std::is_enum_v<E> && std::is_invocable_v<F, in_palce_enum<E{}>>
+    requires std::is_enum_v<E> && std::is_invocable_v<F, in_place_enum<E{}>>
 auto dispatch(std::string_view e, F&& f) {
     using Enum = eventide::refl::reflection<E>;
-    using R = std::invoke_result_t<F, in_palce_enum<E{}>>;
+    using R = std::invoke_result_t<F, in_place_enum<E{}>>;
     using Callback = R(F && f);
 
     struct Data {
@@ -72,7 +72,7 @@ auto dispatch(std::string_view e, F&& f) {
     constexpr auto map = []<size_t... I>(std::index_sequence<I...>) {
         return std::to_array<Data>({
             {Enum::member_names[I], [](F&& f) -> R {
-                 return std::invoke(std::forward<F>(f), in_palce_enum<Enum::member_values[I]>{});
+                 return std::invoke(std::forward<F>(f), in_place_enum<Enum::member_values[I]>{});
              }}
             ...
         });

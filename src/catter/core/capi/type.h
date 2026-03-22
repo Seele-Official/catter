@@ -234,7 +234,7 @@ struct Bridge<TaggedUnion<Es...>> {
 
         auto tag = object["type"].as<std::string>();
 
-        return dispatch<typename Union::TagType>(tag, [&]<auto E>(in_palce_enum<E>) -> Union {
+        return dispatch<typename Union::TagType>(tag, [&]<auto E>(in_place_enum<E>) -> Union {
             return make_reflected_object<Tag<E>>(object);
         });
     }
