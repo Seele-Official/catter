@@ -3,15 +3,17 @@
 #include <string>
 #include <string_view>
 
+#include "winapi.h"
+
 namespace catter::win::payload {
 
-std::string resolve_abspath(const char* application_name, const char* command_line);
-std::wstring resolve_abspath(const wchar_t* application_name, const wchar_t* command_line);
+template <CharT char_t>
+std::basic_string<char_t> resolve_abspath(const char_t* application_name,
+                                          const char_t* command_line);
+template <CharT char_t>
+std::basic_string<char_t> get_proxy_path();
 
-std::string get_proxy_path();
-std::wstring get_proxy_path_wide();
-
-std::string get_ipc_id();
-std::wstring get_ipc_id_wide();
+template <CharT char_t>
+std::basic_string<char_t> get_ipc_id();
 
 }  // namespace catter::win::payload

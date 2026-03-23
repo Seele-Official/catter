@@ -1,12 +1,62 @@
+#pragma once
+
 #include <type_traits>
 
-#include <windows.h>
+#include <limits>
+#include <string>
+#include <string_view>
 
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+
+#include <windows.h>
 
 namespace catter::win::payload {
 
 template <typename char_t>
 concept CharT = std::is_same_v<char_t, char> || std::is_same_v<char_t, wchar_t>;
+
+struct WinApiBufferDecision {
+    bool done = false;
+    size_t output_size = 0;
+    size_t next_size = 0;
+};
+
+template <CharT char_t, typename size_t_winapi, typename api_call_t, typename decision_t>
+std::basic_string<char_t> CallWinApiWithGrowingBuffer(size_t initial_size,
+                                                      api_call_t&& call,
+                                                      decision_t&& decide) {
+    constexpr auto max_size = static_cast<size_t>((std::numeric_limits<size_t_winapi>::max)());
+    size_t buffer_size = initial_size < 1 ? 1 : initial_size;
+    if(buffer_size > max_size) {
+        return {};
+    }
+
+    std::basic_string<char_t> buffer(buffer_size, char_t('\0'));
+    while(true) {
+        auto result = call(buffer.data(), static_cast<size_t_winapi>(buffer.size()));
+        if(result == 0) {
+            return {};
+        }
+
+        auto decision = decide(result, buffer.size());
+        if(decision.done) {
+            if(decision.output_size > buffer.size()) {
+                return {};
+            }
+            buffer.resize(decision.output_size);
+            return buffer;
+        }
+
+        auto next_size =
+            decision.next_size > (buffer.size() + 1) ? decision.next_size : (buffer.size() + 1);
+        if(next_size > max_size) {
+            return {};
+        }
+        buffer.resize(next_size);
+    }
+}
 
 template <CharT char_t>
 DWORD FixGetEnvironmentVariable(const char_t* name, char_t* buffer, DWORD size) {
@@ -73,4 +123,114 @@ UINT FixGetWindowsDirectory(char_t* buffer, UINT size) {
         return GetWindowsDirectoryW(buffer, size);
     }
 }
+
+template <CharT char_t>
+std::basic_string<char_t> GetEnvironmentVariableDynamic(const char_t* name,
+                                                        size_t initial_size = 256) {
+    return CallWinApiWithGrowingBuffer<char_t, DWORD>(
+        initial_size,
+        [&](char_t* buffer, DWORD size) {
+            return FixGetEnvironmentVariable<char_t>(name, buffer, size);
+        },
+        [](DWORD result, size_t buffer_size) -> WinApiBufferDecision {
+            if(static_cast<size_t>(result) < buffer_size) {
+                return WinApiBufferDecision{.done = true,
+                                            .output_size = static_cast<size_t>(result)};
+            }
+            return WinApiBufferDecision{.next_size = static_cast<size_t>(result)};
+        });
 }
+
+template <CharT char_t>
+std::basic_string<char_t> GetCurrentDirectoryDynamic(size_t initial_size = MAX_PATH) {
+    return CallWinApiWithGrowingBuffer<char_t, DWORD>(
+        initial_size,
+        [&](char_t* buffer, DWORD size) { return FixGetCurrentDirectory<char_t>(size, buffer); },
+        [](DWORD result, size_t buffer_size) -> WinApiBufferDecision {
+            if(static_cast<size_t>(result) < buffer_size) {
+                return WinApiBufferDecision{.done = true,
+                                            .output_size = static_cast<size_t>(result)};
+            }
+            return WinApiBufferDecision{.next_size = static_cast<size_t>(result) + 1};
+        });
+}
+
+template <CharT char_t>
+std::basic_string<char_t> GetModulePathDynamic(HMODULE module, size_t initial_size = MAX_PATH) {
+    return CallWinApiWithGrowingBuffer<char_t, DWORD>(
+        initial_size,
+        [&](char_t* buffer, DWORD size) {
+            return FixGetModuleFileName<char_t>(module, buffer, size);
+        },
+        [](DWORD result, size_t buffer_size) -> WinApiBufferDecision {
+            auto written = static_cast<size_t>(result);
+            if(written < buffer_size) {
+                return WinApiBufferDecision{.done = true, .output_size = written};
+            }
+            return WinApiBufferDecision{.next_size = buffer_size * 2};
+        });
+}
+
+template <CharT char_t>
+std::basic_string<char_t> GetModuleDirectory(HMODULE module, size_t initial_size = MAX_PATH) {
+    auto module_path = GetModulePathDynamic<char_t>(module, initial_size);
+    if(module_path.empty()) {
+        return {};
+    }
+
+    auto pos = module_path.find_last_of(char_t('\\'));
+    if(pos == std::basic_string<char_t>::npos) {
+        pos = module_path.find_last_of(char_t('/'));
+    }
+    if(pos == std::basic_string<char_t>::npos) {
+        return {};
+    }
+    return module_path.substr(0, pos);
+}
+
+template <CharT char_t>
+std::basic_string<char_t> GetSystemDirectoryDynamic(size_t initial_size = MAX_PATH) {
+    return CallWinApiWithGrowingBuffer<char_t, UINT>(
+        initial_size,
+        [&](char_t* buffer, UINT size) { return FixGetSystemDirectory<char_t>(buffer, size); },
+        [](UINT result, size_t buffer_size) -> WinApiBufferDecision {
+            if(static_cast<size_t>(result) < buffer_size) {
+                return WinApiBufferDecision{.done = true,
+                                            .output_size = static_cast<size_t>(result)};
+            }
+            return WinApiBufferDecision{.next_size = static_cast<size_t>(result) + 1};
+        });
+}
+
+template <CharT char_t>
+std::basic_string<char_t> GetWindowsDirectoryDynamic(size_t initial_size = MAX_PATH) {
+    return CallWinApiWithGrowingBuffer<char_t, UINT>(
+        initial_size,
+        [&](char_t* buffer, UINT size) { return FixGetWindowsDirectory<char_t>(buffer, size); },
+        [](UINT result, size_t buffer_size) -> WinApiBufferDecision {
+            if(static_cast<size_t>(result) < buffer_size) {
+                return WinApiBufferDecision{.done = true,
+                                            .output_size = static_cast<size_t>(result)};
+            }
+            return WinApiBufferDecision{.next_size = static_cast<size_t>(result) + 1};
+        });
+}
+
+template <CharT char_t>
+std::basic_string<char_t> GetFullPathNameDynamic(std::basic_string_view<char_t> path,
+                                                 size_t initial_size = MAX_PATH) {
+    auto input = std::basic_string<char_t>(path);
+    return CallWinApiWithGrowingBuffer<char_t, DWORD>(
+        initial_size,
+        [&](char_t* buffer, DWORD size) {
+            return FixGetFullPathName<char_t>(input.c_str(), size, buffer, nullptr);
+        },
+        [](DWORD result, size_t buffer_size) -> WinApiBufferDecision {
+            if(static_cast<size_t>(result) < buffer_size) {
+                return WinApiBufferDecision{.done = true,
+                                            .output_size = static_cast<size_t>(result)};
+            }
+            return WinApiBufferDecision{.next_size = static_cast<size_t>(result) + 1};
+        });
+}
+}  // namespace catter::win::payload

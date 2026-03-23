@@ -31,8 +31,8 @@ struct CreateProcessA {
 
         auto converted_cmdline =
             std::format("{} -p {} --exec {} -- {}",
-                        catter::win::payload::get_proxy_path(),
-                        catter::win::payload::get_ipc_id(),
+                        catter::win::payload::get_proxy_path<char>(),
+                        catter::win::payload::get_ipc_id<char>(),
                         catter::win::payload::resolve_abspath(lpApplicationName, lpCommandLine),
                         std::string_view(lpCommandLine ? lpCommandLine : ""));
 
@@ -67,8 +67,8 @@ struct CreateProcessW {
 
         auto converted_cmdline =
             std::format(L"{} -p {} --exec {} -- {}",
-                        catter::win::payload::get_proxy_path_wide(),
-                        catter::win::payload::get_ipc_id_wide(),
+                        catter::win::payload::get_proxy_path<wchar_t>(),
+                        catter::win::payload::get_ipc_id<wchar_t>(),
                         catter::win::payload::resolve_abspath(lpApplicationName, lpCommandLine),
                         std::wstring_view(lpCommandLine ? lpCommandLine : L""));
 
