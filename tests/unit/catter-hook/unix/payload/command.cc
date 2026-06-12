@@ -9,8 +9,8 @@
 #include <kota/zest/zest.h>
 #include <kota/deco/deco.h>
 
+#include "option.h"
 #include "session.h"
-#include "opt/proxy/option.h"
 
 namespace ct = catter;
 

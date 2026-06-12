@@ -30,7 +30,6 @@
 #include <kota/async/io/loop.h>
 
 #include "temp_file_manager.h"
-#include "config/js-test.h"
 #include "util/output.h"
 
 namespace fs = std::filesystem;
@@ -38,6 +37,9 @@ using namespace catter;
 using namespace catter::js;
 
 namespace {
+
+constexpr std::string_view js_test_path = JS_TEST_PATH;
+constexpr std::string_view js_test_res_path = JS_TEST_RES_PATH;
 
 std::string load_js_file_by_name(const fs::path& js_path, std::string_view file_name) {
     auto full_path = js_path / file_name;
@@ -50,9 +52,34 @@ std::string load_js_file_by_name(const fs::path& js_path, std::string_view file_
     return std::string((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
 }
 
+struct ScriptRunConfig {
+    std::string script_content;
+    std::string script_path;
+    std::filesystem::path working_directory;
+};
+
+kota::task<> async_run(ScriptRunConfig config) {
+    js::RuntimeScope runtime;
+
+    std::exception_ptr error;
+    try {
+        co_await runtime.start({.pwd = std::move(config.working_directory)});
+        co_await js::run_script(config.script_content, config.script_path);
+    } catch(...) {
+        error = std::current_exception();
+    }
+
+    co_await runtime.stop();
+
+    if(error) {
+        std::rethrow_exception(error);
+    }
+    co_return;
+}
+
 void run_async_js_case(std::string source, std::string file_name) {
-    auto js_path = fs::path(config::data::js_test_path.data());
-    auto task = app::async_run(app::ScriptRunConfig{
+    auto js_path = fs::path(js_test_path);
+    auto task = async_run(ScriptRunConfig{
         .script_content = std::move(source),
         .script_path = std::move(file_name),
         .working_directory = js_path,
@@ -65,12 +92,12 @@ void run_async_js_case(std::string source, std::string file_name) {
 
 void run_basic_js_case(std::string_view file_name, bool with_fs_test_env = false) {
     try {
-        auto js_path = fs::path(config::data::js_test_path.data());
+        auto js_path = fs::path(js_test_path);
         auto full_path = js_path / file_name;
         auto source = load_js_file_by_name(js_path, file_name);
 
         if(with_fs_test_env) {
-            auto js_path_res = fs::path(config::data::js_test_res_path.data());
+            auto js_path_res = fs::path(js_test_res_path);
             TempFileManager manager(js_path_res / "fs-test-env");
 
             std::error_code ec;
@@ -374,7 +401,7 @@ kota::zest::TestState run_auto_js_test_case(const fs::path& relative_path) {
 
 std::vector<kota::zest::TestCase> auto_js_test_cases() {
     std::vector<kota::zest::TestCase> cases;
-    const auto js_path = fs::path(config::data::js_test_path.data());
+    const auto js_path = fs::path(js_test_path);
 
     for(const auto& relative_path: collect_auto_js_case_paths(js_path)) {
         const auto full_path = (js_path / relative_path).string();
@@ -411,10 +438,10 @@ kota::task<> run_service_js_callbacks(fs::path js_path) {
 
         js::CatterConfig config{
             .scriptPath = "script.ts",
-            .scriptArgs = {"--input",   "compile_commands.json"                         },
-            .buildSystemCommand = {"xmake",     "build"                                         },
+            .scriptArgs = {"--input",   "compile_commands.json"                           },
+            .buildSystemCommand = {"xmake",     "build"                                           },
             .runtime = runtime,
-            .options = {.log = true, .output = js::CatterOptions::OutputMode::inherit},
+            .options = {.log = true, .stdioMode = js::CatterOptions::StdioMode::inherit},
             .execute = true,
         };
 
@@ -423,7 +450,7 @@ kota::task<> run_service_js_callbacks(fs::path js_path) {
         EXPECT_TRUE(updated_config.scriptArgs.size() == 3);
         EXPECT_TRUE(updated_config.scriptArgs.back() == "--from-service");
         EXPECT_TRUE(updated_config.options.log == false);
-        EXPECT_TRUE(updated_config.options.output == js::CatterOptions::OutputMode::capture);
+        EXPECT_TRUE(updated_config.options.stdioMode == js::CatterOptions::StdioMode::capture);
         EXPECT_TRUE(updated_config.execute == true);
 
         js::CommandData data{
@@ -479,7 +506,7 @@ kota::task<> run_service_js_callbacks(fs::path js_path) {
 TEST_SUITE(js_tests) {
 TEST_CASE(run_service_js_file_and_callbacks) {
     auto f = [&]() {
-        auto js_path = fs::path(config::data::js_test_path.data());
+        auto js_path = fs::path(js_test_path);
         auto task = run_service_js_callbacks(std::move(js_path));
 
         kota::event_loop loop;
