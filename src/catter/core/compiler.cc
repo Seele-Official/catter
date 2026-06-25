@@ -29,7 +29,11 @@ Compiler identify_compiler(std::string_view compiler_name) {
             std::string full_pattern =
                 "^" + optional_path_prefix + pattern_with_version + exe_suffix + "$";
 
-            return std::regex(full_pattern);
+            auto flags = std::regex_constants::ECMAScript;
+#ifdef _WIN32
+            flags |= std::regex_constants::icase;
+#endif
+            return std::regex(full_pattern, flags);
         };
 
         return std::to_array<CompilerPattern>({

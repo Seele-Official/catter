@@ -184,11 +184,7 @@ const clangClDriverOnlyNoLeak = parseItems(
   "clang cl visibility filtered no leak",
   option.ClangVisibility.DefaultVis,
 );
-expectEq(
-  clangClDriverOnlyNoLeak.length,
-  1,
-  "clang cl filtered no leak length",
-);
+expectEq(clangClDriverOnlyNoLeak.length, 1, "clang cl filtered no leak length");
 expectEq(
   clangClDriverOnlyNoLeak[0].key,
   "main.cc",
