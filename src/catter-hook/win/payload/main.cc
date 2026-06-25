@@ -1,6 +1,4 @@
 #include <array>
-#include <format>
-#include <string>
 #include <string_view>
 #include <MinHook.h>
 
@@ -27,12 +25,11 @@ struct CreateProcessA {
                               LPSTARTUPINFOA lpStartupInfo,
                               LPPROCESS_INFORMATION lpProcessInformation) {
 
-        auto converted_cmdline =
-            std::format("{} -p {} --exec {} -- {}",
-                        catter::win::payload::get_proxy_path<char>(),
-                        catter::win::payload::get_ipc_id<char>(),
-                        catter::win::payload::resolve_abspath(lpApplicationName, lpCommandLine),
-                        std::string_view(lpCommandLine ? lpCommandLine : ""));
+        auto converted_cmdline = catter::win::payload::build_proxy_command<char>(
+            catter::win::payload::get_proxy_path<char>(),
+            catter::win::payload::get_ipc_id<char>(),
+            lpApplicationName,
+            lpCommandLine);
 
         return original(nullptr,
                         converted_cmdline.data(),
@@ -63,12 +60,11 @@ struct CreateProcessW {
                               LPSTARTUPINFOW lpStartupInfo,
                               LPPROCESS_INFORMATION lpProcessInformation) {
 
-        auto converted_cmdline =
-            std::format(L"{} -p {} --exec {} -- {}",
-                        catter::win::payload::get_proxy_path<wchar_t>(),
-                        catter::win::payload::get_ipc_id<wchar_t>(),
-                        catter::win::payload::resolve_abspath(lpApplicationName, lpCommandLine),
-                        std::wstring_view(lpCommandLine ? lpCommandLine : L""));
+        auto converted_cmdline = catter::win::payload::build_proxy_command<wchar_t>(
+            catter::win::payload::get_proxy_path<wchar_t>(),
+            catter::win::payload::get_ipc_id<wchar_t>(),
+            lpApplicationName,
+            lpCommandLine);
 
         return original(nullptr,
                         converted_cmdline.data(),
