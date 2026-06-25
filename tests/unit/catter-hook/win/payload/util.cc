@@ -45,6 +45,30 @@ TEST_CASE(get_ipc_id_reads_environment_variable) {
     EXPECT_TRUE(ct::win::payload::get_ipc_id<char>() == "12345");
     EXPECT_TRUE(ct::win::payload::get_ipc_id<wchar_t>() == L"12345");
 };
+
+TEST_CASE(build_proxy_command_quotes_proxy_and_exec_paths) {
+    auto command =
+        ct::win::payload::build_proxy_command<char>(R"(C:\Program Files\Catter\catter-proxy.exe)",
+                                                    "12345",
+                                                    R"(C:\Program Files\LLVM\bin\clang-cl.exe)",
+                                                    R"("clang-cl.exe" /c main.cc)");
+
+    EXPECT_TRUE(
+        command ==
+        R"("C:\Program Files\Catter\catter-proxy.exe" -p 12345 --exec "C:\Program Files\LLVM\bin\clang-cl.exe" -- "clang-cl.exe" /c main.cc)");
+};
+
+TEST_CASE(build_proxy_command_supports_wide_strings) {
+    auto command = ct::win::payload::build_proxy_command<wchar_t>(
+        LR"(C:\Program Files\Catter\catter-proxy.exe)",
+        L"12345",
+        LR"(C:\Program Files\LLVM\bin\clang-cl.exe)",
+        LR"("clang-cl.exe" /c main.cc)");
+
+    EXPECT_TRUE(
+        command ==
+        LR"("C:\Program Files\Catter\catter-proxy.exe" -p 12345 --exec "C:\Program Files\LLVM\bin\clang-cl.exe" -- "clang-cl.exe" /c main.cc)");
+};
 };  // TEST_SUITE(win_payload_util)
 
 }  // namespace

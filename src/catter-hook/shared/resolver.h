@@ -10,6 +10,33 @@ namespace catter::hook::shared::resolver {
 
 #ifdef CATTER_WINDOWS
 
+// https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessw
+//
+// The lpApplicationName parameter can be NULL. In that case, the module name must be the first
+// white space–delimited token in the lpCommandLine string. If you are using a long file name that
+// contains a space, use quoted strings to indicate where the file name ends and the arguments
+// begin; If the file name does not contain an extension, .exe is appended. Therefore, if the file
+// name extension is .com, this parameter must include the .com extension. If the file name ends in
+// a period (.) with no extension, or if the file name contains a path, .exe is not appended. If the
+// file name does not contain a directory path, the system searches for the executable file in the
+// following sequence:
+//
+// 1.The directory from which the application loaded.
+//
+// 2.The current directory for the parent process.
+//
+// 3.The 32-bit Windows system directory. Use the GetSystemDirectory function to get the path of
+// this directory.
+//
+// 4.The 16-bit Windows system directory. There is no function that obtains the path of this
+// directory, but it is searched. The name of this directory is System.
+//
+// 5.The Windows directory. Use the GetWindowsDirectory function to get the path of this directory.
+//
+// 6.The directories that are listed in the PATH environment variable. Note that this function does
+// not search the per-application path specified by the App Paths registry key. To include this
+// per-application path in the search sequence, use the ShellExecute function.
+
 template <typename CharT>
 std::basic_string<CharT> resolve_application_name(std::basic_string_view<CharT> application_name);
 
