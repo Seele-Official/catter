@@ -31,11 +31,11 @@ extern char** environ;
 #include <crt_externs.h>
 #endif
 
-inline const char** environment() noexcept {
+inline char** environment() noexcept {
 #if defined(CATTER_MAC)
-    return const_cast<const char**>(*_NSGetEnviron());
+    return *_NSGetEnviron();
 #elif defined(CATTER_LINUX)
-    return const_cast<const char**>(environ);
+    return environ;
 #else
 #error "Unsupported platform"
 #endif
@@ -93,6 +93,6 @@ inline std::string get_executable_path() {
 #define INJECT_FUNCTION(fn) DYLD_INTERPOSE(HOOK_NAME(fn), fn)
 
 template <typename T>
-T dynamic_linker(const char* const name) {
+T dynamic_linker(const char* const name) noexcept {
     return reinterpret_cast<T>(dlsym(RTLD_NEXT, name));
 }

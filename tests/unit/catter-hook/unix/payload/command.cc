@@ -7,30 +7,25 @@
 #include <vector>
 #include <kota/zest/macro.h>
 #include <kota/zest/zest.h>
-#include <kota/deco/deco.h>
 
-#include "option.h"
 #include "session.h"
 
 namespace ct = catter;
 
 namespace {
 ct::Session session{.proxy_path = "/usr/local/bin/catter-proxy", .self_id = "99"};
-ct::CmdBuilder builder(session);
 
 TEST_SUITE(cmd_builder) {
 
 TEST_CASE(proxy_cmd_constructs_correct_arguments) {
     std::filesystem::path target_path = "/usr/bin/gcc";
 
-    std::vector<char*> original_argv = {const_cast<char*>("gcc"),
-                                        const_cast<char*>("-c"),
-                                        const_cast<char*>("main.c"),
-                                        nullptr};
+    std::vector<const char*> original_argv = {"gcc", "-c", "main.c", nullptr};
 
-    auto cmd =
-        builder.proxy_cmd(target_path,
-                          std::span<char* const>{original_argv.data(), original_argv.size() - 1});
+    auto cmd = ct::build_proxy_command(
+        session,
+        target_path,
+        std::span<const char* const>{original_argv.data(), original_argv.size() - 1});
 
     // 1. Verify basic properties
     EXPECT_TRUE(cmd.path == session.proxy_path);
@@ -38,31 +33,31 @@ TEST_CASE(proxy_cmd_constructs_correct_arguments) {
     // 2. Verify argv[0] convention
     EXPECT_TRUE(cmd.argv.at(0) == session.proxy_path);
 
-    auto f = [&]() {
-        auto parse_res = kota::deco::cli::parse<catter::proxy::ProxyOption>(cmd.argv)->options;
-        EXPECT_TRUE(*parse_res.parent_id == 99);
-        EXPECT_TRUE(*parse_res.exec == target_path);
-        EXPECT_TRUE(parse_res.args.has_value());
-        auto& args = *parse_res.args;
-        EXPECT_TRUE(args.size() == 3);
-        EXPECT_TRUE(args.at(0) == "gcc");
-        EXPECT_TRUE(args.at(2) == "main.c");
+    std::vector<std::string> expected_argv = {
+        session.proxy_path,
+        "-p",
+        session.self_id,
+        "--exec",
+        target_path,
+        "--",
+        "gcc",
+        "-c",
+        "main.c",
     };
-    EXPECT_NOTHROWS(f());
+    EXPECT_TRUE(cmd.argv == expected_argv);
 };
 
 TEST_CASE(error_cmd_formats_message_correctly_without_separator) {
     std::filesystem::path target_path = "/usr/bin/invalid";
 
-    std::vector<char*> original_argv = {const_cast<char*>("invalid"),
-                                        const_cast<char*>("--help"),
-                                        nullptr};
+    std::vector<const char*> original_argv = {"invalid", "--help", nullptr};
     const char* error_msg = "File not found";
 
-    auto cmd =
-        builder.error_cmd(error_msg,
-                          target_path,
-                          std::span<char* const>{original_argv.data(), original_argv.size() - 1});
+    auto cmd = ct::build_error_command(
+        session,
+        error_msg,
+        target_path,
+        std::span<const char* const>{original_argv.data(), original_argv.size() - 1});
 
     bool found_separator = false;
     for(const auto& arg: cmd.argv) {
@@ -75,12 +70,12 @@ TEST_CASE(error_cmd_formats_message_correctly_without_separator) {
     EXPECT_TRUE(last_arg.find("Catter Proxy Error: File not found") != std::string::npos);
     EXPECT_TRUE(last_arg.find("in command: invalid --help") != std::string::npos);
 
-    auto f = [&]() {
-        auto parse_res = kota::deco::cli::parse<catter::proxy::ProxyOption>(cmd.argv);
-        EXPECT_FALSE(parse_res->options.args.has_value());
-    };
-
-    EXPECT_NOTHROWS(f());
+    EXPECT_TRUE(cmd.argv.size() == 6);
+    EXPECT_TRUE(cmd.argv.at(0) == session.proxy_path);
+    EXPECT_TRUE(cmd.argv.at(1) == "-p");
+    EXPECT_TRUE(cmd.argv.at(2) == session.self_id);
+    EXPECT_TRUE(cmd.argv.at(3) == "--exec");
+    EXPECT_TRUE(cmd.argv.at(4) == target_path);
 };
 };  // TEST_SUITE(cmd_builder)
 }  // namespace

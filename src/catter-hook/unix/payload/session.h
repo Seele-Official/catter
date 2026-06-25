@@ -1,6 +1,6 @@
 #pragma once
 
-#include <string_view>
+#include <string>
 
 namespace catter {
 
@@ -10,16 +10,13 @@ namespace catter {
  * It does not own the memory (of the pointed areas).
  */
 struct Session {
-    std::string_view proxy_path{};
-    std::string_view self_id{};
+    std::string proxy_path{};
+    std::string self_id{};
+
+    static Session make(const char* const envp[]) noexcept;
+
+    bool is_valid() noexcept {
+        return (!proxy_path.empty() && !self_id.empty());
+    }
 };
-
-namespace session {
-
-// Util method to initialize instance.
-void from(Session& session, const char** environment) noexcept;
-
-// Util method to check if session is initialized.
-bool is_valid(const Session& session) noexcept;
-}  // namespace session
 }  // namespace catter

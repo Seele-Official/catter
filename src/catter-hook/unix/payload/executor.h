@@ -1,47 +1,51 @@
 #pragma once
-#include "command.h"
-#include "linker.h"
-#include "resolver.h"
+
+#include <cstdarg>
+#include <spawn.h>
+
 #include "session.h"
 
 namespace catter {
 
+using ExecveFn = int(const char* path, char* const argv[], char* const envp[]);
+using PosixSpawnFn = int(pid_t* pid,
+                         const char* path,
+                         const posix_spawn_file_actions_t* file_actions,
+                         const posix_spawnattr_t* attrp,
+                         char* const argv[],
+                         char* const envp[]);
+
 /**
- * This class implements the process execution logic.
- *
- * The caller of this is the POSIX interface for process creation.
- * This class encapsulate most of the logic and leave the C wrapper light
- * in order to test the functionality in unit tests.
- *
- * This is just a subset of all process creation calls.
- *
- * - Variable argument methods are not implemented. (The `execl*` methods.)
- *   Caller needs to convert those convenient functions by collecting the
- *   arguments into a C array.
- *
- * - Environment needs to pass for this methods. If a method does not have
- *   the environment explicitly passed as argument, it needs to grab it
- *   and pass to these methods.
+ * Linux reference: https://www.man7.org/linux/man-pages/man3/exec.3.html
  */
 class Executor {
-    constexpr static auto default_resolver = Resolver{};
-
 public:
-    Executor(const Linker& linker,
-             const Session& session,
-             const Resolver& resolver = default_resolver) noexcept;
+    void init(const char* const envp[]) noexcept;
+    void init(Session session, ExecveFn* execve, PosixSpawnFn* posix_spawn) noexcept;
 
-    ~Executor() noexcept = default;
+    int execv(const char* path, char* const argv[]) noexcept;
 
-public:
     int execve(const char* path, char* const argv[], char* const envp[]) noexcept;
 
+    int execvp(const char* file, char* const argv[]) noexcept;
+
+    // GNU extension
     int execvpe(const char* file, char* const argv[], char* const envp[]) noexcept;
 
+    int execl(const char* path, const char* arg, va_list* ap) noexcept;
+
+    int execle(const char* path, const char* arg, va_list* ap) noexcept;
+
+    int execlp(const char* file, const char* arg, va_list* ap) noexcept;
+
+    // FreeBSD specific extension
     int execvP(const char* file,
                const char* search_path,
                char* const argv[],
                char* const envp[]) noexcept;
+
+    // BSD/Latency Unix specific extension
+    int exect(const char* path, char* const argv[], char* const envp[]) noexcept;
 
     int posix_spawn(pid_t* pid,
                     const char* path,
@@ -58,10 +62,17 @@ public:
                      char* const envp[]) noexcept;
 
 private:
-    const catter::Linker& linker_;
-    const catter::Session& session_;
-    const catter::Resolver& resolver_;
-    catter::CmdBuilder cmd_builder_;
+    int run_execve(const char* executable, const char* const argv[], char* const envp[]);
+
+    int run_posix_spawn(pid_t* pid,
+                        const char* executable,
+                        const posix_spawn_file_actions_t* file_actions,
+                        const posix_spawnattr_t* attrp,
+                        const char* const argv[],
+                        char* const envp[]);
+    Session m_session;
+    ExecveFn* m_execve = nullptr;
+    PosixSpawnFn* m_posix_spawn = nullptr;
 };
 
 }  // namespace catter
