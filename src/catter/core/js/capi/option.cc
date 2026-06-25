@@ -3,6 +3,7 @@
 #include <expected>
 #include <format>
 #include <limits>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -86,6 +87,37 @@ catter::js::OptionItem make_option_item([[maybe_unused]] const eo::OptTable& tab
     return item;
 }
 
+bool is_input_or_unknown_argument(const eo::OptTable& table, const eo::ParsedArgument& arg) {
+    const auto option = table.option(arg.option_id);
+    if(!option.valid()) {
+        return false;
+    }
+    const auto kind = option.kind();
+    return kind == eo::Option::InputClass || kind == eo::Option::UnknownClass;
+}
+
+unsigned hidden_option_end_for_input_or_unknown(const eo::OptTable& table,
+                                                std::span<std::string> args,
+                                                unsigned index,
+                                                uint32_t visibility) {
+    if(visibility == kAllOptionVisibility || index >= args.size()) {
+        return index;
+    }
+
+    unsigned next_index = index;
+    auto parsed = table.parse_one_arg(args, next_index, eo::Visibility());
+    if(!parsed.has_value()) {
+        return index + 1;
+    }
+
+    const auto option = table.option(parsed->option_id);
+    if(!option.valid() || option.has_visibility_flag(visibility)) {
+        return index;
+    }
+
+    return next_index > index ? next_index : index + 1;
+}
+
 bool emit_callback_value(OptionParseCallback& callback, catter::qjs::Value value) {
     catter::qjs::Parameters args;
     args.emplace_back(std::move(value));
@@ -139,12 +171,25 @@ CTX_CAPI(option_parse, (JSContext * ctx, catter::qjs::Parameters params)->void) 
     unsigned missing_arg_index = 0;
     unsigned missing_arg_count = 0;
     const char* missing_reason = nullptr;
+    unsigned hidden_argument_end = 0;
 
     table.parse_args(
         args,
         missing_arg_index,
         missing_arg_count,
         [&](eo::ParsedArgument parsed) -> bool {
+            if(is_input_or_unknown_argument(table, parsed)) {
+                if(parsed.index < hidden_argument_end) {
+                    return true;
+                }
+
+                const auto hidden_end =
+                    hidden_option_end_for_input_or_unknown(table, args, parsed.index, visibility);
+                if(hidden_end > parsed.index) {
+                    hidden_argument_end = hidden_end;
+                    return true;
+                }
+            }
             return emit_callback_value(
                 callback,
                 catter::qjs::Value::from(make_option_item(table, parsed).to_object(ctx)));

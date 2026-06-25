@@ -170,18 +170,40 @@ const clangClDriverOnlyVisible = parseItems(
 );
 expectEq(
   clangClDriverOnlyVisible.length,
-  2,
+  1,
   "clang cl filtered visibility length",
 );
 expectEq(
   clangClDriverOnlyVisible[0].key,
-  "/c",
-  "clang cl filtered visibility key",
-);
-expectEq(
-  clangClDriverOnlyVisible[1].key,
   "main.cc",
   "clang cl filtered visibility input",
+);
+
+const clangClDriverOnlyNoLeak = parseItems(
+  ["/Foobj/main.obj", "/c", "main.cc"],
+  "clang cl visibility filtered no leak",
+  option.ClangVisibility.DefaultVis,
+);
+expectEq(
+  clangClDriverOnlyNoLeak.length,
+  1,
+  "clang cl filtered no leak length",
+);
+expectEq(
+  clangClDriverOnlyNoLeak[0].key,
+  "main.cc",
+  "clang cl filtered no leak input",
+);
+
+const clangClDriverOnlyHiddenMissing = parseItems(
+  ["/Fo"],
+  "clang cl visibility filtered hidden missing",
+  option.ClangVisibility.DefaultVis,
+);
+expectEq(
+  clangClDriverOnlyHiddenMissing.length,
+  0,
+  "clang cl filtered hidden missing length",
 );
 
 const clangClOutputVisible = parseItems(
