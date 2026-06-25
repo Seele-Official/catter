@@ -38,7 +38,6 @@ TEST_CASE(identify_compiler) {
         {R"(D:\LLVM\bin\clang.exe)",                                                                                     Compiler::clang   },
         {R"(D:\LLVM\bin\clang++.exe)",                                                                                   Compiler::clang   },
         {"C:/Program Files/LLVM/bin/clang.exe",                                                                          Compiler::clang   },
-        {R"(C:\LLVM\BIN\CLANG.EXE)",                                                                                     Compiler::clang   },
         {"clang-cl",                                                                                                     Compiler::clang_cl},
         {"clang-cl.exe",                                                                                                 Compiler::clang_cl},
         {"clang-cl-18",                                                                                                  Compiler::clang_cl},
@@ -46,11 +45,9 @@ TEST_CASE(identify_compiler) {
         {R"(C:\Program Files\LLVM\bin\clang-cl.exe)",                                                                    Compiler::clang_cl},
         {R"(D:\LLVM\bin\clang-cl.exe)",                                                                                  Compiler::clang_cl},
         {"C:/Program Files/LLVM/bin/clang-cl.exe",                                                                       Compiler::clang_cl},
-        {R"(C:\LLVM\BIN\CLANG-CL.EXE)",                                                                                  Compiler::clang_cl},
         {"x86_64-pc-windows-msvc-clang-cl.exe",                                                                          Compiler::clang_cl},
         {"cl",                                                                                                           Compiler::msvc    },
         {"cl.exe",                                                                                                       Compiler::msvc    },
-        {"CL.EXE",                                                                                                       Compiler::msvc    },
         {R"(C:\Program Files\Microsoft Visual Studio\VC\Tools\MSVC\bin\cl.exe)",                                         Compiler::msvc    },
         {R"(D:\MSVC\BuildTools\VC\Tools\MSVC\14.44.35207\bin\HostX64\x64\cl.exe)",                                       Compiler::msvc    },
         {R"(C:\Program Files\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC\14.44.35207\bin\Hostx64\x64\cl.exe)",
@@ -74,8 +71,6 @@ TEST_CASE(identify_compiler) {
         {"/usr/local/cuda/bin/nvcc",                                                                                     Compiler::nvcc    },
         {R"(C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\bin\nvcc.exe)",
          Compiler::nvcc                                                                                                                    },
-        {R"(C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\bin\NVCC.EXE)",
-         Compiler::nvcc                                                                                                                    },
         {"ccache",                                                                                                       Compiler::wrapper },
         {"distcc",                                                                                                       Compiler::wrapper },
         {"sccache",                                                                                                      Compiler::wrapper },
@@ -91,5 +86,19 @@ TEST_CASE(identify_compiler) {
     for(const auto& test_case: test_cases) {
         EXPECT_EQ(test_case.expected, identify_compiler(test_case.input));
     }
+
+#ifdef _WIN32
+    test_cases = {
+        {R"(C:\LLVM\BIN\CLANG.EXE)",                                                 Compiler::clang   },
+        {R"(C:\LLVM\BIN\CLANG-CL.EXE)",                                              Compiler::clang_cl},
+        {"CL.EXE",                                                                   Compiler::msvc    },
+        {R"(C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\bin\NVCC.EXE)",
+         Compiler::nvcc                                                                                }
+    };
+
+    for(const auto& test_case: test_cases) {
+        EXPECT_EQ(test_case.expected, identify_compiler(test_case.input));
+    }
+#endif
 };
 };  // TEST_SUITE(compiler_tests)
