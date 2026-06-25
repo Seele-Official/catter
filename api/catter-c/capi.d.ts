@@ -417,6 +417,8 @@ export function option_parse(
 export type Compiler =
   | "gcc"
   | "clang"
+  | "clang-cl"
+  | "msvc"
   | "flang"
   | "ifort"
   | "crayftn"

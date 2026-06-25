@@ -19,20 +19,27 @@ struct ParseResult {
     std::vector<std::string> errors;
 };
 
-ParseResult parse_command(std::span<const std::string> argv) {
+ParseResult parse_command(std::span<const std::string> argv,
+                          kota::option::Visibility visibility = kota::option::Visibility()) {
     std::vector<std::string> args(argv.begin() + 1, argv.end());
 
     ParseResult result;
+    unsigned missing_arg_index = 0;
+    unsigned missing_arg_count = 0;
+    const char* missing_reason = nullptr;
     opt::clang::table().parse_args(
         args,
-        [&](std::expected<kota::option::ParsedArgument, std::string> parsed) {
-            if(parsed.has_value()) {
-                result.args.emplace_back(
-                    kota::option::ParsedArgumentOwning::from_parsed_argument(*parsed));
-            } else {
-                result.errors.emplace_back(parsed.error());
-            }
-        });
+        missing_arg_index,
+        missing_arg_count,
+        [&](kota::option::ParsedArgument parsed) {
+            result.args.emplace_back(
+                kota::option::ParsedArgumentOwning::from_parsed_argument(parsed));
+        },
+        visibility,
+        &missing_reason);
+    if(missing_arg_count != 0) {
+        result.errors.emplace_back(missing_reason != nullptr ? missing_reason : "missing argument");
+    }
     return result;
 }
 
@@ -112,4 +119,30 @@ TEST_CASE(parse_unknown_and_missing_value) {
         EXPECT_TRUE(parsed.errors[0].contains("missing argument value"));
     };
 }
+
+TEST_CASE(parse_clang_cl_output_options_with_cl_visibility) {
+    const auto argv = std::to_array<std::string>(
+        {"clang-cl", "/c", "main.cc", "/Foobj/main.obj", "/Fe:bin/tool.exe"});
+
+    auto parsed =
+        parse_command(argv,
+                      kota::option::Visibility(opt::clang::DefaultVis | opt::clang::CLOption));
+
+    EXPECT_TRUE(parsed.errors.empty());
+    ASSERT_EQ(parsed.args.size(), 4U);
+
+    EXPECT_EQ(parsed.args[0].option_id.id(), opt::clang::ID__SLASH_c);
+
+    EXPECT_EQ(parsed.args[1].option_id.id(), opt::clang::ID_INPUT);
+    EXPECT_EQ(parsed.args[1].get_spelling_view(), "main.cc");
+
+    EXPECT_EQ(parsed.args[2].option_id.id(), opt::clang::ID__SLASH_Fo);
+    ASSERT_EQ(parsed.args[2].values.size(), 1U);
+    EXPECT_EQ(parsed.args[2].values[0], "obj/main.obj");
+
+    EXPECT_EQ(parsed.args[3].option_id.id(), opt::clang::ID__SLASH_Fe_COLON);
+    EXPECT_EQ(parsed.args[3].unaliased_opt().id(), opt::clang::ID__SLASH_Fe);
+    ASSERT_EQ(parsed.args[3].values.size(), 1U);
+    EXPECT_EQ(parsed.args[3].values[0], "bin/tool.exe");
+};
 };  // TEST_SUITE(clang_option_table_tests)

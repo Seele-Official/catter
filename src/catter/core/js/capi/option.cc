@@ -92,22 +92,6 @@ bool emit_callback_value(OptionParseCallback& callback, catter::qjs::Value value
     return callback(std::move(args));
 }
 
-bool matches_visibility(const eo::OptTable& table,
-                        const eo::ParsedArgument& arg,
-                        uint32_t visibility) {
-    if(visibility == kAllOptionVisibility) {
-        return true;
-    }
-
-    auto option = table.option(arg.option_id);
-    if(!option.valid()) {
-        return true;
-    }
-
-    const auto& info = table.options()[option.id() - 1];
-    return (static_cast<uint32_t>(info.visibility) & visibility) != 0;
-}
-
 CTX_CAPI(option_get_info,
          (JSContext * ctx, std::string table_name, unsigned int id)->catter::qjs::Object) {
     using namespace catter;
@@ -152,17 +136,38 @@ CTX_CAPI(option_parse, (JSContext * ctx, catter::qjs::Parameters params)->void) 
     auto callback = callback_object.as<OptionParseCallback>();
     const auto& table = resolve_table(table_name);
 
-    table.parse_args(args, [&](std::expected<eo::ParsedArgument, std::string> parsed) -> bool {
-        if(parsed.has_value()) {
-            if(!matches_visibility(table, *parsed, visibility)) {
-                return true;
-            }
+    unsigned missing_arg_index = 0;
+    unsigned missing_arg_count = 0;
+    const char* missing_reason = nullptr;
+
+    table.parse_args(
+        args,
+        missing_arg_index,
+        missing_arg_count,
+        [&](eo::ParsedArgument parsed) -> bool {
             return emit_callback_value(
                 callback,
-                catter::qjs::Value::from(make_option_item(table, *parsed).to_object(ctx)));
-        }
-        return emit_callback_value(callback, catter::qjs::Value::from(ctx, parsed.error()));
-    });
+                catter::qjs::Value::from(make_option_item(table, parsed).to_object(ctx)));
+        },
+        eo::Visibility(visibility),
+        &missing_reason);
+
+    if(missing_arg_count != 0) {
+        const auto failing_arg = missing_arg_index < args.size()
+                                     ? std::string_view(args[missing_arg_index])
+                                     : std::string_view("<end-of-argv>");
+        const auto reason = missing_reason != nullptr ? missing_reason : "missing argument";
+        const auto noun = missing_arg_count == 1 ? "value" : "values";
+        emit_callback_value(callback,
+                            catter::qjs::Value::from(
+                                ctx,
+                                std::format("failed to parse '{}' (arg #{}) : {} (missing {} {})",
+                                            failing_arg,
+                                            missing_arg_index,
+                                            reason,
+                                            missing_arg_count,
+                                            noun)));
+    }
 }
 
 }  // namespace

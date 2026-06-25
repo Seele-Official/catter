@@ -170,13 +170,36 @@ const clangClDriverOnlyVisible = parseItems(
 );
 expectEq(
   clangClDriverOnlyVisible.length,
-  1,
+  2,
   "clang cl filtered visibility length",
 );
 expectEq(
   clangClDriverOnlyVisible[0].key,
+  "/c",
+  "clang cl filtered visibility key",
+);
+expectEq(
+  clangClDriverOnlyVisible[1].key,
   "main.cc",
   "clang cl filtered visibility input",
+);
+
+const clangClOutputVisible = parseItems(
+  ["/Foobj/main.obj", "/Fe:bin/tool.exe"],
+  "clang cl output visibility filtered",
+  option.ClangVisibility.DefaultVis | option.ClangVisibility.CLOption,
+);
+expectEq(clangClOutputVisible.length, 2, "clang cl output visibility length");
+expectEq(clangClOutputVisible[0].key, "/Fo", "clang cl output object key");
+expectEq(
+  clangClOutputVisible[0].values[0],
+  "obj/main.obj",
+  "clang cl output object value",
+);
+expectEq(
+  option.convertToUnalias("clang", cloneItem(clangClOutputVisible[1])).key,
+  "/Fe",
+  "clang cl output executable unalias key",
 );
 
 const clangClAllVisible = parseItems(
@@ -511,6 +534,127 @@ const spdlogLink = demoParsed.find(
   (item) => option.stringify("clang", item) === "-lspdlogd",
 );
 debug.assertThrow(spdlogLink !== undefined);
+
+// xmake clang-cl/msvc demos
+const clStyleVisibility =
+  option.ClangVisibility.DefaultVis | option.ClangVisibility.CLOption;
+
+const xmakeClangClCompileCommand = [
+  "-c",
+  "--target=x86_64-pc-windows-msvc",
+  "-MD",
+  "-Zi",
+  "-FS",
+  "-Fdbuild-clang-cl\\windows\\x64\\debug\\compile.catter-proxy.pdb",
+  "-Od",
+  "-std:c++latest",
+  "-ID:\\Code\\catter\\.pixi\\envs\\dev\\include",
+  "-ID:\\Code\\catter\\.pixi\\envs\\dev\\Library\\include",
+  "-Isrc\\catter-proxy",
+  "-Isrc\\common",
+  "-Isrc\\catter-hook",
+  "-DDEBUG",
+  "-DCATTER_WINDOWS",
+  "-DWIN32_LEAN_AND_MEAN",
+  "-DNOMINMAX",
+  "-DSPDLOG_COMPILED_LIB",
+  "-DSPDLOG_USE_STD_FORMAT",
+  "-DSPDLOG_NO_EXCEPTIONS",
+  "-DCPPTRACE_STATIC_DEFINE",
+  "-DCURL_STATICLIB",
+  "/EHsc",
+  "-external:W0",
+  "-external:ID:\\pkg\\xmake\\pkg-cache\\s\\spdlog\\v1.15.3\\4a99064252c44ca78d37bd17a2e7c30c\\include",
+  "-external:W0",
+  "-external:ID:\\pkg\\xmake\\pkg-cache\\k\\kotatsu\\136\\b068933dccdd4ea987509f51e463d430\\include",
+  "-external:W0",
+  "-external:ID:\\pkg\\xmake\\pkg-cache\\l\\libuv\\v1.52.0\\e304f43af2504d1c918d995857fa35c6\\include",
+  "-external:W0",
+  "-external:ID:\\pkg\\xmake\\pkg-cache\\c\\cpptrace\\v1.0.4\\d44e7cb00b5b4402995eeb8f77051ea4\\include",
+  "-external:W0",
+  "-external:ID:\\pkg\\xmake\\pkg-cache\\l\\libcurl\\8.11.0\\f37b877819304ceda1a0e39cc7de546b\\include",
+  "-Fobuild-clang-cl\\.objs\\catter-proxy\\windows\\x64\\debug\\src\\catter-proxy\\main.cc.obj",
+  "src\\catter-proxy\\main.cc",
+];
+const xmakeClangClParsed = parseItems(
+  xmakeClangClCompileCommand,
+  "xmake clang-cl compile",
+  clStyleVisibility,
+);
+debug.assertThrow(xmakeClangClParsed.length > 20);
+const xmakeClangClObject = xmakeClangClParsed.find(
+  (item) => item.key === "-Fo",
+);
+debug.assertThrow(xmakeClangClObject !== undefined);
+if (xmakeClangClObject === undefined) {
+  throw new Error("xmake clang-cl compile: expected -Fo item");
+}
+expectEq(
+  xmakeClangClObject.values[0],
+  "build-clang-cl\\.objs\\catter-proxy\\windows\\x64\\debug\\src\\catter-proxy\\main.cc.obj",
+  "xmake clang-cl object value",
+);
+debug.assertThrow(
+  xmakeClangClParsed.some((item) => item.key === "src\\catter-proxy\\main.cc"),
+);
+
+const xmakeMsvcCompileCommand = [
+  "-c",
+  "-nologo",
+  "-MD",
+  "-Zi",
+  "-FS",
+  "-Fdbuild-msvc\\windows\\x64\\debug\\compile.catter-proxy.pdb",
+  "-Od",
+  "-std:c++23preview",
+  "-ID:\\Code\\catter\\.pixi\\envs\\dev\\include",
+  "-ID:\\Code\\catter\\.pixi\\envs\\dev\\Library\\include",
+  "-Isrc\\catter-proxy",
+  "-Isrc\\common",
+  "-Isrc\\catter-hook",
+  "-DDEBUG",
+  "-DCATTER_WINDOWS",
+  "-DWIN32_LEAN_AND_MEAN",
+  "-DNOMINMAX",
+  "-DSPDLOG_COMPILED_LIB",
+  "-DSPDLOG_USE_STD_FORMAT",
+  "-DSPDLOG_NO_EXCEPTIONS",
+  "-DCPPTRACE_STATIC_DEFINE",
+  "-DCURL_STATICLIB",
+  "/EHsc",
+  "-external:W0",
+  "-external:ID:\\pkg\\xmake\\pkg-cache\\s\\spdlog\\v1.15.3\\959c9024cc404a348d5232ffde4c6d84\\include",
+  "-external:W0",
+  "-external:ID:\\pkg\\xmake\\pkg-cache\\k\\kotatsu\\136\\262f47376c5845d9ad0444a7bff7d846\\include",
+  "-external:W0",
+  "-external:ID:\\pkg\\xmake\\pkg-cache\\l\\libuv\\v1.52.0\\2cf65b84931d47d9a85f7d4937f087e5\\include",
+  "-external:W0",
+  "-external:ID:\\pkg\\xmake\\pkg-cache\\c\\cpptrace\\v1.0.4\\651432b72b1c4ca193e4519e92bdc74f\\include",
+  "-external:W0",
+  "-external:ID:\\pkg\\xmake\\pkg-cache\\l\\libcurl\\8.11.0\\a95976b98e2f4abc95e359beeead985b\\include",
+  "-fsanitize=address",
+  "-Fobuild-msvc\\.objs\\catter-proxy\\windows\\x64\\debug\\src\\catter-proxy\\main.cc.obj",
+  "src\\catter-proxy\\main.cc",
+];
+const xmakeMsvcParsed = parseItems(
+  xmakeMsvcCompileCommand,
+  "xmake msvc compile",
+  clStyleVisibility,
+);
+debug.assertThrow(xmakeMsvcParsed.length > 20);
+const xmakeMsvcObject = xmakeMsvcParsed.find((item) => item.key === "-Fo");
+debug.assertThrow(xmakeMsvcObject !== undefined);
+if (xmakeMsvcObject === undefined) {
+  throw new Error("xmake msvc compile: expected -Fo item");
+}
+expectEq(
+  xmakeMsvcObject.values[0],
+  "build-msvc\\.objs\\catter-proxy\\windows\\x64\\debug\\src\\catter-proxy\\main.cc.obj",
+  "xmake msvc object value",
+);
+debug.assertThrow(
+  xmakeMsvcParsed.some((item) => item.key === "src\\catter-proxy\\main.cc"),
+);
 
 // replace
 

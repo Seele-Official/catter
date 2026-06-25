@@ -26,6 +26,8 @@ export function nvcc2clang(args: string[]): string | string[] {
 export const CompilerKind = [
   "gcc",
   "clang",
+  "clang-cl",
+  "msvc",
   "flang",
   "ifort",
   "crayftn",
