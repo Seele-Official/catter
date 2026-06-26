@@ -29,32 +29,40 @@ Compiler identify_compiler(std::string_view compiler_name) {
             std::string full_pattern =
                 "^" + optional_path_prefix + pattern_with_version + exe_suffix + "$";
 
-            return std::regex(full_pattern);
+            auto flags = std::regex_constants::ECMAScript;
+#ifdef _WIN32
+            flags |= std::regex_constants::icase;
+#endif
+            return std::regex(full_pattern, flags);
         };
 
         return std::to_array<CompilerPattern>({
             // simple cc and c++ (no version support)
-            {Compiler::gcc,     create_compiler_regex(R"((?:[^/]*-)?(?:cc|c\+\+))",        false)},
+            {Compiler::gcc,      create_compiler_regex(R"((?:[^/]*-)?(?:cc|c\+\+))",        false)},
             // GCC pattern
             {Compiler::gcc,
-             create_compiler_regex(R"((?:[^/]*-)?(?:gcc|g\+\+|gfortran|egfortran|f95))",   true) },
+             create_compiler_regex(R"((?:[^/]*-)?(?:gcc|g\+\+|gfortran|egfortran|f95))",    true) },
             // GCC internal executables pattern: matches GCC's internal compiler phases
             {Compiler::gcc,
-             create_compiler_regex(R"((?:cc1(?:plus|obj|objplus)?|f951|collect2|lto1))",   false)},
+             create_compiler_regex(R"((?:cc1(?:plus|obj|objplus)?|f951|collect2|lto1))",    false)},
             // Clang pattern: matches clang, clang++, cross-compilation variants, and versioned
             // variants
-            {Compiler::clang,   create_compiler_regex(R"((?:[^/]*-)?clang(?:\+\+)?)",      true) },
+            {Compiler::clang,    create_compiler_regex(R"((?:[^/]*-)?clang(?:\+\+)?)",      true) },
+            // clang-cl pattern: matches clang-cl and versioned variants
+            {Compiler::clang_cl, create_compiler_regex(R"((?:[^/]*-)?clang-cl)",            true) },
+            // MSVC cl.exe pattern
+            {Compiler::msvc,     create_compiler_regex(R"(cl)",                             false)},
             // Fortran pattern: matches flang, cross-compilation variants, and versioned variants
-            {Compiler::flang,   create_compiler_regex(R"((?:[^/]*-)?(?:flang|flang-new))", true) },
+            {Compiler::flang,    create_compiler_regex(R"((?:[^/]*-)?(?:flang|flang-new))", true) },
             // Intel Fortran pattern: matches ifort, ifx, and versioned variants
-            {Compiler::ifort,   create_compiler_regex(R"((?:ifort|ifx))",                  true) },
+            {Compiler::ifort,    create_compiler_regex(R"((?:ifort|ifx))",                  true) },
             // Cray Fortran pattern: matches crayftn, ftn
-            {Compiler::crayftn, create_compiler_regex(R"((?:crayftn|ftn))",                true) },
+            {Compiler::crayftn,  create_compiler_regex(R"((?:crayftn|ftn))",                true) },
             // CUDA pattern: matches nvcc (NVIDIA CUDA Compiler) with optional cross-compilation
             // prefixes and version suffixes
-            {Compiler::nvcc,    create_compiler_regex(R"((?:[^/]*-)?nvcc)",                true) },
+            {Compiler::nvcc,     create_compiler_regex(R"((?:[^/]*-)?nvcc)",                true) },
             // Wrapper pattern: matches common compiler wrappers (no version support)
-            {Compiler::wrapper, create_compiler_regex(R"((?:ccache|distcc|sccache))",      false)}
+            {Compiler::wrapper,  create_compiler_regex(R"((?:ccache|distcc|sccache))",      false)}
         });
     }();
 

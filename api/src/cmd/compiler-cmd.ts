@@ -124,7 +124,10 @@ export type CompilerArtifact =
  * const exe: cmd.CompilerExe = "clang";
  * ```
  */
-export type CompilerExe = Extract<Compiler, "clang" | "gcc">;
+export type CompilerExe = Extract<
+  Compiler,
+  "clang" | "clang-cl" | "gcc" | "msvc"
+>;
 
 /**
  * Driver option syntax style observed during parsing.
@@ -304,6 +307,10 @@ function clangLikeDriverVisibility(): number {
   return ClangVisibility.DefaultVis;
 }
 
+function clStyleDriverVisibility(): number {
+  return ClangVisibility.DefaultVis | ClangVisibility.CLOption;
+}
+
 function supportsClStyleAnalysis(): boolean {
   return os.platform() === "windows";
 }
@@ -478,10 +485,13 @@ function scanClLinkerRemainder(values: string[]) {
   };
 }
 
-function createDefaultModel(compiler: CompilerExe): CommandModel {
+function createDefaultModel(
+  compiler: CompilerExe,
+  style: CompilerStyle = "gnu",
+): CommandModel {
   return {
     compiler,
-    style: "gnu",
+    style,
     phase: CompilerPhaseValue.Link,
     artifact: CompilerArtifactValue.Executable,
     inputs: [],
@@ -637,7 +647,7 @@ function hasRecordedInput(
   );
 }
 
-function isFallbackInputToken(token: string): boolean {
+function isFallbackInputToken(token: string, style: CompilerStyle): boolean {
   if (token === "-") {
     return true;
   }
@@ -645,9 +655,9 @@ function isFallbackInputToken(token: string): boolean {
     return false;
   }
   if (!token.startsWith("-")) {
-    return true;
+    return style !== "cl" || !token.startsWith("/");
   }
-  return os.platform() !== "windows" && token.startsWith("/");
+  return style !== "cl" && os.platform() !== "windows" && token.startsWith("/");
 }
 
 /**
@@ -751,7 +761,10 @@ function applyClangLikeFallbackToken(
     return false;
   }
 
-  if (isFallbackInputToken(token) && !hasRecordedInput(model, index, token)) {
+  if (
+    isFallbackInputToken(token, model.style) &&
+    !hasRecordedInput(model, index, token)
+  ) {
     recordInput(
       model,
       token,
@@ -826,6 +839,9 @@ function resolveCompilerFamily(compiler: CompilerExe): CompilerFamily {
     case "clang":
     case "gcc":
       return "clang-like";
+    case "clang-cl":
+    case "msvc":
+      return "msvc-like";
   }
 }
 
@@ -839,6 +855,7 @@ function analyzeCompilerFamily(
     case "clang-like":
       return analyzeClangLikeCommand(cmd, compiler);
     case "msvc-like":
+      return analyzeMsvcLikeCommand(cmd, compiler);
     case "nvcc-like":
       throw new Error(`unsupported compiler family: ${family}`);
   }
@@ -1015,15 +1032,16 @@ function applyParsedClangLikeOption(
   }
 }
 
-const analyzeClangLikeCommand: CompilerFamilyAnalyzer = (cmd, compiler) => {
-  const model = createDefaultModel(compiler);
+function analyzeClangOptionCommand(
+  cmd: readonly string[],
+  compiler: CompilerExe,
+  visibility: number,
+  initialStyle: CompilerStyle,
+  allowClStyle: boolean,
+): CommandModel {
+  const model = createDefaultModel(compiler, initialStyle);
   const args = cmd.slice(1);
-  const parsed = collectParsedOptions(
-    "clang",
-    args,
-    clangLikeDriverVisibility(),
-  );
-  const allowClStyle = supportsClStyleAnalysis();
+  const parsed = collectParsedOptions("clang", args, visibility);
 
   for (const parsedItem of parsed) {
     observeClStyle(model, parsedItem, allowClStyle);
@@ -1033,7 +1051,25 @@ const analyzeClangLikeCommand: CompilerFamilyAnalyzer = (cmd, compiler) => {
   applyClangLikeDriverFallbacks(model, args, parsed);
   repairPrimaryOutput(model, args);
   return model;
-};
+}
+
+const analyzeClangLikeCommand: CompilerFamilyAnalyzer = (cmd, compiler) =>
+  analyzeClangOptionCommand(
+    cmd,
+    compiler,
+    clangLikeDriverVisibility(),
+    "gnu",
+    supportsClStyleAnalysis(),
+  );
+
+const analyzeMsvcLikeCommand: CompilerFamilyAnalyzer = (cmd, compiler) =>
+  analyzeClangOptionCommand(
+    cmd,
+    compiler,
+    clStyleDriverVisibility(),
+    "cl",
+    true,
+  );
 
 function defaultExtensionForArtifact(
   style: CompilerStyle,
@@ -1262,6 +1298,8 @@ function isCompilerCommand(cmd: readonly string[]): boolean {
   switch (compilerId) {
     case "clang":
     case "gcc":
+    case "clang-cl":
+    case "msvc":
       return true;
     default:
       return false;

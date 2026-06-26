@@ -3,7 +3,8 @@ import { cmd, debug, fs, os } from "catter";
 type ExpectedAnalysis = {
   label: string;
   cmd: string[];
-  compiler: "clang" | "gcc";
+  compiler: cmd.CompilerExe;
+  style?: cmd.CompilerStyle;
   phase: (typeof cmd.CompilerPhase)[keyof typeof cmd.CompilerPhase];
   artifact: (typeof cmd.CompilerArtifact)[keyof typeof cmd.CompilerArtifact];
   type: (typeof cmd.CompilerType)[keyof typeof cmd.CompilerType] | undefined;
@@ -41,6 +42,9 @@ function expectAnalysis(expected: ExpectedAnalysis) {
   const analysis = new cmd.CompilerAnalysis(expected.cmd);
 
   expectEq(analysis.compiler, expected.compiler, `${expected.label} compiler`);
+  if (expected.style !== undefined) {
+    expectEq(analysis.style, expected.style, `${expected.label} style`);
+  }
   expectEq(analysis.phase, expected.phase, `${expected.label} phase`);
   expectEq(analysis.artifact, expected.artifact, `${expected.label} artifact`);
   expectEq(analysis.type, expected.type, `${expected.label} legacy type`);
@@ -54,6 +58,8 @@ function expectAnalysis(expected: ExpectedAnalysis) {
 
 debug.assertThrow(cmd.CompilerAnalysis.supports(["clang", "-c", "main.cc"]));
 debug.assertThrow(cmd.CompilerAnalysis.supports(["gcc", "-c", "main.cc"]));
+debug.assertThrow(cmd.CompilerAnalysis.supports(["clang-cl", "/c", "main.cc"]));
+debug.assertThrow(cmd.CompilerAnalysis.supports(["cl.exe", "/c", "main.cc"]));
 debug.assertThrow(!cmd.CompilerAnalysis.supports(["nvcc", "-c", "kernel.cu"]));
 
 const cases: ExpectedAnalysis[] = [
@@ -155,6 +161,39 @@ const cases: ExpectedAnalysis[] = [
     type: cmd.CompilerType.SourceToObject,
     inputs: ["src/a.c", "src/b.cc"],
     outputs: ["a.o", "b.o"],
+  },
+  {
+    label: "clang-cl cl-style compile no suffix into object dir",
+    cmd: ["clang-cl", "/c", "/Tp", "src/noext", "/Fo:build/"],
+    compiler: "clang-cl",
+    style: "cl",
+    phase: cmd.CompilerPhase.Compile,
+    artifact: cmd.CompilerArtifact.Object,
+    type: cmd.CompilerType.SourceToObject,
+    inputs: ["src/noext"],
+    outputs: [normalizedJoin("build", "noext.obj")],
+  },
+  {
+    label: "msvc cl-style compile explicit object output",
+    cmd: ["cl.exe", "/c", "src/main.cpp", "/Foobj/main.obj"],
+    compiler: "msvc",
+    style: "cl",
+    phase: cmd.CompilerPhase.Compile,
+    artifact: cmd.CompilerArtifact.Object,
+    type: cmd.CompilerType.SourceToObject,
+    inputs: ["src/main.cpp"],
+    outputs: ["obj/main.obj"],
+  },
+  {
+    label: "msvc cl-style shared link via linker remainder",
+    cmd: ["cl.exe", "/link", "/dll", "/out:bin/tool.dll", "foo.obj", "bar.res"],
+    compiler: "msvc",
+    style: "cl",
+    phase: cmd.CompilerPhase.Link,
+    artifact: cmd.CompilerArtifact.SharedLibrary,
+    type: cmd.CompilerType.ObjectToShare,
+    inputs: ["foo.obj", "bar.res"],
+    outputs: ["bin/tool.dll"],
   },
 ];
 
