@@ -26,23 +26,39 @@ function analyzeCompilerModel(
   return parseCompilerCommand(unwrapped.argv, identity);
 }
 
+/**
+ * Analysis result for a recognized compiler driver command.
+ *
+ * The base `Analysis` fields expose generic file effects:
+ * `reads`, `writes`, and `edges`. Compiler-specific fields describe how the
+ * command was identified and parsed.
+ */
 export class CompilerAnalysis extends Analysis<"compiler", CompilerExe> {
+  /** Stable registry key for the compiler analyzer. */
   static readonly key = "compiler";
 
+  /** Analyzes a compiler command, returning `undefined` when it is unsupported. */
   static analyze(cmd: readonly string[]): CompilerAnalysis | undefined {
     const model = analyzeCompilerModel(cmd);
     return model === undefined ? undefined : new CompilerAnalysis(model);
   }
 
+  /** Narrows a generic analysis result back to a compiler analysis. */
   static from(analysis: AnyAnalysis | undefined): CompilerAnalysis | undefined {
     return analysis instanceof CompilerAnalysis ? analysis : undefined;
   }
 
+  /** Parser dialect selected by the identify stage. */
   readonly dialect: CompilerDialect;
+  /** High-level driver phase inferred from parsed options. */
   readonly phase: CompilerPhase;
+  /** Main artifact kind inferred from parsed options. */
   readonly artifact: CompilerArtifact;
+  /** Option syntax style observed by the parser. */
   readonly style: CompilerStyle;
+  /** Structured compiler input entries, including source/link role and argv index. */
   readonly inputFiles: readonly CompilerInput[];
+  /** Source input paths selected from `inputFiles`. */
   readonly sourceFiles: readonly string[];
 
   private constructor(model: CommandModel) {

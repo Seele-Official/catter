@@ -869,6 +869,7 @@ function analyzeClangOptionCommand(
   return model;
 }
 
+/** Parses a clang-family command using GNU-style clang option visibility. */
 export function parseClangCommand(
   cmd: readonly string[],
   identity: CompilerIdentity,
@@ -883,6 +884,7 @@ export function parseClangCommand(
   );
 }
 
+/** Parses a GNU-family command with clang-compatible option handling. */
 export function parseGnuCommand(
   cmd: readonly string[],
   identity: CompilerIdentity,
@@ -897,6 +899,7 @@ export function parseGnuCommand(
   );
 }
 
+/** Parses an MSVC-family command using clang-cl option visibility. */
 export function parseMsvcCommand(
   cmd: readonly string[],
   identity: CompilerIdentity,
@@ -1001,6 +1004,7 @@ function selectPreferredOutput(model: CommandModel): OutputOption | undefined {
   }
 }
 
+/** Resolves concrete output paths for a parsed compiler command model. */
 export function resolveOutputs(model: CommandModel): string[] {
   if (model.artifact === CompilerArtifactValue.None) {
     return [];
@@ -1051,6 +1055,7 @@ export function resolveOutputs(model: CommandModel): string[] {
   );
 }
 
+/** Resolves output-to-input dependency edges for a parsed compiler command. */
 export function resolveCompilerEdges(
   model: CommandModel,
   outputs: string[],

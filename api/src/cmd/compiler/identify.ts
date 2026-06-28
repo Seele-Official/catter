@@ -112,6 +112,13 @@ function identityFromRule(
   };
 }
 
+/**
+ * Registers or replaces a custom compiler identification rule.
+ *
+ * Custom rules are evaluated before builtin compiler detection. Use this for
+ * cross compilers or project-specific driver names that should be parsed as one
+ * of the builtin dialects.
+ */
 export function registerCompilerRule(rule: CompilerRule): void {
   unregisterCompilerRule(rule.key);
   customRules.push({
@@ -120,6 +127,7 @@ export function registerCompilerRule(rule: CompilerRule): void {
   });
 }
 
+/** Removes a previously registered custom compiler rule by key. */
 export function unregisterCompilerRule(key: string): void {
   const index = customRules.findIndex((rule) => rule.key === key);
   if (index !== -1) {
@@ -127,10 +135,20 @@ export function unregisterCompilerRule(key: string): void {
   }
 }
 
+/** Returns the currently registered custom compiler rules in match order. */
 export function compilerRules(): readonly CompilerRule[] {
-  return customRules;
+  return customRules.map((rule) => ({
+    ...rule,
+    match: Array.isArray(rule.match) ? [...rule.match] : rule.match,
+  }));
 }
 
+/**
+ * Identifies the compiler command and selects a builtin parser dialect.
+ *
+ * The result may identify `nvcc`, but analysis still returns `undefined` until
+ * the nvcc parser is implemented.
+ */
 export function identifyCompilerCommand(
   argv: readonly string[],
 ): CompilerIdentity | undefined {

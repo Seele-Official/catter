@@ -8,6 +8,7 @@ import { parseGnuCommand } from "./gnu.js";
 import { parseMsvcCommand } from "./msvc.js";
 import { parseNvccCommand } from "./nvcc.js";
 
+/** Dispatches a command to the builtin parser selected by compiler identity. */
 export function parseCompilerCommand(
   cmd: readonly string[],
   identity: CompilerIdentity,
