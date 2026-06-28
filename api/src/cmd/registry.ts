@@ -1,4 +1,4 @@
-import type { Analysis, Analyzer } from "./model.js";
+import type { Analysis, Analyzer, AnalyzedData } from "./model.js";
 
 /**
  * Ordered registry of command analyzers.
@@ -9,7 +9,7 @@ import type { Analysis, Analyzer } from "./model.js";
  * @example
  * ```ts
  * const registry = new cmd.Registry().register(cmd.CompilerAnalysis);
- * const analysis = registry.analyze(["clang", "-c", "main.c"]);
+ * const analysis = registry.analyze({ exe: "clang", argv: ["clang", "-c", "main.c"] });
  * ```
  */
 export class Registry<A extends Analysis = never> {
@@ -70,11 +70,11 @@ export class Registry<A extends Analysis = never> {
    * ```ts
    * const ok = new cmd.Registry()
    *   .register(cmd.CompilerAnalysis)
-   *   .canHandle(["gcc", "-c", "main.c"]);
+   *   .canHandle({ exe: "gcc", argv: ["gcc", "-c", "main.c"] });
    * ```
    */
-  canHandle(cmd: readonly string[]): boolean {
-    return this.analyze(cmd) !== undefined;
+  canHandle(command: AnalyzedData): boolean {
+    return this.analyze(command) !== undefined;
   }
 
   /**
@@ -84,12 +84,12 @@ export class Registry<A extends Analysis = never> {
    * ```ts
    * const analysis = new cmd.Registry()
    *   .register(cmd.CompilerAnalysis)
-   *   .analyze(["clang", "-c", "main.c"]);
+   *   .analyze({ exe: "clang", argv: ["clang", "-c", "main.c"] });
    * ```
    */
-  analyze(cmd: readonly string[]): A | undefined {
+  analyze(command: AnalyzedData): A | undefined {
     for (const analyzer of this.analyzerList) {
-      const result = analyzer.analyze(cmd);
+      const result = analyzer.analyze(command);
       if (result !== undefined) {
         return result as A;
       }

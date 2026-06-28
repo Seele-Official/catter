@@ -1,4 +1,9 @@
-import type { Analysis, Analyzer, CommandAnalysis } from "./model.js";
+import type {
+  Analysis,
+  Analyzer,
+  CommandAnalysis,
+  AnalyzedData,
+} from "./model.js";
 import { ArchiverAnalysis } from "./archiver-cmd.js";
 import { CompilerAnalysis } from "./compiler-cmd.js";
 import { Registry } from "./registry.js";
@@ -10,7 +15,7 @@ import { Registry } from "./registry.js";
  *
  * @example
  * ```ts
- * const analysis = cmd.defaultRegistry.analyze(["clang", "-c", "main.c"]);
+ * const analysis = cmd.defaultRegistry.analyze({ exe: "clang", argv: ["clang", "-c", "main.c"] });
  * ```
  */
 export const defaultRegistry = new Registry()
@@ -22,11 +27,11 @@ export const defaultRegistry = new Registry()
  *
  * @example
  * ```ts
- * const analysis = cmd.analyze(["llvm-ar", "rcs", "liba.a", "a.o"]);
+ * const analysis = cmd.analyze({ exe: "llvm-ar", argv: ["llvm-ar", "rcs", "liba.a", "a.o"] });
  * ```
  */
-export function analyze(cmd: readonly string[]): CommandAnalysis | undefined {
-  return defaultRegistry.analyze(cmd);
+export function analyze(command: AnalyzedData): CommandAnalysis | undefined {
+  return defaultRegistry.analyze(command);
 }
 
 /**
@@ -34,11 +39,11 @@ export function analyze(cmd: readonly string[]): CommandAnalysis | undefined {
  *
  * @example
  * ```ts
- * const ok = cmd.canHandle(["clang", "-c", "main.c"]);
+ * const ok = cmd.canHandle({ exe: "clang", argv: ["clang", "-c", "main.c"] });
  * ```
  */
-export function canHandle(cmd: readonly string[]): boolean {
-  return defaultRegistry.canHandle(cmd);
+export function canHandle(command: AnalyzedData): boolean {
+  return defaultRegistry.canHandle(command);
 }
 
 /**

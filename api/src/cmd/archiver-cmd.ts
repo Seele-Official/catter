@@ -1,4 +1,8 @@
-import type { Analysis as AnyAnalysis, Analyzer } from "./model.js";
+import type {
+  Analysis as AnyAnalysis,
+  Analyzer,
+  AnalyzedData,
+} from "./model.js";
 import { Analysis } from "./model.js";
 
 /**
@@ -139,17 +143,18 @@ function parseOperationToken(
 }
 
 function analyzeArchiverModel(
-  cmd: readonly string[],
+  command: AnalyzedData,
 ): ArchiverModel | undefined {
-  if (cmd.length === 0) {
+  if (command.argv.length === 0) {
     return undefined;
   }
 
-  const exe = exeStem(cmd[0]);
+  const exe = exeStem(command.exe);
   if (!isArchiverExe(exe)) {
     return undefined;
   }
 
+  const cmd = command.argv;
   let index = 1;
   let thin = false;
 
@@ -251,9 +256,11 @@ export class ArchiverAnalysis extends Analysis {
    */
   static readonly key = "archiver";
 
-  static analyze(cmd: readonly string[]): ArchiverAnalysis | undefined {
-    const model = analyzeArchiverModel(cmd);
-    return model === undefined ? undefined : new ArchiverAnalysis(model);
+  static analyze(command: AnalyzedData): ArchiverAnalysis | undefined {
+    const model = analyzeArchiverModel(command);
+    return model === undefined
+      ? undefined
+      : new ArchiverAnalysis(model, command);
   }
 
   /**
@@ -261,7 +268,10 @@ export class ArchiverAnalysis extends Analysis {
    *
    * @example
    * ```ts
-   * const analysis = cmd.ArchiverAnalysis.from(cmd.analyze(["ar", "rcs", "liba.a", "a.o"]));
+   * const analysis = cmd.ArchiverAnalysis.from(cmd.analyze({
+   *   exe: "ar",
+   *   argv: ["ar", "rcs", "liba.a", "a.o"],
+   * }));
    * ```
    */
   static from(analysis: AnyAnalysis | undefined): ArchiverAnalysis | undefined {
@@ -283,8 +293,10 @@ export class ArchiverAnalysis extends Analysis {
   /** Whether GNU MRI script mode was requested. */
   readonly scriptMode: boolean;
 
-  private constructor(model: ArchiverModel) {
+  private constructor(model: ArchiverModel, command: AnalyzedData) {
     super({
+      exe: command.exe,
+      argv: command.argv,
       reads: model.reads,
       writes: model.writes,
     });

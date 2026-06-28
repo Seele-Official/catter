@@ -1,5 +1,9 @@
 import { Analysis } from "../model.js";
-import type { Analysis as AnyAnalysis, Analyzer } from "../model.js";
+import type {
+  Analysis as AnyAnalysis,
+  Analyzer,
+  AnalyzedData,
+} from "../model.js";
 import { identifyCompilerCommand } from "./identify.js";
 import { parseCompilerCommand } from "./parsers/index.js";
 import type { CompilerParseResult } from "./parsers/types.js";
@@ -22,16 +26,16 @@ export class CompilerAnalysis extends Analysis {
   static readonly key = "compiler";
 
   /** Analyzes a compiler command, returning `undefined` when it is unsupported. */
-  static analyze(cmd: readonly string[]): CompilerAnalysis | undefined {
-    const unwrapped = unwrapCompilerCommand(cmd);
-    const identity = identifyCompilerCommand(unwrapped.argv);
+  static analyze(command: AnalyzedData): CompilerAnalysis | undefined {
+    const unwrapped = unwrapCompilerCommand(command);
+    const identity = identifyCompilerCommand(unwrapped);
     if (identity === undefined) {
       return undefined;
     }
 
     const model = parseCompilerCommand(unwrapped.argv, identity);
     if (model) {
-      return new CompilerAnalysis(model, unwrapped);
+      return new CompilerAnalysis(model, command, unwrapped);
     }
     return undefined;
   }
@@ -43,10 +47,10 @@ export class CompilerAnalysis extends Analysis {
 
   /** Discriminator for command analysis unions. */
   readonly kind = "compiler" as const;
+  /** Executable path or name after wrapper removal. */
+  readonly unwrappedExe: string;
   /** Command argv after wrapper removal. */
-  readonly argv: readonly string[];
-  /** Original command argv before wrapper removal. */
-  readonly originalArgv: readonly string[];
+  readonly unwrappedArgv: readonly string[];
   /** Main artifact kind inferred from parsed options. */
   readonly artifact: CompilerArtifact;
   /** Structured compiler input entries, including source/link role and argv index. */
@@ -56,16 +60,19 @@ export class CompilerAnalysis extends Analysis {
 
   private constructor(
     model: CompilerParseResult,
+    command: AnalyzedData,
     unwrapped: UnwrappedCompilerCommand,
   ) {
     super({
+      exe: command.exe,
+      argv: command.argv,
       reads: model.reads,
       writes: model.writes,
       edges: model.edges,
     });
 
-    this.argv = [...unwrapped.argv];
-    this.originalArgv = [...unwrapped.originalArgv];
+    this.unwrappedExe = unwrapped.exe;
+    this.unwrappedArgv = [...unwrapped.argv];
     this.artifact = model.artifact;
     this.inputFiles = model.inputs.map((input) => ({ ...input }));
     this.sourceFiles = this.inputFiles

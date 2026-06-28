@@ -1,3 +1,4 @@
+import type { AnalyzedData } from "../model.js";
 import type { UnwrappedCompilerCommand } from "./types.js";
 
 /**
@@ -7,10 +8,10 @@ import type { UnwrappedCompilerCommand } from "./types.js";
  * preserving the original argv for future wrapper support.
  */
 export function unwrapCompilerCommand(
-  argv: readonly string[],
+  command: AnalyzedData,
 ): UnwrappedCompilerCommand {
   return {
-    argv: [...argv],
-    originalArgv: [...argv],
+    exe: command.exe,
+    argv: [...command.argv],
   };
 }

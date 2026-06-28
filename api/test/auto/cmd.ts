@@ -35,14 +35,24 @@ function expectEdgeEq(
   expectArrayEq(actual.inputs, expected.inputs, `${label} inputs`);
 }
 
+function invocation(argv: string[], exe = argv[0]!): cmd.AnalyzedData {
+  return {
+    exe,
+    argv,
+  };
+}
+
 const compileCommand = ["clang", "-c", "src/a.c", "src/b.c"];
-const compileAnalysis = cmd.CompilerAnalysis.from(cmd.analyze(compileCommand));
+const compileAnalysis = cmd.CompilerAnalysis.from(
+  cmd.analyze(invocation(compileCommand)),
+);
 debug.assertThrow(compileAnalysis !== undefined);
 if (compileAnalysis === undefined) {
   throw new Error("expected compiler analysis");
 }
 
 expectEq(compileAnalysis.kind, "compiler", "compile kind");
+expectEq(compileAnalysis.exe, "clang", "compile exe");
 expectArrayEq(compileAnalysis.argv, compileCommand, "compile argv");
 expectEq(
   compileAnalysis.artifact,
@@ -57,7 +67,7 @@ expectArrayEq(
   "compile sources",
 );
 
-const genericCompileAnalysis = cmd.analyze(compileCommand);
+const genericCompileAnalysis = cmd.analyze(invocation(compileCommand));
 if (genericCompileAnalysis?.kind !== "compiler") {
   throw new Error("expected compiler command analysis variant");
 }
@@ -108,7 +118,7 @@ expectEq(cdbItems[0].file, "src/a.c", "cdb first file");
 expectEq(cdbItems[0].output, "a.o", "cdb first output");
 
 const preprocessAnalysis = cmd.CompilerAnalysis.from(
-  cmd.analyze(["gcc", "-E", "src/a.c", "-o", "a.i"]),
+  cmd.analyze(invocation(["gcc", "-E", "src/a.c", "-o", "a.i"])),
 );
 debug.assertThrow(preprocessAnalysis !== undefined);
 if (preprocessAnalysis === undefined) {
@@ -124,7 +134,9 @@ expectArrayEq(preprocessAnalysis.writes, ["a.i"], "preprocess writes");
 expectEq(preprocessAnalysis.edges.length, 1, "preprocess edge count");
 
 const archiverAnalysis = cmd.ArchiverAnalysis.from(
-  cmd.analyze(["llvm-ar", "--thin", "rcs", "libfoo.a", "a.o", "b.o"]),
+  cmd.analyze(
+    invocation(["llvm-ar", "--thin", "rcs", "libfoo.a", "a.o", "b.o"]),
+  ),
 );
 debug.assertThrow(archiverAnalysis !== undefined);
 if (archiverAnalysis === undefined) {
@@ -132,6 +144,12 @@ if (archiverAnalysis === undefined) {
 }
 
 expectEq(archiverAnalysis.kind, "archiver", "archiver kind");
+expectEq(archiverAnalysis.exe, "llvm-ar", "archiver exe");
+expectArrayEq(
+  archiverAnalysis.argv,
+  ["llvm-ar", "--thin", "rcs", "libfoo.a", "a.o", "b.o"],
+  "archiver argv",
+);
 expectEq(
   archiverAnalysis.operation,
   cmd.ArchiverOperation.ReplaceOrInsert,
@@ -153,7 +171,7 @@ expectEdgeEq(
 );
 
 const gnuArchiverAnalysis = cmd.ArchiverAnalysis.from(
-  cmd.analyze(["ar", "-cr", "libcommon.a", "a.o", "b.o"]),
+  cmd.analyze(invocation(["ar", "-cr", "libcommon.a", "a.o", "b.o"])),
 );
 debug.assertThrow(gnuArchiverAnalysis !== undefined);
 if (gnuArchiverAnalysis === undefined) {
@@ -173,7 +191,7 @@ expectArrayEq(
 expectArrayEq(gnuArchiverAnalysis.reads, ["a.o", "b.o"], "gnu archiver reads");
 
 const tableArchiverAnalysis = cmd.ArchiverAnalysis.from(
-  cmd.analyze(["ar", "t", "libcommon.a"]),
+  cmd.analyze(invocation(["ar", "t", "libcommon.a"])),
 );
 debug.assertThrow(tableArchiverAnalysis !== undefined);
 if (tableArchiverAnalysis === undefined) {
@@ -192,24 +210,26 @@ expectArrayEq(
 expectArrayEq(tableArchiverAnalysis.writes, [], "table archiver writes");
 
 debug.assertThrow(
-  cmd.ArchiverAnalysis.analyze(["ar", "--version"]) === undefined,
+  cmd.ArchiverAnalysis.analyze(invocation(["ar", "--version"])) === undefined,
 );
 debug.assertThrow(
-  cmd.ArchiverAnalysis.analyze(["ar", "x", "libcommon.a"]) === undefined,
+  cmd.ArchiverAnalysis.analyze(invocation(["ar", "x", "libcommon.a"])) ===
+    undefined,
 );
 
 class ToyAnalysis extends cmd.Analysis {
   static readonly key = "toy-bundle";
 
-  static analyze(argv: readonly string[]): ToyAnalysis | undefined {
+  static analyze(command: cmd.AnalyzedData): ToyAnalysis | undefined {
+    const argv = command.argv;
     if (
-      argv[0] !== "toy-bundle" ||
+      command.exe !== "toy-bundle" ||
       argv[1] === undefined ||
       argv[2] === undefined
     ) {
       return undefined;
     }
-    return new ToyAnalysis(argv[1], argv[2]);
+    return new ToyAnalysis(command, argv[1], argv[2]);
   }
 
   static from(analysis: cmd.Analysis | undefined): ToyAnalysis | undefined {
@@ -219,8 +239,10 @@ class ToyAnalysis extends cmd.Analysis {
   readonly stage = "bundle";
   readonly kind = "toy" as const;
 
-  constructor(input: string, output: string) {
+  constructor(command: cmd.AnalyzedData, input: string, output: string) {
     super({
+      exe: command.exe,
+      argv: command.argv,
       reads: [input],
       writes: [output],
     });
@@ -229,19 +251,27 @@ class ToyAnalysis extends cmd.Analysis {
 
 const localRegistry = new cmd.Registry().register(ToyAnalysis);
 const localResult = ToyAnalysis.from(
-  localRegistry.analyze(["toy-bundle", "input.dat", "output.pkg"]),
+  localRegistry.analyze(invocation(["toy-bundle", "input.dat", "output.pkg"])),
 );
 debug.assertThrow(localResult !== undefined);
 if (localResult === undefined) {
   throw new Error("expected local analysis");
 }
 expectEq(localResult.stage, "bundle", "local stage");
+expectEq(localResult.exe, "toy-bundle", "local exe");
+expectArrayEq(
+  localResult.argv,
+  ["toy-bundle", "input.dat", "output.pkg"],
+  "local argv",
+);
 expectArrayEq(localResult.reads, ["input.dat"], "local reads");
 expectArrayEq(localResult.writes, ["output.pkg"], "local writes");
 expectEq(localResult.edges.length, 1, "local edge count");
 expectEq(localResult.edges[0].output, "output.pkg", "local edge output");
 
-const sample = cmd.CompilerAnalysis.analyze(["gcc", "-c", "sample.c"]);
+const sample = cmd.CompilerAnalysis.analyze(
+  invocation(["gcc", "-c", "sample.c"]),
+);
 debug.assertThrow(sample !== undefined);
 if (sample === undefined) {
   throw new Error("expected sample compiler analysis");

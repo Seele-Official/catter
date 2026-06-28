@@ -106,7 +106,10 @@ export function targetTree(): service.CatterContextService {
         return;
       }
 
-      const analysis = analyzeCmd(data.data.argv);
+      const analysis = analyzeCmd({
+        exe: data.data.exe,
+        argv: data.data.argv,
+      });
       const targetEntries = analysis?.edges ?? [];
       const entries = targetEntries
         .map((entry) => {

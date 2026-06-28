@@ -1,5 +1,6 @@
 import { identify_compiler } from "catter-c";
 
+import type { AnalyzedData } from "../model.js";
 import type {
   CompilerDialect,
   CompilerIdentity,
@@ -29,19 +30,19 @@ function builtinDialectForCompiler(
 
 function matcherMatches(
   matcher: CompilerMatcher,
-  argv: readonly string[],
+  command: AnalyzedData,
 ): boolean {
   if (matcher instanceof RegExp) {
     matcher.lastIndex = 0;
-    return matcher.test(argv[0]);
+    return matcher.test(command.exe);
   }
 
-  return matcher(argv);
+  return matcher(command);
 }
 
-function ruleMatches(rule: CompilerRule, argv: readonly string[]): boolean {
+function ruleMatches(rule: CompilerRule, command: AnalyzedData): boolean {
   const matchers = Array.isArray(rule.match) ? rule.match : [rule.match];
-  return matchers.some((matcher) => matcherMatches(matcher, argv));
+  return matchers.some((matcher) => matcherMatches(matcher, command));
 }
 
 /**
@@ -82,10 +83,10 @@ export function compilerRules(): readonly CompilerRule[] {
  * the nvcc parser is implemented.
  */
 export function identifyCompilerCommand(
-  argv: readonly string[],
+  command: AnalyzedData,
 ): CompilerIdentity | undefined {
   for (const rule of customRules) {
-    if (!ruleMatches(rule, argv)) {
+    if (!ruleMatches(rule, command)) {
       continue;
     }
 
@@ -95,7 +96,7 @@ export function identifyCompilerCommand(
     };
   }
 
-  const compiler = identify_compiler(argv[0]);
+  const compiler = identify_compiler(command.exe);
   const dialect = builtinDialectForCompiler(compiler);
   if (dialect === undefined) {
     return undefined;

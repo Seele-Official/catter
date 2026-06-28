@@ -1,4 +1,5 @@
 import type { Compiler } from "catter-c";
+import type { AnalyzedData } from "../model.js";
 
 /** High-level compiler pipeline phase. */
 export const CompilerPhase = {
@@ -62,10 +63,11 @@ export interface CompilerInput {
 /**
  * Matcher used by a custom compiler rule.
  *
- * Regular expressions are tested against `CompilerIdentifyContext.stem`.
- * Function matchers receive the full context and can inspect argv.
+ * Regular expressions are tested against the captured executable path or name.
+ * Function matchers receive the command invocation and can inspect `exe` and
+ * `argv`.
  */
-export type CompilerMatcher = RegExp | ((argv: readonly string[]) => boolean);
+export type CompilerMatcher = RegExp | ((command: AnalyzedData) => boolean);
 
 /** Custom rule that maps an executable pattern to one builtin parser dialect. */
 export interface CompilerRule {
@@ -87,8 +89,8 @@ export interface CompilerIdentity {
 
 /** Result of the unwrap stage before compiler identification. */
 export interface UnwrappedCompilerCommand {
+  /** Executable path or name after wrapper removal. Currently this is unchanged. */
+  exe: string;
   /** Command argv after wrapper removal. Currently this is unchanged. */
   argv: readonly string[];
-  /** Original command argv before wrapper removal. */
-  originalArgv: readonly string[];
 }

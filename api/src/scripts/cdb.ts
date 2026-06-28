@@ -245,7 +245,12 @@ export function cdb(
       }
 
       const command = data.data;
-      const analysis = CompilerAnalysis.from(analyzeCmd(command.argv));
+      const analysis = CompilerAnalysis.from(
+        analyzeCmd({
+          exe: command.exe,
+          argv: command.argv,
+        }),
+      );
       if (analysis === undefined) {
         return;
       }
