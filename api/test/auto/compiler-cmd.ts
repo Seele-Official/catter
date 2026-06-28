@@ -4,6 +4,7 @@ type ExpectedAnalysis = {
   label: string;
   cmd: string[];
   compiler: cmd.CompilerExe;
+  dialect?: cmd.CompilerDialect;
   style?: cmd.CompilerStyle;
   phase: (typeof cmd.CompilerPhase)[keyof typeof cmd.CompilerPhase];
   artifact: (typeof cmd.CompilerArtifact)[keyof typeof cmd.CompilerArtifact];
@@ -38,10 +39,27 @@ function normalizedJoin(...parts: string[]) {
   return fs.path.lexicalNormal(fs.path.joinAll(...parts));
 }
 
+function defaultDialectOf(compiler: cmd.CompilerExe): cmd.CompilerDialect {
+  switch (compiler) {
+    case "clang":
+      return cmd.CompilerDialect.Clang;
+    case "gcc":
+      return cmd.CompilerDialect.Gnu;
+    case "clang-cl":
+    case "msvc":
+      return cmd.CompilerDialect.Msvc;
+  }
+}
+
 function expectAnalysis(expected: ExpectedAnalysis) {
   const analysis = new cmd.CompilerAnalysis(expected.cmd);
 
   expectEq(analysis.compiler, expected.compiler, `${expected.label} compiler`);
+  expectEq(
+    analysis.dialect,
+    expected.dialect ?? defaultDialectOf(expected.compiler),
+    `${expected.label} dialect`,
+  );
   if (expected.style !== undefined) {
     expectEq(analysis.style, expected.style, `${expected.label} style`);
   }
@@ -61,6 +79,8 @@ debug.assertThrow(cmd.CompilerAnalysis.supports(["gcc", "-c", "main.cc"]));
 debug.assertThrow(cmd.CompilerAnalysis.supports(["clang-cl", "/c", "main.cc"]));
 debug.assertThrow(cmd.CompilerAnalysis.supports(["cl.exe", "/c", "main.cc"]));
 debug.assertThrow(!cmd.CompilerAnalysis.supports(["nvcc", "-c", "kernel.cu"]));
+const nvccIdentity = cmd.identifyCompilerCommand(["nvcc", "-c", "kernel.cu"]);
+debug.assertThrow(nvccIdentity?.dialect === cmd.CompilerDialect.Nvcc);
 
 const cases: ExpectedAnalysis[] = [
   {
@@ -242,3 +262,41 @@ if (os.platform() === "windows") {
 for (const testCase of cases) {
   expectAnalysis(testCase);
 }
+
+cmd.registerCompilerRule({
+  key: "test:cross-gcc",
+  dialect: cmd.CompilerDialect.Gnu,
+  match: /^my-cross-tool$/,
+});
+expectAnalysis({
+  label: "custom gnu compiler rule",
+  cmd: ["my-cross-tool", "-c", "src/custom.c"],
+  compiler: "gcc",
+  dialect: cmd.CompilerDialect.Gnu,
+  phase: cmd.CompilerPhase.Compile,
+  artifact: cmd.CompilerArtifact.Object,
+  type: cmd.CompilerType.SourceToObject,
+  inputs: ["src/custom.c"],
+  outputs: ["custom.o"],
+});
+
+cmd.registerCompilerRule({
+  key: "test:cross-gcc",
+  dialect: cmd.CompilerDialect.Clang,
+  match: /^my-cross-tool$/,
+});
+expectAnalysis({
+  label: "custom compiler rule replacement",
+  cmd: ["my-cross-tool", "-c", "src/custom.c"],
+  compiler: "clang",
+  dialect: cmd.CompilerDialect.Clang,
+  phase: cmd.CompilerPhase.Compile,
+  artifact: cmd.CompilerArtifact.Object,
+  type: cmd.CompilerType.SourceToObject,
+  inputs: ["src/custom.c"],
+  outputs: ["custom.o"],
+});
+cmd.unregisterCompilerRule("test:cross-gcc");
+debug.assertThrow(
+  !cmd.CompilerAnalysis.supports(["my-cross-tool", "-c", "src/custom.c"]),
+);
