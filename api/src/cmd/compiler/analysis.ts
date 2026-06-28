@@ -1,12 +1,8 @@
 import { Analysis } from "../model.js";
-import type { Analysis as AnyAnalysis, Analyzer, Edge } from "../model.js";
+import type { Analysis as AnyAnalysis, Analyzer } from "../model.js";
 import { identifyCompilerCommand } from "./identify.js";
 import { parseCompilerCommand } from "./parsers/index.js";
-import {
-  resolveCompilerEdges,
-  resolveLegacyCmdType,
-  resolveOutputs,
-} from "./parsers/clang.js";
+import { resolveCompilerEdges, resolveOutputs } from "./parsers/clang.js";
 import type {
   CompilerArtifact,
   CompilerDialect,
@@ -14,7 +10,6 @@ import type {
   CompilerInput,
   CompilerPhase,
   CompilerStyle,
-  CompilerType,
   CommandModel,
 } from "./types.js";
 import { unwrapCompilerCommand } from "./unwrap.js";
@@ -31,82 +26,43 @@ function analyzeCompilerModel(
   return parseCompilerCommand(unwrapped.argv, identity);
 }
 
-export class CompilerAnalysis extends Analysis<CompilerExe> {
+export class CompilerAnalysis extends Analysis<"compiler", CompilerExe> {
   static readonly key = "compiler";
 
-  static supports(cmd: readonly string[]): boolean {
-    return analyzeCompilerModel(cmd) !== undefined;
-  }
-
   static analyze(cmd: readonly string[]): CompilerAnalysis | undefined {
-    return CompilerAnalysis.supports(cmd)
-      ? new CompilerAnalysis(cmd)
-      : undefined;
+    const model = analyzeCompilerModel(cmd);
+    return model === undefined ? undefined : new CompilerAnalysis(model);
   }
 
   static from(analysis: AnyAnalysis | undefined): CompilerAnalysis | undefined {
     return analysis instanceof CompilerAnalysis ? analysis : undefined;
   }
 
-  readonly compiler: CompilerExe;
   readonly dialect: CompilerDialect;
   readonly phase: CompilerPhase;
   readonly artifact: CompilerArtifact;
-  readonly type: CompilerType | undefined;
   readonly style: CompilerStyle;
-  readonly inputItems: CompilerInput[];
+  readonly inputFiles: readonly CompilerInput[];
+  readonly sourceFiles: readonly string[];
 
-  private readonly edgeList: Edge[];
+  private constructor(model: CommandModel) {
+    const writes = resolveOutputs(model);
+    super({
+      kind: "compiler",
+      exe: model.compiler,
+      reads: model.inputs.map((input) => input.path),
+      writes,
+      edges: resolveCompilerEdges(model, writes),
+    });
 
-  constructor(cmd: readonly string[]) {
-    const model = analyzeCompilerModel(cmd);
-    if (model === undefined) {
-      throw new Error("compiler command analysis required");
-    }
-
-    const produce = resolveOutputs(model);
-    super(
-      model.compiler,
-      model.inputs.map((input) => input.path),
-      produce,
-    );
-
-    this.compiler = model.compiler;
     this.dialect = model.dialect;
     this.phase = model.phase;
     this.artifact = model.artifact;
-    this.type = resolveLegacyCmdType(model);
     this.style = model.style;
-    this.inputItems = model.inputs.map((input) => ({ ...input }));
-    this.edgeList = resolveCompilerEdges(model, produce).map((entry) => ({
-      output: entry.output,
-      inputs: [...entry.inputs],
-    }));
-  }
-
-  inputEntries(): CompilerInput[] {
-    return this.inputItems.map((input) => ({ ...input }));
-  }
-
-  inputs(): string[] {
-    return [...this.consume];
-  }
-
-  sourceInputs(): string[] {
-    return this.inputItems
+    this.inputFiles = model.inputs.map((input) => ({ ...input }));
+    this.sourceFiles = this.inputFiles
       .filter((input) => input.kind === "source")
       .map((input) => input.path);
-  }
-
-  outputs(): string[] {
-    return [...this.produce];
-  }
-
-  override edges(): Edge[] {
-    return this.edgeList.map((entry) => ({
-      output: entry.output,
-      inputs: [...entry.inputs],
-    }));
   }
 }
 

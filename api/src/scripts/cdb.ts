@@ -251,7 +251,7 @@ export function cdb(
       }
       capturedCompilerCommandIds.add(ctx.id);
 
-      for (const input of analysis.inputEntries()) {
+      for (const input of analysis.inputFiles) {
         if (input.kind === "source") {
           const full = pathOf(command.cwd, input.path);
           if (full !== undefined) {
@@ -260,7 +260,7 @@ export function cdb(
         }
       }
 
-      for (const edge of analysis.edges()) {
+      for (const edge of analysis.edges) {
         const output = pathOf(command.cwd, edge.output);
         if (output === undefined) {
           continue;

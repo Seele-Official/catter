@@ -1,29 +1,5 @@
 import type { Compiler } from "catter-c";
 
-/**
- * Legacy compiler command categories preserved for compatibility.
- *
- * Prefer the newer `phase` + `artifact` model on `CompilerAnalysis` for
- * new code.
- */
-export const CompilerType = {
-  SourceToObject: 0,
-  ObjectToExe: 1,
-  ObjectToShare: 2,
-  ObjectToLib: 3,
-  SourceToExe: 4,
-  SourceToAsm: 5,
-  SourceToLlvmIR: 6,
-  SourceToLlvmBC: 7,
-  SourceToPch: 8,
-  SourceToPcm: 9,
-  SourcePreprocess: 10,
-  SourceSyntaxOnly: 11,
-  RelocatableLink: 12,
-} as const;
-
-export type CompilerType = (typeof CompilerType)[keyof typeof CompilerType];
-
 /** High-level compiler pipeline phase. */
 export const CompilerPhase = {
   Preprocess: "preprocess",

@@ -3,8 +3,8 @@ import type { Analysis, Analyzer } from "./model.js";
 /**
  * Ordered registry of command analyzers.
  *
- * The registry asks each analyzer in registration order whether it supports a
- * command, then returns the first successful analysis.
+ * The registry asks each analyzer in registration order to analyze a command,
+ * then returns the first successful analysis.
  *
  * @example
  * ```ts
@@ -74,7 +74,7 @@ export class Registry {
    * ```
    */
   canHandle(cmd: readonly string[]): boolean {
-    return this.analyzerList.some((analyzer) => analyzer.supports(cmd));
+    return this.analyze(cmd) !== undefined;
   }
 
   /**
@@ -89,10 +89,6 @@ export class Registry {
    */
   analyze(cmd: readonly string[]): Analysis | undefined {
     for (const analyzer of this.analyzerList) {
-      if (!analyzer.supports(cmd)) {
-        continue;
-      }
-
       const result = analyzer.analyze(cmd);
       if (result !== undefined) {
         return result;

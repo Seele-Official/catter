@@ -49,8 +49,8 @@ type ArchiverModel = {
   archive?: string;
   members: string[];
   scriptMode: boolean;
-  consume: string[];
-  produce: string[];
+  reads: string[];
+  writes: string[];
 };
 
 const ARCHIVER_EXE_NAMES = new Set<ArchiverExe>(["ar", "llvm-ar", "gcc-ar"]);
@@ -218,12 +218,12 @@ function analyzeArchiverModel(
   }
 
   const members = cmd.slice(index);
-  const produce =
+  const writes =
     parsedOperation.operation === ArchiverOperation.QuickAppend ||
     parsedOperation.operation === ArchiverOperation.ReplaceOrInsert
       ? [archive]
       : [];
-  const consume =
+  const reads =
     parsedOperation.operation === ArchiverOperation.Print ||
     parsedOperation.operation === ArchiverOperation.Table
       ? [archive]
@@ -237,12 +237,12 @@ function analyzeArchiverModel(
     archive,
     members: [...members],
     scriptMode: false,
-    consume,
-    produce,
+    reads,
+    writes,
   };
 }
 
-export class ArchiverAnalysis extends Analysis<ArchiverExe> {
+export class ArchiverAnalysis extends Analysis<"archiver", ArchiverExe> {
   /**
    * Stable registry key for the archiver analyzer.
    *
@@ -253,35 +253,9 @@ export class ArchiverAnalysis extends Analysis<ArchiverExe> {
    */
   static readonly key = "archiver";
 
-  /**
-   * Checks whether a command looks like a supported archiver invocation.
-   *
-   * @example
-   * ```ts
-   * const ok = cmd.ArchiverAnalysis.supports(["llvm-ar", "rcs", "liba.a", "a.o"]);
-   * ```
-   */
-  static supports(cmd: readonly string[]): boolean {
-    return analyzeArchiverModel(cmd) !== undefined;
-  }
-
-  /**
-   * Analyzes an archiver command.
-   *
-   * @example
-   * ```ts
-   * const analysis = cmd.ArchiverAnalysis.analyze([
-   *   "llvm-ar",
-   *   "rcs",
-   *   "liba.a",
-   *   "a.o",
-   * ]);
-   * ```
-   */
   static analyze(cmd: readonly string[]): ArchiverAnalysis | undefined {
-    return ArchiverAnalysis.supports(cmd)
-      ? new ArchiverAnalysis(cmd)
-      : undefined;
+    const model = analyzeArchiverModel(cmd);
+    return model === undefined ? undefined : new ArchiverAnalysis(model);
   }
 
   /**
@@ -299,37 +273,29 @@ export class ArchiverAnalysis extends Analysis<ArchiverExe> {
   /** The parsed archive operation. */
   readonly operation: ArchiverOperation;
   /** Extra modifier letters attached to the operation token. */
-  readonly modifiers: string[];
+  readonly modifiers: readonly string[];
   /** Whether thin-archive mode was requested. */
   readonly thin: boolean;
   /** Archive file path when the command syntax provides one. */
   readonly archive?: string;
   /** Member file paths listed after the archive path. */
-  readonly members: string[];
+  readonly members: readonly string[];
   /** Whether GNU MRI script mode was requested. */
   readonly scriptMode: boolean;
 
-  /**
-   * Creates an archiver analysis from raw argv.
-   *
-   * @example
-   * ```ts
-   * const analysis = new cmd.ArchiverAnalysis(["ar", "rcs", "liba.a", "a.o"]);
-   * ```
-   */
-  constructor(cmd: readonly string[]) {
-    const resolved = analyzeArchiverModel(cmd);
-    if (resolved === undefined) {
-      throw new Error("archiver command analysis required");
-    }
-
-    super(resolved.exe, resolved.consume, resolved.produce);
-    this.operation = resolved.operation;
-    this.modifiers = [...resolved.modifiers];
-    this.thin = resolved.thin;
-    this.archive = resolved.archive;
-    this.members = [...resolved.members];
-    this.scriptMode = resolved.scriptMode;
+  private constructor(model: ArchiverModel) {
+    super({
+      kind: "archiver",
+      exe: model.exe,
+      reads: model.reads,
+      writes: model.writes,
+    });
+    this.operation = model.operation;
+    this.modifiers = [...model.modifiers];
+    this.thin = model.thin;
+    this.archive = model.archive;
+    this.members = [...model.members];
+    this.scriptMode = model.scriptMode;
   }
 }
 

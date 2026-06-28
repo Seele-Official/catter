@@ -7,8 +7,8 @@ function expectEq<T>(actual: T, expected: T, label: string): void {
 }
 
 function expectArrayEq(
-  actual: string[],
-  expected: string[],
+  actual: readonly string[],
+  expected: readonly string[],
   label: string,
 ): void {
   if (actual.length !== expected.length) {
@@ -43,26 +43,21 @@ if (compileAnalysis === undefined) {
 }
 
 expectEq(compileAnalysis.exe, "clang", "compile exe");
-expectEq(compileAnalysis.compiler, "clang", "compile compiler");
 expectEq(compileAnalysis.phase, cmd.CompilerPhase.Compile, "compile phase");
 expectEq(
   compileAnalysis.artifact,
   cmd.CompilerArtifact.Object,
   "compile artifact",
 );
+expectArrayEq(compileAnalysis.reads, ["src/a.c", "src/b.c"], "compile reads");
+expectArrayEq(compileAnalysis.writes, ["a.o", "b.o"], "compile writes");
 expectArrayEq(
-  compileAnalysis.consume,
-  ["src/a.c", "src/b.c"],
-  "compile consume",
-);
-expectArrayEq(compileAnalysis.produce, ["a.o", "b.o"], "compile produce");
-expectArrayEq(
-  compileAnalysis.sourceInputs(),
+  compileAnalysis.sourceFiles,
   ["src/a.c", "src/b.c"],
   "compile sources",
 );
 
-const compileEdges = compileAnalysis.edges();
+const compileEdges = compileAnalysis.edges;
 expectEq(compileEdges.length, 2, "compile edge count");
 expectEdgeEq(
   compileEdges[0],
@@ -119,9 +114,9 @@ expectEq(
   cmd.CompilerArtifact.Stdout,
   "preprocess artifact",
 );
-expectArrayEq(preprocessAnalysis.consume, ["src/a.c"], "preprocess consume");
-expectArrayEq(preprocessAnalysis.produce, ["a.i"], "preprocess produce");
-expectEq(preprocessAnalysis.edges().length, 1, "preprocess edge count");
+expectArrayEq(preprocessAnalysis.reads, ["src/a.c"], "preprocess reads");
+expectArrayEq(preprocessAnalysis.writes, ["a.i"], "preprocess writes");
+expectEq(preprocessAnalysis.edges.length, 1, "preprocess edge count");
 
 const archiverAnalysis = cmd.ArchiverAnalysis.from(
   cmd.analyze(["llvm-ar", "--thin", "rcs", "libfoo.a", "a.o", "b.o"]),
@@ -138,10 +133,10 @@ expectEq(
   "archiver operation",
 );
 debug.assertThrow(archiverAnalysis.thin);
-expectArrayEq(archiverAnalysis.consume, ["a.o", "b.o"], "archiver consume");
-expectArrayEq(archiverAnalysis.produce, ["libfoo.a"], "archiver produce");
+expectArrayEq(archiverAnalysis.reads, ["a.o", "b.o"], "archiver reads");
+expectArrayEq(archiverAnalysis.writes, ["libfoo.a"], "archiver writes");
 
-const archiveEdges = archiverAnalysis.edges();
+const archiveEdges = archiverAnalysis.edges;
 expectEq(archiveEdges.length, 1, "archiver edge count");
 expectEdgeEq(
   archiveEdges[0],
@@ -167,15 +162,11 @@ expectEq(
 );
 expectArrayEq(gnuArchiverAnalysis.modifiers, ["c"], "gnu archiver modifiers");
 expectArrayEq(
-  gnuArchiverAnalysis.produce,
+  gnuArchiverAnalysis.writes,
   ["libcommon.a"],
-  "gnu archiver produce",
+  "gnu archiver writes",
 );
-expectArrayEq(
-  gnuArchiverAnalysis.consume,
-  ["a.o", "b.o"],
-  "gnu archiver consume",
-);
+expectArrayEq(gnuArchiverAnalysis.reads, ["a.o", "b.o"], "gnu archiver reads");
 
 const tableArchiverAnalysis = cmd.ArchiverAnalysis.from(
   cmd.analyze(["ar", "t", "libcommon.a"]),
@@ -190,31 +181,25 @@ expectEq(
   "table archiver operation",
 );
 expectArrayEq(
-  tableArchiverAnalysis.consume,
+  tableArchiverAnalysis.reads,
   ["libcommon.a"],
-  "table archiver consume",
+  "table archiver reads",
 );
-expectArrayEq(tableArchiverAnalysis.produce, [], "table archiver produce");
+expectArrayEq(tableArchiverAnalysis.writes, [], "table archiver writes");
 
-debug.assertThrow(!cmd.ArchiverAnalysis.supports(["ar", "--version"]));
 debug.assertThrow(
   cmd.ArchiverAnalysis.analyze(["ar", "--version"]) === undefined,
 );
-debug.assertThrow(!cmd.ArchiverAnalysis.supports(["ar", "x", "libcommon.a"]));
 debug.assertThrow(
   cmd.ArchiverAnalysis.analyze(["ar", "x", "libcommon.a"]) === undefined,
 );
 
-class ToyAnalysis extends cmd.Analysis<"toy-bundle"> {
+class ToyAnalysis extends cmd.Analysis<"toy", "toy-bundle"> {
   static readonly key = "toy-bundle";
-
-  static supports(argv: readonly string[]): boolean {
-    return argv[0] === "toy-bundle";
-  }
 
   static analyze(argv: readonly string[]): ToyAnalysis | undefined {
     if (
-      !ToyAnalysis.supports(argv) ||
+      argv[0] !== "toy-bundle" ||
       argv[1] === undefined ||
       argv[2] === undefined
     ) {
@@ -230,7 +215,12 @@ class ToyAnalysis extends cmd.Analysis<"toy-bundle"> {
   readonly stage = "bundle";
 
   constructor(input: string, output: string) {
-    super("toy-bundle", [input], [output]);
+    super({
+      kind: "toy",
+      exe: "toy-bundle",
+      reads: [input],
+      writes: [output],
+    });
   }
 }
 
@@ -243,11 +233,15 @@ if (localResult === undefined) {
   throw new Error("expected local analysis");
 }
 expectEq(localResult.stage, "bundle", "local stage");
-expectArrayEq(localResult.consume, ["input.dat"], "local consume");
-expectArrayEq(localResult.produce, ["output.pkg"], "local produce");
-expectEq(localResult.edges().length, 1, "local edge count");
-expectEq(localResult.edges()[0].output, "output.pkg", "local edge output");
+expectArrayEq(localResult.reads, ["input.dat"], "local reads");
+expectArrayEq(localResult.writes, ["output.pkg"], "local writes");
+expectEq(localResult.edges.length, 1, "local edge count");
+expectEq(localResult.edges[0].output, "output.pkg", "local edge output");
 
-const compat = new cmd.CompilerAnalysis(["gcc", "-c", "sample.c"]);
-expectEq(compat.compiler, "gcc", "compat compiler");
-expectArrayEq(compat.outputs(), ["sample.o"], "compat outputs");
+const sample = cmd.CompilerAnalysis.analyze(["gcc", "-c", "sample.c"]);
+debug.assertThrow(sample !== undefined);
+if (sample === undefined) {
+  throw new Error("expected sample compiler analysis");
+}
+expectEq(sample.exe, "gcc", "sample compiler");
+expectArrayEq(sample.writes, ["sample.o"], "sample writes");

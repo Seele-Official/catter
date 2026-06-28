@@ -39,7 +39,7 @@ const targetTreeCLI = cli.command({
  * forest.
  *
  * Each recognized command contributes dependency edges through
- * `analysis.edges()`, and the final output is rendered with `FlatTree`.
+ * `analysis.edges`, and the final output is rendered with `FlatTree`.
  *
  * @example
  * ```ts
@@ -107,7 +107,7 @@ export function targetTree(): service.CatterContextService {
       }
 
       const analysis = analyzeCmd(data.data.argv);
-      const targetEntries = analysis?.edges() ?? [];
+      const targetEntries = analysis?.edges ?? [];
       const entries = targetEntries
         .map((entry) => {
           const output = normalizePath(data.data.cwd, entry.output);

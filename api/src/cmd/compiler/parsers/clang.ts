@@ -12,7 +12,6 @@ import type { Edge } from "../../model.js";
 import {
   CompilerArtifact,
   CompilerPhase,
-  CompilerType,
   type CommandModel,
   type CompilerDialect,
   type CompilerExe,
@@ -38,7 +37,6 @@ type OutputArg = {
 
 const CompilerPhaseValue = CompilerPhase;
 const CompilerArtifactValue = CompilerArtifact;
-const LegacyTypeValue = CompilerType;
 
 const SOURCE_SUFFIXES = new Set([
   ".c",
@@ -1053,53 +1051,6 @@ export function resolveOutputs(model: CommandModel): string[] {
   );
 }
 
-export function resolveLegacyCmdType(
-  model: CommandModel,
-): CompilerType | undefined {
-  const hasSourceInput = sourceInputsOf(model).length > 0;
-
-  switch (model.phase) {
-    case CompilerPhaseValue.Preprocess:
-      return LegacyTypeValue.SourcePreprocess;
-    case CompilerPhaseValue.SyntaxOnly:
-      return LegacyTypeValue.SourceSyntaxOnly;
-    case CompilerPhaseValue.Compile:
-      switch (model.artifact) {
-        case CompilerArtifactValue.Object:
-          return LegacyTypeValue.SourceToObject;
-        case CompilerArtifactValue.Assembly:
-          return LegacyTypeValue.SourceToAsm;
-        case CompilerArtifactValue.LlvmIR:
-          return LegacyTypeValue.SourceToLlvmIR;
-        case CompilerArtifactValue.LlvmBitcode:
-          return LegacyTypeValue.SourceToLlvmBC;
-        case CompilerArtifactValue.Pch:
-          return LegacyTypeValue.SourceToPch;
-        case CompilerArtifactValue.Pcm:
-          return LegacyTypeValue.SourceToPcm;
-        default:
-          return undefined;
-      }
-    case CompilerPhaseValue.Link:
-      switch (model.artifact) {
-        case CompilerArtifactValue.SharedLibrary:
-          return LegacyTypeValue.ObjectToShare;
-        case CompilerArtifactValue.Executable:
-          return hasSourceInput
-            ? LegacyTypeValue.SourceToExe
-            : LegacyTypeValue.ObjectToExe;
-        default:
-          return undefined;
-      }
-    case CompilerPhaseValue.Archive:
-      return LegacyTypeValue.ObjectToLib;
-    case CompilerPhaseValue.RelocatableLink:
-      return LegacyTypeValue.RelocatableLink;
-    case CompilerPhaseValue.DeviceLink:
-      return undefined;
-  }
-}
-
 export function resolveCompilerEdges(
   model: CommandModel,
   outputs: string[],
@@ -1129,9 +1080,9 @@ export function resolveCompilerEdges(
     return [];
   }
 
-  const consume = model.inputs.map((input) => input.path);
+  const reads = model.inputs.map((input) => input.path);
   return outputs.map((output) => ({
     output,
-    inputs: [...consume],
+    inputs: [...reads],
   }));
 }
