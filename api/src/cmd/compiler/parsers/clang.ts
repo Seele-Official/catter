@@ -12,15 +12,36 @@ import type { Edge } from "../../model.js";
 import {
   CompilerArtifact,
   CompilerPhase,
-  type CommandModel,
   type CompilerDialect,
-  type CompilerExe,
   type CompilerIdentity,
   type CompilerInput,
-  type CompilerStyle,
-  type OutputChannel,
-  type OutputOption,
 } from "../types.js";
+import type { CompilerParseResult } from "./types.js";
+
+type CompilerOptionStyle = "gnu" | "cl";
+type CompilerDefaultExtensions = {
+  object: string;
+  executable: string;
+  shared: string;
+  staticLibrary: string;
+};
+
+type OutputChannel = "primary" | "object" | "executable" | "linker";
+
+type OutputOption = {
+  value: string;
+  index: number;
+  channel: OutputChannel;
+};
+
+type CompilerCommandModel = {
+  dialect: CompilerDialect;
+  phase: CompilerPhase;
+  artifact: CompilerArtifact;
+  explicitLanguage?: string;
+  inputs: CompilerInput[];
+  outputs: Partial<Record<OutputChannel, OutputOption>>;
+};
 
 type ParsedOption = {
   raw: OptionItem;
@@ -85,13 +106,8 @@ const LINK_INPUT_SUFFIXES = new Set([
 ]);
 
 const STYLE_DEFAULT_EXTENSIONS: Record<
-  CompilerStyle,
-  {
-    object: string;
-    executable: string;
-    shared: string;
-    staticLibrary: string;
-  }
+  CompilerOptionStyle,
+  CompilerDefaultExtensions
 > = {
   gnu: {
     object: ".o",
@@ -105,6 +121,16 @@ const STYLE_DEFAULT_EXTENSIONS: Record<
     shared: ".dll",
     staticLibrary: ".lib",
   },
+};
+
+export const GNU_DEFAULT_EXTENSIONS = STYLE_DEFAULT_EXTENSIONS.gnu;
+export const CL_DEFAULT_EXTENSIONS = STYLE_DEFAULT_EXTENSIONS.cl;
+
+type ClangParseContext = {
+  model: CompilerCommandModel;
+  style: CompilerOptionStyle;
+  defaultExtensions: CompilerDefaultExtensions;
+  allowClStyle: boolean;
 };
 
 function cloneOptionItem(item: OptionItem): OptionItem {
@@ -139,7 +165,7 @@ function collectParsedOptions(
   });
 }
 
-function clangLikeDriverVisibility(): number {
+export function clangDriverVisibility(): number {
   if (os.platform() === "windows") {
     return ClangVisibility.DefaultVis | ClangVisibility.CLOption;
   }
@@ -147,7 +173,11 @@ function clangLikeDriverVisibility(): number {
   return ClangVisibility.DefaultVis;
 }
 
-function clStyleDriverVisibility(): number {
+export function gnuDriverVisibility(): number {
+  return ClangVisibility.DefaultVis;
+}
+
+export function clStyleDriverVisibility(): number {
   return ClangVisibility.DefaultVis | ClangVisibility.CLOption;
 }
 
@@ -219,7 +249,7 @@ function classifyInputKind(
 }
 
 function recordInput(
-  model: CommandModel,
+  model: CompilerCommandModel,
   path: string | undefined,
   kind: "source" | "link",
   index: number,
@@ -236,7 +266,7 @@ function recordInput(
 }
 
 function recordOutput(
-  model: CommandModel,
+  model: CompilerCommandModel,
   channel: OutputChannel,
   value: string | undefined,
   index: number,
@@ -326,14 +356,10 @@ function scanClLinkerRemainder(values: string[]) {
 }
 
 function createDefaultModel(
-  compiler: CompilerExe,
-  style: CompilerStyle = "gnu",
   dialect: CompilerDialect = "clang",
-): CommandModel {
+): CompilerCommandModel {
   return {
-    compiler,
     dialect,
-    style,
     phase: CompilerPhaseValue.Link,
     artifact: CompilerArtifactValue.Executable,
     inputs: [],
@@ -342,7 +368,7 @@ function createDefaultModel(
 }
 
 function setCompileResult(
-  model: CommandModel,
+  model: CompilerCommandModel,
   artifact: CompilerArtifact,
 ): void {
   model.phase = CompilerPhaseValue.Compile;
@@ -350,7 +376,7 @@ function setCompileResult(
 }
 
 function setLinkResult(
-  model: CommandModel,
+  model: CompilerCommandModel,
   artifact:
     | typeof CompilerArtifactValue.Executable
     | typeof CompilerArtifactValue.SharedLibrary,
@@ -359,12 +385,12 @@ function setLinkResult(
   model.artifact = artifact;
 }
 
-function setArchiveResult(model: CommandModel): void {
+function setArchiveResult(model: CompilerCommandModel): void {
   model.phase = CompilerPhaseValue.Archive;
   model.artifact = CompilerArtifactValue.StaticLibrary;
 }
 
-function setRelocatableLinkResult(model: CommandModel): void {
+function setRelocatableLinkResult(model: CompilerCommandModel): void {
   model.phase = CompilerPhaseValue.RelocatableLink;
   model.artifact = CompilerArtifactValue.Object;
 }
@@ -443,7 +469,11 @@ function lastPrimaryOutputArg(args: readonly string[]): OutputArg | undefined {
   return found;
 }
 
-function removeInputAt(model: CommandModel, index: number, path: string): void {
+function removeInputAt(
+  model: CompilerCommandModel,
+  index: number,
+  path: string,
+): void {
   model.inputs = model.inputs.filter(
     (input) => !(input.index === index && input.path === path),
   );
@@ -480,7 +510,7 @@ function collectConsumedArgIndexes(
 }
 
 function hasRecordedInput(
-  model: CommandModel,
+  model: CompilerCommandModel,
   index: number,
   path: string,
 ): boolean {
@@ -489,7 +519,10 @@ function hasRecordedInput(
   );
 }
 
-function isFallbackInputToken(token: string, style: CompilerStyle): boolean {
+function isFallbackInputToken(
+  token: string,
+  style: CompilerOptionStyle,
+): boolean {
   if (token === "-") {
     return true;
   }
@@ -514,7 +547,8 @@ function isFallbackInputToken(token: string, style: CompilerStyle): boolean {
  * ```
  */
 function applyClangLikeFallbackToken(
-  model: CommandModel,
+  model: CompilerCommandModel,
+  style: CompilerOptionStyle,
   args: readonly string[],
   consumedIndexes: Set<number>,
   index: number,
@@ -604,7 +638,7 @@ function applyClangLikeFallbackToken(
   }
 
   if (
-    isFallbackInputToken(token, model.style) &&
+    isFallbackInputToken(token, style) &&
     !hasRecordedInput(model, index, token)
   ) {
     recordInput(
@@ -630,10 +664,11 @@ function applyClangLikeFallbackToken(
  * ```
  */
 function applyClangLikeDriverFallbacks(
-  model: CommandModel,
+  context: ClangParseContext,
   args: readonly string[],
   parsed: ParsedOption[],
 ): void {
+  const { model } = context;
   const consumedIndexes = collectConsumedArgIndexes(args, parsed);
   let positionalOnly = false;
 
@@ -644,6 +679,7 @@ function applyClangLikeDriverFallbacks(
 
     positionalOnly = applyClangLikeFallbackToken(
       model,
+      context.style,
       args,
       consumedIndexes,
       index,
@@ -660,7 +696,7 @@ function applyClangLikeDriverFallbacks(
 }
 
 function repairPrimaryOutput(
-  model: CommandModel,
+  model: CompilerCommandModel,
   args: readonly string[],
 ): void {
   if (model.outputs.primary !== undefined) {
@@ -686,19 +722,26 @@ function repairPrimaryOutput(
  * // "/c" or any option carrying CLOption visibility flips the style to "cl".
  * ```
  */
-function observeClStyle(
-  model: CommandModel,
-  parsedItem: ParsedOption,
-  allowClStyle: boolean,
+function setContextStyle(
+  context: ClangParseContext,
+  style: CompilerOptionStyle,
 ): void {
-  if (!allowClStyle) {
+  context.style = style;
+  context.defaultExtensions = STYLE_DEFAULT_EXTENSIONS[style];
+}
+
+function observeClStyle(
+  context: ClangParseContext,
+  parsedItem: ParsedOption,
+): void {
+  if (!context.allowClStyle) {
     return;
   }
   if (
     parsedItem.raw.key.startsWith("/") ||
     (parsedItem.rawInfo.visibility & ClangVisibility.CLOption) !== 0
   ) {
-    model.style = "cl";
+    setContextStyle(context, "cl");
   }
 }
 
@@ -715,14 +758,18 @@ function observeClStyle(
  * ```
  */
 function applyParsedClangLikeOption(
-  model: CommandModel,
+  context: ClangParseContext,
   parsedItem: ParsedOption,
-  allowClStyle: boolean,
 ): void {
+  const { model } = context;
+
   switch (parsedItem.item.id as ClangID) {
     case ClangID.ID_driver_mode:
-      if (allowClStyle && parsedItem.item.values[0]?.toLowerCase() === "cl") {
-        model.style = "cl";
+      if (
+        context.allowClStyle &&
+        parsedItem.item.values[0]?.toLowerCase() === "cl"
+      ) {
+        setContextStyle(context, "cl");
       }
       break;
     case ClangID.ID_c:
@@ -847,86 +894,61 @@ function applyParsedClangLikeOption(
   }
 }
 
-function analyzeClangOptionCommand(
+export function parseClangCompatibleCommand(
   cmd: readonly string[],
-  compiler: CompilerExe,
   visibility: number,
-  initialStyle: CompilerStyle,
+  initialStyle: CompilerOptionStyle,
   allowClStyle: boolean,
   dialect: CompilerDialect,
-): CommandModel {
-  const model = createDefaultModel(compiler, initialStyle, dialect);
+  defaultExtensions = STYLE_DEFAULT_EXTENSIONS[initialStyle],
+): CompilerParseResult {
+  const model = createDefaultModel(dialect);
+  const context: ClangParseContext = {
+    model,
+    style: initialStyle,
+    defaultExtensions,
+    allowClStyle,
+  };
   const args = cmd.slice(1);
   const parsed = collectParsedOptions("clang", args, visibility);
 
   for (const parsedItem of parsed) {
-    observeClStyle(model, parsedItem, allowClStyle);
-    applyParsedClangLikeOption(model, parsedItem, allowClStyle);
+    observeClStyle(context, parsedItem);
+    applyParsedClangLikeOption(context, parsedItem);
   }
 
-  applyClangLikeDriverFallbacks(model, args, parsed);
+  applyClangLikeDriverFallbacks(context, args, parsed);
   repairPrimaryOutput(model, args);
-  return model;
+  return finalizeCompilerModel(model, context.defaultExtensions);
 }
 
 /** Parses a clang-family command using GNU-style clang option visibility. */
 export function parseClangCommand(
   cmd: readonly string[],
   identity: CompilerIdentity,
-): CommandModel {
-  return analyzeClangOptionCommand(
+): CompilerParseResult {
+  return parseClangCompatibleCommand(
     cmd,
-    identity.compiler ?? "clang",
-    clangLikeDriverVisibility(),
+    clangDriverVisibility(),
     "gnu",
     supportsClStyleAnalysis(),
-    identity.dialect,
-  );
-}
-
-/** Parses a GNU-family command with clang-compatible option handling. */
-export function parseGnuCommand(
-  cmd: readonly string[],
-  identity: CompilerIdentity,
-): CommandModel {
-  return analyzeClangOptionCommand(
-    cmd,
-    identity.compiler ?? "gcc",
-    clangLikeDriverVisibility(),
-    "gnu",
-    supportsClStyleAnalysis(),
-    identity.dialect,
-  );
-}
-
-/** Parses an MSVC-family command using clang-cl option visibility. */
-export function parseMsvcCommand(
-  cmd: readonly string[],
-  identity: CompilerIdentity,
-): CommandModel {
-  return analyzeClangOptionCommand(
-    cmd,
-    identity.compiler ?? "msvc",
-    clStyleDriverVisibility(),
-    "cl",
-    true,
     identity.dialect,
   );
 }
 
 function defaultExtensionForArtifact(
-  style: CompilerStyle,
+  defaultExtensions: CompilerDefaultExtensions,
   artifact: CompilerArtifact,
 ): string | undefined {
   switch (artifact) {
     case CompilerArtifactValue.Object:
-      return STYLE_DEFAULT_EXTENSIONS[style].object;
+      return defaultExtensions.object;
     case CompilerArtifactValue.Executable:
-      return STYLE_DEFAULT_EXTENSIONS[style].executable;
+      return defaultExtensions.executable;
     case CompilerArtifactValue.SharedLibrary:
-      return STYLE_DEFAULT_EXTENSIONS[style].shared;
+      return defaultExtensions.shared;
     case CompilerArtifactValue.StaticLibrary:
-      return STYLE_DEFAULT_EXTENSIONS[style].staticLibrary;
+      return defaultExtensions.staticLibrary;
     case CompilerArtifactValue.Assembly:
       return ".s";
     case CompilerArtifactValue.LlvmIR:
@@ -972,16 +994,20 @@ function usesPerInputOutputs(
   }
 }
 
-function sourceInputsOf(model: CommandModel): CompilerInput[] {
+function sourceInputsOf(model: CompilerCommandModel): CompilerInput[] {
   return model.inputs.filter((input) => input.kind === "source");
 }
 
-function resolveDefaultCompileInputs(model: CommandModel): CompilerInput[] {
+function resolveDefaultCompileInputs(
+  model: CompilerCommandModel,
+): CompilerInput[] {
   const sourceInputs = sourceInputsOf(model);
   return sourceInputs.length > 0 ? sourceInputs : model.inputs;
 }
 
-function selectPreferredOutput(model: CommandModel): OutputOption | undefined {
+function selectPreferredOutput(
+  model: CompilerCommandModel,
+): OutputOption | undefined {
   switch (model.phase) {
     case CompilerPhaseValue.Preprocess:
       return model.outputs.primary;
@@ -1005,13 +1031,19 @@ function selectPreferredOutput(model: CommandModel): OutputOption | undefined {
 }
 
 /** Resolves concrete output paths for a parsed compiler command model. */
-export function resolveOutputs(model: CommandModel): string[] {
+function resolveOutputs(
+  model: CompilerCommandModel,
+  defaultExtensions: CompilerDefaultExtensions,
+): string[] {
   if (model.artifact === CompilerArtifactValue.None) {
     return [];
   }
 
   const preferredOutput = selectPreferredOutput(model);
-  const defaultExt = defaultExtensionForArtifact(model.style, model.artifact);
+  const defaultExt = defaultExtensionForArtifact(
+    defaultExtensions,
+    model.artifact,
+  );
 
   if (preferredOutput !== undefined) {
     if (
@@ -1056,8 +1088,8 @@ export function resolveOutputs(model: CommandModel): string[] {
 }
 
 /** Resolves output-to-input dependency edges for a parsed compiler command. */
-export function resolveCompilerEdges(
-  model: CommandModel,
+function resolveCompilerEdges(
+  model: CompilerCommandModel,
   outputs: string[],
 ): Edge[] {
   if (outputs.length === 0) {
@@ -1090,4 +1122,22 @@ export function resolveCompilerEdges(
     output,
     inputs: [...reads],
   }));
+}
+
+function finalizeCompilerModel(
+  model: CompilerCommandModel,
+  defaultExtensions: CompilerDefaultExtensions,
+): CompilerParseResult {
+  const writes = resolveOutputs(model, defaultExtensions);
+  const inputs = model.inputs.map((input) => ({ ...input }));
+
+  return {
+    dialect: model.dialect,
+    phase: model.phase,
+    artifact: model.artifact,
+    inputs,
+    reads: inputs.map((input) => input.path),
+    writes,
+    edges: resolveCompilerEdges(model, writes),
+  };
 }

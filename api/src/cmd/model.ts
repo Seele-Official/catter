@@ -15,7 +15,7 @@ export interface Edge {
 }
 
 /**
- * Base class for one analyzed command invocation.
+ * Shared file effects for one analyzed command invocation.
  *
  * `reads` records the files the command reads, `writes` records the files it
  * writes, and `edges` refines that into explicit output-to-input mappings when
@@ -23,11 +23,11 @@ export interface Edge {
  *
  * @example
  * ```ts
- * class ToyAnalysis extends cmd.Analysis<"toy", "toy-bundle"> {
+ * class ToyAnalysis extends cmd.Analysis {
+ *   readonly kind = "toy" as const;
+ *
  *   constructor() {
  *     super({
- *       kind: "toy",
- *       exe: "toy-bundle",
  *       reads: ["in.dat"],
  *       writes: ["out.pkg"],
  *     });
@@ -35,14 +35,7 @@ export interface Edge {
  * }
  * ```
  */
-export abstract class Analysis<
-  Kind extends string = string,
-  Exe extends string = string,
-> {
-  /** Analyzer category for the command. */
-  readonly kind: Kind;
-  /** Normalized executable identifier for the analyzed command. */
-  readonly exe: Exe;
+export abstract class Analysis {
   /** Files read by the command. */
   readonly reads: readonly string[];
   /** Files written by the command. */
@@ -51,14 +44,10 @@ export abstract class Analysis<
   readonly edges: readonly Edge[];
 
   protected constructor(data: {
-    kind: Kind;
-    exe: Exe;
     reads: readonly string[];
     writes: readonly string[];
     edges?: readonly Edge[];
   }) {
-    this.kind = data.kind;
-    this.exe = data.exe;
     this.reads = [...data.reads];
     this.writes = [...data.writes];
     this.edges =
@@ -81,13 +70,13 @@ export abstract class Analysis<
  *
  * @example
  * ```ts
- * class ToyAnalysis extends cmd.Analysis<"toy", "toy-bundle"> {
+ * class ToyAnalysis extends cmd.Analysis {
  *   static readonly key = "toy";
  *   static analyze(argv: readonly string[]) {
  *     return argv[0] === "toy" ? new ToyAnalysis() : undefined;
  *   }
  *   constructor() {
- *     super({ kind: "toy", exe: "toy-bundle", reads: [], writes: [] });
+ *     super({ reads: [], writes: [] });
  *   }
  * }
  * ```
@@ -98,3 +87,8 @@ export interface Analyzer<A extends Analysis = Analysis> {
   /** Performs analysis and returns a typed result when successful. */
   analyze(cmd: readonly string[]): A | undefined;
 }
+
+/** Built-in command analysis result variants. */
+export type CommandAnalysis =
+  | import("./compiler-cmd.js").CompilerAnalysis
+  | import("./archiver-cmd.js").ArchiverAnalysis;

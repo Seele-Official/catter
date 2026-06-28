@@ -1,18 +1,15 @@
-import type {
-  CommandModel,
-  CompilerDialect,
-  CompilerIdentity,
-} from "../types.js";
+import type { CompilerDialect, CompilerIdentity } from "../types.js";
 import { parseClangCommand } from "./clang.js";
 import { parseGnuCommand } from "./gnu.js";
 import { parseMsvcCommand } from "./msvc.js";
 import { parseNvccCommand } from "./nvcc.js";
+import type { CompilerParseResult } from "./types.js";
 
 /** Dispatches a command to the builtin parser selected by compiler identity. */
 export function parseCompilerCommand(
   cmd: readonly string[],
   identity: CompilerIdentity,
-): CommandModel | undefined {
+): CompilerParseResult | undefined {
   switch (identity.dialect satisfies CompilerDialect) {
     case "clang":
       return parseClangCommand(cmd, identity);

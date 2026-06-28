@@ -1,4 +1,4 @@
-import type { Analysis, Analyzer } from "./model.js";
+import type { Analysis, Analyzer, CommandAnalysis } from "./model.js";
 import { ArchiverAnalysis } from "./archiver-cmd.js";
 import { CompilerAnalysis } from "./compiler-cmd.js";
 import { Registry } from "./registry.js";
@@ -25,7 +25,7 @@ export const defaultRegistry = new Registry()
  * const analysis = cmd.analyze(["llvm-ar", "rcs", "liba.a", "a.o"]);
  * ```
  */
-export function analyze(cmd: readonly string[]): Analysis | undefined {
+export function analyze(cmd: readonly string[]): CommandAnalysis | undefined {
   return defaultRegistry.analyze(cmd);
 }
 
@@ -49,7 +49,9 @@ export function canHandle(cmd: readonly string[]): boolean {
  * cmd.register(cmd.CompilerAnalysis);
  * ```
  */
-export function register<A extends Analysis>(analyzer: Analyzer<A>): Registry {
+export function register<A extends Analysis>(
+  analyzer: Analyzer<A>,
+): Registry<CommandAnalysis | A> {
   return defaultRegistry.register(analyzer);
 }
 
@@ -61,6 +63,6 @@ export function register<A extends Analysis>(analyzer: Analyzer<A>): Registry {
  * cmd.unregister(cmd.CompilerAnalysis.key);
  * ```
  */
-export function unregister(key: string): Registry {
+export function unregister(key: string): Registry<CommandAnalysis> {
   return defaultRegistry.unregister(key);
 }

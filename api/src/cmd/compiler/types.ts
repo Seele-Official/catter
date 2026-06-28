@@ -37,12 +37,6 @@ export const CompilerArtifact = {
 export type CompilerArtifact =
   (typeof CompilerArtifact)[keyof typeof CompilerArtifact];
 
-/** Supported normalized compiler executable identifiers. */
-export type CompilerExe = Extract<
-  Compiler,
-  "clang" | "clang-cl" | "gcc" | "msvc"
->;
-
 /** Built-in parser dialect selected after command identification. */
 export const CompilerDialect = {
   Clang: "clang",
@@ -55,9 +49,6 @@ export const CompilerDialect = {
 export type CompilerDialect =
   (typeof CompilerDialect)[keyof typeof CompilerDialect];
 
-/** Driver option syntax style observed during parsing. */
-export type CompilerStyle = "gnu" | "cl";
-
 /** One parsed compiler input, including its inferred role. */
 export interface CompilerInput {
   /** Path token as it appeared in the compiler command. */
@@ -68,60 +59,13 @@ export interface CompilerInput {
   index: number;
 }
 
-/** Internal output slot used while normalizing compiler output options. */
-export type OutputChannel = "primary" | "object" | "executable" | "linker";
-
-/** Internal output option captured from the parsed compiler command. */
-export type OutputOption = {
-  /** Output path or `-` for stdout when accepted by the driver. */
-  value: string;
-  /** Original argv index for the option that introduced the output. */
-  index: number;
-  /** Output slot affected by the option. */
-  channel: OutputChannel;
-};
-
-/** Internal normalized compiler command model produced by a builtin parser. */
-export type CommandModel = {
-  /** Normalized compiler executable identity exposed as `CompilerAnalysis.exe`. */
-  compiler: CompilerExe;
-  /** Parser dialect selected by command identification. */
-  dialect: CompilerDialect;
-  /** Option syntax style observed by the parser. */
-  style: CompilerStyle;
-  /** High-level driver phase inferred from parsed options. */
-  phase: CompilerPhase;
-  /** Main artifact kind inferred from parsed options. */
-  artifact: CompilerArtifact;
-  /** Active language from `-x` or equivalent when specified. */
-  explicitLanguage?: string;
-  /** Parsed input files with their command-line roles. */
-  inputs: CompilerInput[];
-  /** Parsed output options keyed by output channel. */
-  outputs: Partial<Record<OutputChannel, OutputOption>>;
-};
-
-/** Data passed to custom compiler identification matchers. */
-export interface CompilerIdentifyContext {
-  /** Full command argv being identified. */
-  argv: readonly string[];
-  /** Raw executable token from `argv[0]`. */
-  executable: string;
-  /** Executable basename without directory components. */
-  basename: string;
-  /** Lowercase basename with a trailing `.exe` removed. */
-  stem: string;
-}
-
 /**
  * Matcher used by a custom compiler rule.
  *
  * Regular expressions are tested against `CompilerIdentifyContext.stem`.
  * Function matchers receive the full context and can inspect argv.
  */
-export type CompilerMatcher =
-  | RegExp
-  | ((context: CompilerIdentifyContext) => boolean);
+export type CompilerMatcher = RegExp | ((argv: readonly string[]) => boolean);
 
 /** Custom rule that maps an executable pattern to one builtin parser dialect. */
 export interface CompilerRule {
@@ -130,9 +74,7 @@ export interface CompilerRule {
   /** Builtin parser dialect to use after this rule matches. */
   dialect: CompilerDialect;
   /** One matcher or a list of alternative matchers. */
-  match: CompilerMatcher | readonly CompilerMatcher[];
-  /** Optional normalized compiler identity; defaults from `dialect`. */
-  compiler?: CompilerExe;
+  match: CompilerMatcher | CompilerMatcher[];
 }
 
 /** Result of identifying a command before builtin parser dispatch. */
@@ -141,16 +83,6 @@ export interface CompilerIdentity {
   key: string;
   /** Builtin parser dialect selected for the command. */
   dialect: CompilerDialect;
-  /** Normalized compiler identity when the dialect has one. */
-  compiler?: CompilerExe;
-  /** Raw executable token from `argv[0]`. */
-  executable: string;
-  /** Executable basename without directory components. */
-  basename: string;
-  /** Lowercase basename with a trailing `.exe` removed. */
-  stem: string;
-  /** Whether the identity came from builtin compiler detection. */
-  builtin: boolean;
 }
 
 /** Result of the unwrap stage before compiler identification. */

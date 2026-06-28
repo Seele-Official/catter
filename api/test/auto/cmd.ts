@@ -42,8 +42,8 @@ if (compileAnalysis === undefined) {
   throw new Error("expected compiler analysis");
 }
 
-expectEq(compileAnalysis.exe, "clang", "compile exe");
-expectEq(compileAnalysis.phase, cmd.CompilerPhase.Compile, "compile phase");
+expectEq(compileAnalysis.kind, "compiler", "compile kind");
+expectArrayEq(compileAnalysis.argv, compileCommand, "compile argv");
 expectEq(
   compileAnalysis.artifact,
   cmd.CompilerArtifact.Object,
@@ -55,6 +55,16 @@ expectArrayEq(
   compileAnalysis.sourceFiles,
   ["src/a.c", "src/b.c"],
   "compile sources",
+);
+
+const genericCompileAnalysis = cmd.analyze(compileCommand);
+if (genericCompileAnalysis?.kind !== "compiler") {
+  throw new Error("expected compiler command analysis variant");
+}
+expectArrayEq(
+  genericCompileAnalysis.sourceFiles,
+  ["src/a.c", "src/b.c"],
+  "generic compile sources",
 );
 
 const compileEdges = compileAnalysis.edges;
@@ -105,11 +115,6 @@ if (preprocessAnalysis === undefined) {
   throw new Error("expected preprocess compiler analysis");
 }
 expectEq(
-  preprocessAnalysis.phase,
-  cmd.CompilerPhase.Preprocess,
-  "preprocess phase",
-);
-expectEq(
   preprocessAnalysis.artifact,
   cmd.CompilerArtifact.Stdout,
   "preprocess artifact",
@@ -126,7 +131,7 @@ if (archiverAnalysis === undefined) {
   throw new Error("expected archiver analysis");
 }
 
-expectEq(archiverAnalysis.exe, "llvm-ar", "archiver exe");
+expectEq(archiverAnalysis.kind, "archiver", "archiver kind");
 expectEq(
   archiverAnalysis.operation,
   cmd.ArchiverOperation.ReplaceOrInsert,
@@ -154,7 +159,6 @@ debug.assertThrow(gnuArchiverAnalysis !== undefined);
 if (gnuArchiverAnalysis === undefined) {
   throw new Error("expected gnu archiver analysis");
 }
-expectEq(gnuArchiverAnalysis.exe, "ar", "gnu archiver exe");
 expectEq(
   gnuArchiverAnalysis.operation,
   cmd.ArchiverOperation.ReplaceOrInsert,
@@ -194,7 +198,7 @@ debug.assertThrow(
   cmd.ArchiverAnalysis.analyze(["ar", "x", "libcommon.a"]) === undefined,
 );
 
-class ToyAnalysis extends cmd.Analysis<"toy", "toy-bundle"> {
+class ToyAnalysis extends cmd.Analysis {
   static readonly key = "toy-bundle";
 
   static analyze(argv: readonly string[]): ToyAnalysis | undefined {
@@ -213,11 +217,10 @@ class ToyAnalysis extends cmd.Analysis<"toy", "toy-bundle"> {
   }
 
   readonly stage = "bundle";
+  readonly kind = "toy" as const;
 
   constructor(input: string, output: string) {
     super({
-      kind: "toy",
-      exe: "toy-bundle",
       reads: [input],
       writes: [output],
     });
@@ -243,5 +246,4 @@ debug.assertThrow(sample !== undefined);
 if (sample === undefined) {
   throw new Error("expected sample compiler analysis");
 }
-expectEq(sample.exe, "gcc", "sample compiler");
 expectArrayEq(sample.writes, ["sample.o"], "sample writes");

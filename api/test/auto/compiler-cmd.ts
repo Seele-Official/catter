@@ -3,10 +3,6 @@ import { cmd, debug, fs, os } from "catter";
 type ExpectedAnalysis = {
   label: string;
   cmd: string[];
-  exe: cmd.CompilerExe;
-  dialect?: cmd.CompilerDialect;
-  style?: cmd.CompilerStyle;
-  phase: (typeof cmd.CompilerPhase)[keyof typeof cmd.CompilerPhase];
   artifact: (typeof cmd.CompilerArtifact)[keyof typeof cmd.CompilerArtifact];
   inputs: string[];
   outputs: string[];
@@ -42,18 +38,6 @@ function normalizedJoin(...parts: string[]) {
   return fs.path.lexicalNormal(fs.path.joinAll(...parts));
 }
 
-function defaultDialectOf(compiler: cmd.CompilerExe): cmd.CompilerDialect {
-  switch (compiler) {
-    case "clang":
-      return cmd.CompilerDialect.Clang;
-    case "gcc":
-      return cmd.CompilerDialect.Gnu;
-    case "clang-cl":
-    case "msvc":
-      return cmd.CompilerDialect.Msvc;
-  }
-}
-
 function expectAnalysis(expected: ExpectedAnalysis) {
   const analysis = cmd.CompilerAnalysis.analyze(expected.cmd);
   debug.assertThrow(analysis !== undefined);
@@ -61,16 +45,13 @@ function expectAnalysis(expected: ExpectedAnalysis) {
     throw new Error(`${expected.label}: expected compiler analysis`);
   }
 
-  expectEq(analysis.exe, expected.exe, `${expected.label} exe`);
-  expectEq(
-    analysis.dialect,
-    expected.dialect ?? defaultDialectOf(expected.exe),
-    `${expected.label} dialect`,
+  expectEq(analysis.kind, "compiler", `${expected.label} kind`);
+  expectArrayEq(analysis.argv, expected.cmd, `${expected.label} argv`);
+  expectArrayEq(
+    analysis.originalArgv,
+    expected.cmd,
+    `${expected.label} original argv`,
   );
-  if (expected.style !== undefined) {
-    expectEq(analysis.style, expected.style, `${expected.label} style`);
-  }
-  expectEq(analysis.phase, expected.phase, `${expected.label} phase`);
   expectEq(analysis.artifact, expected.artifact, `${expected.label} artifact`);
   expectArrayEq(analysis.reads, expected.inputs, `${expected.label} reads`);
   expectArrayEq(analysis.writes, expected.outputs, `${expected.label} writes`);
@@ -98,8 +79,6 @@ const cases: ExpectedAnalysis[] = [
   {
     label: "clang llvm ir explicit stdout output",
     cmd: ["clang", "src/t.c", "-S", "-emit-llvm", "-o", "-"],
-    exe: "clang",
-    phase: cmd.CompilerPhase.Compile,
     artifact: cmd.CompilerArtifact.LlvmIR,
     inputs: ["src/t.c"],
     outputs: ["-"],
@@ -107,8 +86,6 @@ const cases: ExpectedAnalysis[] = [
   {
     label: "gcc preprocess explicit language without suffix",
     cmd: ["gcc", "-x", "c", "generated_input", "-E", "-P"],
-    exe: "gcc",
-    phase: cmd.CompilerPhase.Preprocess,
     artifact: cmd.CompilerArtifact.Stdout,
     inputs: ["generated_input"],
     outputs: [],
@@ -116,8 +93,6 @@ const cases: ExpectedAnalysis[] = [
   {
     label: "gcc preprocess to file",
     cmd: ["gcc", "-E", "src/a.c", "-o", "a.i"],
-    exe: "gcc",
-    phase: cmd.CompilerPhase.Preprocess,
     artifact: cmd.CompilerArtifact.Stdout,
     inputs: ["src/a.c"],
     outputs: ["a.i"],
@@ -125,8 +100,6 @@ const cases: ExpectedAnalysis[] = [
   {
     label: "gcc syntax-only explicit language",
     cmd: ["gcc", "-x", "c++", "generated", "-fsyntax-only", "-fno-exceptions"],
-    exe: "gcc",
-    phase: cmd.CompilerPhase.SyntaxOnly,
     artifact: cmd.CompilerArtifact.None,
     inputs: ["generated"],
     outputs: [],
@@ -144,8 +117,6 @@ const cases: ExpectedAnalysis[] = [
       "-o",
       "bin/app",
     ],
-    exe: "gcc",
-    phase: cmd.CompilerPhase.Link,
     artifact: cmd.CompilerArtifact.Executable,
     inputs: ["generated_input", "obj/plain.o"],
     outputs: ["bin/app"],
@@ -162,8 +133,6 @@ const cases: ExpectedAnalysis[] = [
       "-o",
       "partial.o",
     ],
-    exe: "gcc",
-    phase: cmd.CompilerPhase.RelocatableLink,
     artifact: cmd.CompilerArtifact.Object,
     inputs: ["a.o", "b.o"],
     outputs: ["partial.o"],
@@ -171,8 +140,6 @@ const cases: ExpectedAnalysis[] = [
   {
     label: "clang archive static lib from object inputs",
     cmd: ["clang", "--emit-static-lib", "a.o", "b.o", "-o", "libstuff.a"],
-    exe: "clang",
-    phase: cmd.CompilerPhase.Archive,
     artifact: cmd.CompilerArtifact.StaticLibrary,
     inputs: ["a.o", "b.o"],
     outputs: ["libstuff.a"],
@@ -180,8 +147,6 @@ const cases: ExpectedAnalysis[] = [
   {
     label: "clang compile multiple translation units with default outputs",
     cmd: ["clang", "-c", "src/a.c", "src/b.cc"],
-    exe: "clang",
-    phase: cmd.CompilerPhase.Compile,
     artifact: cmd.CompilerArtifact.Object,
     inputs: ["src/a.c", "src/b.cc"],
     outputs: ["a.o", "b.o"],
@@ -189,9 +154,6 @@ const cases: ExpectedAnalysis[] = [
   {
     label: "clang-cl cl-style compile no suffix into object dir",
     cmd: ["clang-cl", "/c", "/Tp", "src/noext", "/Fo:build/"],
-    exe: "clang-cl",
-    style: "cl",
-    phase: cmd.CompilerPhase.Compile,
     artifact: cmd.CompilerArtifact.Object,
     inputs: ["src/noext"],
     outputs: [normalizedJoin("build", "noext.obj")],
@@ -199,9 +161,6 @@ const cases: ExpectedAnalysis[] = [
   {
     label: "msvc cl-style compile explicit object output",
     cmd: ["cl.exe", "/c", "src/main.cpp", "/Foobj/main.obj"],
-    exe: "msvc",
-    style: "cl",
-    phase: cmd.CompilerPhase.Compile,
     artifact: cmd.CompilerArtifact.Object,
     inputs: ["src/main.cpp"],
     outputs: ["obj/main.obj"],
@@ -209,9 +168,6 @@ const cases: ExpectedAnalysis[] = [
   {
     label: "msvc cl-style shared link via linker remainder",
     cmd: ["cl.exe", "/link", "/dll", "/out:bin/tool.dll", "foo.obj", "bar.res"],
-    exe: "msvc",
-    style: "cl",
-    phase: cmd.CompilerPhase.Link,
     artifact: cmd.CompilerArtifact.SharedLibrary,
     inputs: ["foo.obj", "bar.res"],
     outputs: ["bin/tool.dll"],
@@ -222,8 +178,6 @@ if (os.platform() === "windows") {
   cases.splice(1, 0, {
     label: "clang cl-style compile no suffix into object dir",
     cmd: ["clang", "--driver-mode=cl", "/c", "/Tp", "src/noext", "/Fo:build/"],
-    exe: "clang",
-    phase: cmd.CompilerPhase.Compile,
     artifact: cmd.CompilerArtifact.Object,
     inputs: ["src/noext"],
     outputs: [normalizedJoin("build", "noext.obj")],
@@ -239,27 +193,18 @@ if (os.platform() === "windows") {
       "foo.obj",
       "bar.res",
     ],
-    exe: "clang",
-    phase: cmd.CompilerPhase.Link,
     artifact: cmd.CompilerArtifact.SharedLibrary,
     inputs: ["foo.obj", "bar.res"],
     outputs: ["bin/tool.dll"],
   });
 } else {
-  const clStyleSuppressed = cmd.CompilerAnalysis.analyze([
-    "clang",
-    "--driver-mode=cl",
-    "main.c",
-  ]);
-  debug.assertThrow(clStyleSuppressed !== undefined);
-  if (clStyleSuppressed === undefined) {
-    throw new Error("expected suppressed clang driver analysis");
-  }
-  expectEq(
-    clStyleSuppressed.style,
-    "gnu",
-    "clang cl-style visibility suppressed style",
-  );
+  cases.push({
+    label: "clang cl-style visibility suppressed default output",
+    cmd: ["clang", "--driver-mode=cl", "-c", "main.c"],
+    artifact: cmd.CompilerArtifact.Object,
+    inputs: ["main.c"],
+    outputs: ["main.o"],
+  });
 }
 
 for (const testCase of cases) {
@@ -274,9 +219,6 @@ cmd.registerCompilerRule({
 expectAnalysis({
   label: "custom gnu compiler rule",
   cmd: ["my-cross-tool", "-c", "src/custom.c"],
-  exe: "gcc",
-  dialect: cmd.CompilerDialect.Gnu,
-  phase: cmd.CompilerPhase.Compile,
   artifact: cmd.CompilerArtifact.Object,
   inputs: ["src/custom.c"],
   outputs: ["custom.o"],
@@ -290,9 +232,6 @@ cmd.registerCompilerRule({
 expectAnalysis({
   label: "custom compiler rule replacement",
   cmd: ["my-cross-tool", "-c", "src/custom.c"],
-  exe: "clang",
-  dialect: cmd.CompilerDialect.Clang,
-  phase: cmd.CompilerPhase.Compile,
   artifact: cmd.CompilerArtifact.Object,
   inputs: ["src/custom.c"],
   outputs: ["custom.o"],

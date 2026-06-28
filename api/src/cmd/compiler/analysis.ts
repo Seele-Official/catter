@@ -2,29 +2,13 @@ import { Analysis } from "../model.js";
 import type { Analysis as AnyAnalysis, Analyzer } from "../model.js";
 import { identifyCompilerCommand } from "./identify.js";
 import { parseCompilerCommand } from "./parsers/index.js";
-import { resolveCompilerEdges, resolveOutputs } from "./parsers/clang.js";
+import type { CompilerParseResult } from "./parsers/types.js";
 import type {
   CompilerArtifact,
-  CompilerDialect,
-  CompilerExe,
   CompilerInput,
-  CompilerPhase,
-  CompilerStyle,
-  CommandModel,
+  UnwrappedCompilerCommand,
 } from "./types.js";
 import { unwrapCompilerCommand } from "./unwrap.js";
-
-function analyzeCompilerModel(
-  cmd: readonly string[],
-): CommandModel | undefined {
-  const unwrapped = unwrapCompilerCommand(cmd);
-  const identity = identifyCompilerCommand(unwrapped.argv);
-  if (identity === undefined) {
-    return undefined;
-  }
-
-  return parseCompilerCommand(unwrapped.argv, identity);
-}
 
 /**
  * Analysis result for a recognized compiler driver command.
@@ -33,14 +17,23 @@ function analyzeCompilerModel(
  * `reads`, `writes`, and `edges`. Compiler-specific fields describe how the
  * command was identified and parsed.
  */
-export class CompilerAnalysis extends Analysis<"compiler", CompilerExe> {
+export class CompilerAnalysis extends Analysis {
   /** Stable registry key for the compiler analyzer. */
   static readonly key = "compiler";
 
   /** Analyzes a compiler command, returning `undefined` when it is unsupported. */
   static analyze(cmd: readonly string[]): CompilerAnalysis | undefined {
-    const model = analyzeCompilerModel(cmd);
-    return model === undefined ? undefined : new CompilerAnalysis(model);
+    const unwrapped = unwrapCompilerCommand(cmd);
+    const identity = identifyCompilerCommand(unwrapped.argv);
+    if (identity === undefined) {
+      return undefined;
+    }
+
+    const model = parseCompilerCommand(unwrapped.argv, identity);
+    if (model) {
+      return new CompilerAnalysis(model, unwrapped);
+    }
+    return undefined;
   }
 
   /** Narrows a generic analysis result back to a compiler analysis. */
@@ -48,33 +41,32 @@ export class CompilerAnalysis extends Analysis<"compiler", CompilerExe> {
     return analysis instanceof CompilerAnalysis ? analysis : undefined;
   }
 
-  /** Parser dialect selected by the identify stage. */
-  readonly dialect: CompilerDialect;
-  /** High-level driver phase inferred from parsed options. */
-  readonly phase: CompilerPhase;
+  /** Discriminator for command analysis unions. */
+  readonly kind = "compiler" as const;
+  /** Command argv after wrapper removal. */
+  readonly argv: readonly string[];
+  /** Original command argv before wrapper removal. */
+  readonly originalArgv: readonly string[];
   /** Main artifact kind inferred from parsed options. */
   readonly artifact: CompilerArtifact;
-  /** Option syntax style observed by the parser. */
-  readonly style: CompilerStyle;
   /** Structured compiler input entries, including source/link role and argv index. */
   readonly inputFiles: readonly CompilerInput[];
   /** Source input paths selected from `inputFiles`. */
   readonly sourceFiles: readonly string[];
 
-  private constructor(model: CommandModel) {
-    const writes = resolveOutputs(model);
+  private constructor(
+    model: CompilerParseResult,
+    unwrapped: UnwrappedCompilerCommand,
+  ) {
     super({
-      kind: "compiler",
-      exe: model.compiler,
-      reads: model.inputs.map((input) => input.path),
-      writes,
-      edges: resolveCompilerEdges(model, writes),
+      reads: model.reads,
+      writes: model.writes,
+      edges: model.edges,
     });
 
-    this.dialect = model.dialect;
-    this.phase = model.phase;
+    this.argv = [...unwrapped.argv];
+    this.originalArgv = [...unwrapped.originalArgv];
     this.artifact = model.artifact;
-    this.style = model.style;
     this.inputFiles = model.inputs.map((input) => ({ ...input }));
     this.sourceFiles = this.inputFiles
       .filter((input) => input.kind === "source")

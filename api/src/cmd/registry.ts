@@ -12,7 +12,7 @@ import type { Analysis, Analyzer } from "./model.js";
  * const analysis = registry.analyze(["clang", "-c", "main.c"]);
  * ```
  */
-export class Registry {
+export class Registry<A extends Analysis = never> {
   private readonly analyzerList: Analyzer[] = [];
 
   /**
@@ -26,10 +26,10 @@ export class Registry {
    * registry.register(cmd.CompilerAnalysis);
    * ```
    */
-  register<A extends Analysis>(analyzer: Analyzer<A>): this {
+  register<B extends Analysis>(analyzer: Analyzer<B>): Registry<A | B> {
     this.unregister(analyzer.key);
     this.analyzerList.push(analyzer as Analyzer);
-    return this;
+    return this as Registry<A | B>;
   }
 
   /**
@@ -87,11 +87,11 @@ export class Registry {
    *   .analyze(["clang", "-c", "main.c"]);
    * ```
    */
-  analyze(cmd: readonly string[]): Analysis | undefined {
+  analyze(cmd: readonly string[]): A | undefined {
     for (const analyzer of this.analyzerList) {
       const result = analyzer.analyze(cmd);
       if (result !== undefined) {
-        return result;
+        return result as A;
       }
     }
 

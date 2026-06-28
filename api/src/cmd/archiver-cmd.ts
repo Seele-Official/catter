@@ -42,7 +42,6 @@ export type ArchiverOperation =
 export type ArchiverExe = "ar" | "llvm-ar" | "gcc-ar";
 
 type ArchiverModel = {
-  exe: ArchiverExe;
   operation: ArchiverOperation;
   modifiers: string[];
   thin: boolean;
@@ -230,7 +229,6 @@ function analyzeArchiverModel(
       : [...members];
 
   return {
-    exe,
     operation: parsedOperation.operation,
     modifiers: parsedOperation.modifiers,
     thin,
@@ -242,7 +240,7 @@ function analyzeArchiverModel(
   };
 }
 
-export class ArchiverAnalysis extends Analysis<"archiver", ArchiverExe> {
+export class ArchiverAnalysis extends Analysis {
   /**
    * Stable registry key for the archiver analyzer.
    *
@@ -270,6 +268,8 @@ export class ArchiverAnalysis extends Analysis<"archiver", ArchiverExe> {
     return analysis instanceof ArchiverAnalysis ? analysis : undefined;
   }
 
+  /** Discriminator for command analysis unions. */
+  readonly kind = "archiver" as const;
   /** The parsed archive operation. */
   readonly operation: ArchiverOperation;
   /** Extra modifier letters attached to the operation token. */
@@ -285,8 +285,6 @@ export class ArchiverAnalysis extends Analysis<"archiver", ArchiverExe> {
 
   private constructor(model: ArchiverModel) {
     super({
-      kind: "archiver",
-      exe: model.exe,
       reads: model.reads,
       writes: model.writes,
     });
