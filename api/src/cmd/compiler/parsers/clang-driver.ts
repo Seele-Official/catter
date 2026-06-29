@@ -6,7 +6,6 @@ import {
   type OptionItem,
   type OptionTable,
 } from "../../../option/types.js";
-import { CompilerArtifact, CompilerPhase } from "../types.js";
 import type { CompilerDialect } from "../types.js";
 import {
   CompilerCommandModel,
@@ -143,14 +142,10 @@ function applyParsedGnuClangDriverOption(
   switch (parsedItem.item.id as ClangID) {
     case ClangID.ID_c:
     case ClangID.ID_emit_obj:
-      model.setCompile(CompilerArtifact.Object);
+      model.setCompileObject();
       break;
     case ClangID.ID_S:
-      model.setCompile(
-        model.artifact === CompilerArtifact.LlvmBitcode
-          ? CompilerArtifact.LlvmIR
-          : CompilerArtifact.Assembly,
-      );
+      model.setCompileAssemblyLike();
       break;
     case ClangID.ID_E:
       model.setPreprocess();
@@ -160,25 +155,21 @@ function applyParsedGnuClangDriverOption(
       break;
     case ClangID.ID_emit_llvm:
     case ClangID.ID_emit_llvm_bc:
-      model.setCompile(
-        model.artifact === CompilerArtifact.Assembly
-          ? CompilerArtifact.LlvmIR
-          : CompilerArtifact.LlvmBitcode,
-      );
+      model.setCompileLlvmLike();
       break;
     case ClangID.ID_emit_pch:
-      model.setCompile(CompilerArtifact.Pch);
+      model.setCompilePch();
       break;
     case ClangID.ID_emit_module:
     case ClangID.ID_emit_module_interface:
     case ClangID.ID_emit_reduced_module_interface:
-      model.setCompile(CompilerArtifact.Pcm);
+      model.setCompilePcm();
       break;
     case ClangID.ID_emit_static_lib:
       model.setArchive();
       break;
     case ClangID.ID_shared:
-      model.setLink(CompilerArtifact.SharedLibrary);
+      model.setLinkSharedLibrary();
       break;
     case ClangID.ID_r:
       model.setRelocatableLink();
@@ -197,12 +188,8 @@ function applyParsedGnuClangDriverOption(
       model.recordClassifiedInput(parsedItem.item.key, parsedItem.item.index);
       break;
     default:
-      if (
-        parsedItem.info.group === ClangID.ID_Action_Group &&
-        model.phase === CompilerPhase.Link &&
-        model.artifact === CompilerArtifact.Executable
-      ) {
-        model.setCompile(CompilerArtifact.Unknown);
+      if (parsedItem.info.group === ClangID.ID_Action_Group) {
+        model.setUnknownCompileAction();
       }
       break;
   }
@@ -215,7 +202,7 @@ function applyParsedClangClDriverOption(
   switch (parsedItem.item.id as ClangID) {
     case ClangID.ID__SLASH_LD:
     case ClangID.ID__SLASH_LDd:
-      model.setLink(CompilerArtifact.SharedLibrary);
+      model.setLinkSharedLibrary();
       break;
     case ClangID.ID__SLASH_o:
       model.recordOutput(

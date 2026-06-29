@@ -4,8 +4,8 @@ import { CompilerIdentifier } from "./identify.js";
 import { parseCompilerCommand } from "./parsers/index.js";
 import type { CompilerParseResult } from "./types.js";
 import type {
-  CompilerArtifact,
   CompilerInput,
+  CompilerMode,
   UnwrappedCompilerCommand,
 } from "./types.js";
 import { unwrapCompilerCommand } from "./unwrap.js";
@@ -29,8 +29,8 @@ export class CompilerAnalysis extends Analysis {
   readonly unwrappedExe: string;
   /** Command argv after wrapper removal. */
   readonly unwrappedArgv: readonly string[];
-  /** Main artifact kind inferred from parsed options. */
-  readonly artifact: CompilerArtifact;
+  /** Coupled compiler phase and main artifact inferred from parsed options. */
+  readonly compilerMode: CompilerMode;
   /** Structured compiler input entries, including source/link role and argv index. */
   readonly inputFiles: readonly CompilerInput[];
   /** Source input paths selected from `inputFiles`. */
@@ -51,7 +51,7 @@ export class CompilerAnalysis extends Analysis {
 
     this.unwrappedExe = unwrapped.exe;
     this.unwrappedArgv = [...unwrapped.argv];
-    this.artifact = model.artifact;
+    this.compilerMode = { ...model.compilerMode };
     this.inputFiles = model.inputs.map((input) => ({ ...input }));
     this.sourceFiles = this.inputFiles
       .filter((input) => input.kind === "source")

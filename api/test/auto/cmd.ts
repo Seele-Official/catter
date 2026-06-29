@@ -58,7 +58,12 @@ expectEq(compileAnalysis.kind, "compiler", "compile kind");
 expectEq(compileAnalysis.exe, "clang", "compile exe");
 expectArrayEq(compileAnalysis.argv, compileCommand, "compile argv");
 expectEq(
-  compileAnalysis.artifact,
+  compileAnalysis.compilerMode.phase,
+  cmd.CompilerPhase.Compile,
+  "compile phase",
+);
+expectEq(
+  compileAnalysis.compilerMode.artifact,
   cmd.CompilerArtifact.Object,
   "compile artifact",
 );
@@ -128,7 +133,12 @@ if (preprocessAnalysis === undefined) {
   throw new Error("expected preprocess compiler analysis");
 }
 expectEq(
-  preprocessAnalysis.artifact,
+  preprocessAnalysis.compilerMode.phase,
+  cmd.CompilerPhase.Preprocess,
+  "preprocess phase",
+);
+expectEq(
+  preprocessAnalysis.compilerMode.artifact,
   cmd.CompilerArtifact.Stdout,
   "preprocess artifact",
 );

@@ -1,7 +1,6 @@
 import type { CompilerIdentity } from "../types.js";
 import * as fs from "../../../fs.js";
 import { ClangID } from "../../../option/clang.js";
-import { CompilerArtifact } from "../types.js";
 import {
   CLANG_CL_OUTPUT_EXTENSIONS,
   collectClangDriverConsumedArgIndexes,
@@ -56,12 +55,12 @@ function applyMsvcFallbacks(
     const lower = token.toLowerCase();
 
     if (lower === "/c" || lower === "-c") {
-      model.setCompile(CompilerArtifact.Object);
+      model.setCompileObject();
       continue;
     }
 
     if (lower === "/ld" || lower === "/ldd") {
-      model.setLink(CompilerArtifact.SharedLibrary);
+      model.setLinkSharedLibrary();
       continue;
     }
 
@@ -153,7 +152,7 @@ function scanFallbackLinkerRemainder(
     const lower = token.toLowerCase();
 
     if (lower === "/dll") {
-      model.setLink(CompilerArtifact.SharedLibrary);
+      model.setLinkSharedLibrary();
       continue;
     }
 

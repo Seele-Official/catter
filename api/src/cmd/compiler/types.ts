@@ -38,6 +38,47 @@ export const CompilerArtifact = {
 export type CompilerArtifact =
   (typeof CompilerArtifact)[keyof typeof CompilerArtifact];
 
+/** Coupled compiler phase and produced artifact inferred from driver options. */
+export type CompilerMode =
+  | {
+      phase: typeof CompilerPhase.Preprocess;
+      artifact: typeof CompilerArtifact.Stdout;
+    }
+  | {
+      phase: typeof CompilerPhase.SyntaxOnly;
+      artifact: typeof CompilerArtifact.None;
+    }
+  | {
+      phase: typeof CompilerPhase.Compile;
+      artifact:
+        | typeof CompilerArtifact.Object
+        | typeof CompilerArtifact.Assembly
+        | typeof CompilerArtifact.LlvmIR
+        | typeof CompilerArtifact.LlvmBitcode
+        | typeof CompilerArtifact.Pch
+        | typeof CompilerArtifact.Pcm
+        | typeof CompilerArtifact.Ptx
+        | typeof CompilerArtifact.Cubin
+        | typeof CompilerArtifact.Fatbin
+        | typeof CompilerArtifact.Unknown;
+    }
+  | {
+      phase: typeof CompilerPhase.Link;
+      artifact:
+        | typeof CompilerArtifact.Executable
+        | typeof CompilerArtifact.SharedLibrary;
+    }
+  | {
+      phase: typeof CompilerPhase.Archive;
+      artifact: typeof CompilerArtifact.StaticLibrary;
+    }
+  | {
+      phase:
+        | typeof CompilerPhase.RelocatableLink
+        | typeof CompilerPhase.DeviceLink;
+      artifact: typeof CompilerArtifact.Object;
+    };
+
 /** Built-in parser dialect selected after command identification. */
 export const CompilerDialect = {
   Clang: "clang",
@@ -98,8 +139,7 @@ export interface UnwrappedCompilerCommand {
 
 export type CompilerParseResult = {
   dialect: CompilerDialect;
-  phase: CompilerPhase;
-  artifact: CompilerArtifact;
+  compilerMode: CompilerMode;
   inputs: CompilerInput[];
   reads: string[];
   writes: string[];

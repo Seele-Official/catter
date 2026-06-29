@@ -1,5 +1,4 @@
 import type { CompilerIdentity } from "../types.js";
-import { CompilerArtifact } from "../types.js";
 import {
   CLANG_OUTPUT_EXTENSIONS,
   collectClangDriverConsumedArgIndexes,
@@ -73,14 +72,10 @@ function applyGccFallbackToken(
     case "--":
       return true;
     case "-c":
-      model.setCompile(CompilerArtifact.Object);
+      model.setCompileObject();
       return false;
     case "-S":
-      model.setCompile(
-        model.artifact === CompilerArtifact.LlvmBitcode
-          ? CompilerArtifact.LlvmIR
-          : CompilerArtifact.Assembly,
-      );
+      model.setCompileAssemblyLike();
       return false;
     case "-E":
       model.setPreprocess();
@@ -90,25 +85,21 @@ function applyGccFallbackToken(
       return false;
     case "-emit-llvm":
     case "-emit-llvm-bc":
-      model.setCompile(
-        model.artifact === CompilerArtifact.Assembly
-          ? CompilerArtifact.LlvmIR
-          : CompilerArtifact.LlvmBitcode,
-      );
+      model.setCompileLlvmLike();
       return false;
     case "-emit-pch":
-      model.setCompile(CompilerArtifact.Pch);
+      model.setCompilePch();
       return false;
     case "-emit-module":
     case "-emit-module-interface":
     case "-emit-reduced-module-interface":
-      model.setCompile(CompilerArtifact.Pcm);
+      model.setCompilePcm();
       return false;
     case "--emit-static-lib":
       model.setArchive();
       return false;
     case "-shared":
-      model.setLink(CompilerArtifact.SharedLibrary);
+      model.setLinkSharedLibrary();
       return false;
     case "-r":
       model.setRelocatableLink();

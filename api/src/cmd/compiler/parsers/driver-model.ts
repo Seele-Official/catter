@@ -5,8 +5,9 @@ import {
   CompilerPhase,
   type CompilerDialect,
   type CompilerInput,
+  type CompilerMode,
+  type CompilerParseResult,
 } from "../types.js";
-import type { CompilerParseResult } from "../types.js";
 
 export type DriverOutputChannel =
   | "primary"
@@ -30,6 +31,20 @@ type OutputFact = {
 type OutputResolution = {
   writes: string[];
   edges: Edge[];
+};
+
+type ArtifactMetadata = {
+  readonly defaultExtension?:
+    | { readonly kind: "driver"; readonly key: keyof DriverOutputExtensions }
+    | { readonly kind: "fixed"; readonly extension: string };
+  readonly perInputDefaultOutput?: boolean;
+  readonly expandDirectoryOutput?: boolean;
+};
+
+type OutputContext = {
+  readonly edgeInputs: readonly CompilerInput[];
+  readonly outputNameInputs: readonly CompilerInput[];
+  readonly perInputDefaultOutput: boolean;
 };
 
 const SOURCE_SUFFIXES = new Set([
@@ -78,39 +93,68 @@ export const LINK_INPUT_SUFFIXES = new Set([
   ".res",
 ]);
 
-const ARTIFACT_EXTENSION_KEYS: ReadonlyMap<
-  CompilerArtifact,
-  keyof DriverOutputExtensions
-> = new Map([
-  [CompilerArtifact.Object, "object"],
-  [CompilerArtifact.Executable, "executable"],
-  [CompilerArtifact.SharedLibrary, "sharedLibrary"],
-  [CompilerArtifact.StaticLibrary, "staticLibrary"],
-]);
-
-const FIXED_ARTIFACT_EXTENSIONS: ReadonlyMap<CompilerArtifact, string> =
-  new Map([
-    [CompilerArtifact.Assembly, ".s"],
-    [CompilerArtifact.LlvmIR, ".ll"],
-    [CompilerArtifact.LlvmBitcode, ".bc"],
-    [CompilerArtifact.Pch, ".pch"],
-    [CompilerArtifact.Pcm, ".pcm"],
-    [CompilerArtifact.Ptx, ".ptx"],
-    [CompilerArtifact.Cubin, ".cubin"],
-    [CompilerArtifact.Fatbin, ".fatbin"],
-  ]);
-
-const PER_INPUT_COMPILE_ARTIFACTS: readonly CompilerArtifact[] = [
-  CompilerArtifact.Object,
-  CompilerArtifact.Assembly,
-  CompilerArtifact.LlvmIR,
-  CompilerArtifact.LlvmBitcode,
-  CompilerArtifact.Pch,
-  CompilerArtifact.Pcm,
-  CompilerArtifact.Ptx,
-  CompilerArtifact.Cubin,
-  CompilerArtifact.Fatbin,
-];
+const COMPILER_ARTIFACT_METADATA: Record<CompilerArtifact, ArtifactMetadata> = {
+  [CompilerArtifact.None]: {},
+  [CompilerArtifact.Stdout]: {},
+  [CompilerArtifact.Object]: {
+    defaultExtension: { kind: "driver", key: "object" },
+    perInputDefaultOutput: true,
+    expandDirectoryOutput: true,
+  },
+  [CompilerArtifact.Executable]: {
+    defaultExtension: { kind: "driver", key: "executable" },
+    expandDirectoryOutput: true,
+  },
+  [CompilerArtifact.SharedLibrary]: {
+    defaultExtension: { kind: "driver", key: "sharedLibrary" },
+    expandDirectoryOutput: true,
+  },
+  [CompilerArtifact.StaticLibrary]: {
+    defaultExtension: { kind: "driver", key: "staticLibrary" },
+    expandDirectoryOutput: true,
+  },
+  [CompilerArtifact.Assembly]: {
+    defaultExtension: { kind: "fixed", extension: ".s" },
+    perInputDefaultOutput: true,
+    expandDirectoryOutput: true,
+  },
+  [CompilerArtifact.LlvmIR]: {
+    defaultExtension: { kind: "fixed", extension: ".ll" },
+    perInputDefaultOutput: true,
+    expandDirectoryOutput: true,
+  },
+  [CompilerArtifact.LlvmBitcode]: {
+    defaultExtension: { kind: "fixed", extension: ".bc" },
+    perInputDefaultOutput: true,
+    expandDirectoryOutput: true,
+  },
+  [CompilerArtifact.Pch]: {
+    defaultExtension: { kind: "fixed", extension: ".pch" },
+    perInputDefaultOutput: true,
+    expandDirectoryOutput: true,
+  },
+  [CompilerArtifact.Pcm]: {
+    defaultExtension: { kind: "fixed", extension: ".pcm" },
+    perInputDefaultOutput: true,
+    expandDirectoryOutput: true,
+  },
+  [CompilerArtifact.Ptx]: {
+    defaultExtension: { kind: "fixed", extension: ".ptx" },
+    perInputDefaultOutput: true,
+    expandDirectoryOutput: true,
+  },
+  [CompilerArtifact.Cubin]: {
+    defaultExtension: { kind: "fixed", extension: ".cubin" },
+    perInputDefaultOutput: true,
+    expandDirectoryOutput: true,
+  },
+  [CompilerArtifact.Fatbin]: {
+    defaultExtension: { kind: "fixed", extension: ".fatbin" },
+    perInputDefaultOutput: true,
+    expandDirectoryOutput: true,
+  },
+  [CompilerArtifact.Unknown]: {},
+};
 
 const PHASE_OUTPUT_CHANNELS: Record<CompilerPhase, DriverOutputChannel[]> = {
   [CompilerPhase.Preprocess]: ["primary"],
@@ -178,8 +222,11 @@ function inferInputKind(
 }
 
 export class CompilerCommandModel {
-  phase: CompilerPhase = CompilerPhase.Link;
-  artifact: CompilerArtifact = CompilerArtifact.Executable;
+  compilerMode: CompilerMode = {
+    phase: CompilerPhase.Link,
+    artifact: CompilerArtifact.Executable,
+  };
+
   private explicitLanguage: string | undefined;
   private readonly inputFacts: CompilerInput[] = [];
   private readonly outputFacts: OutputFact[] = [];
@@ -187,37 +234,75 @@ export class CompilerCommandModel {
   constructor(readonly dialect: CompilerDialect) {}
 
   setPreprocess(): void {
-    this.phase = CompilerPhase.Preprocess;
-    this.artifact = CompilerArtifact.Stdout;
+    this.compilerMode = {
+      phase: CompilerPhase.Preprocess,
+      artifact: CompilerArtifact.Stdout,
+    };
   }
 
   setSyntaxOnly(): void {
-    this.phase = CompilerPhase.SyntaxOnly;
-    this.artifact = CompilerArtifact.None;
+    this.compilerMode = {
+      phase: CompilerPhase.SyntaxOnly,
+      artifact: CompilerArtifact.None,
+    };
   }
 
-  setCompile(artifact: CompilerArtifact): void {
-    this.phase = CompilerPhase.Compile;
-    this.artifact = artifact;
+  setCompileObject(): void {
+    this.setCompileArtifact(CompilerArtifact.Object);
   }
 
-  setLink(
-    artifact:
-      | typeof CompilerArtifact.Executable
-      | typeof CompilerArtifact.SharedLibrary,
-  ): void {
-    this.phase = CompilerPhase.Link;
-    this.artifact = artifact;
+  setCompileAssemblyLike(): void {
+    this.setCompileArtifact(
+      this.compilerMode.artifact === CompilerArtifact.LlvmBitcode
+        ? CompilerArtifact.LlvmIR
+        : CompilerArtifact.Assembly,
+    );
+  }
+
+  setCompileLlvmLike(): void {
+    this.setCompileArtifact(
+      this.compilerMode.artifact === CompilerArtifact.Assembly
+        ? CompilerArtifact.LlvmIR
+        : CompilerArtifact.LlvmBitcode,
+    );
+  }
+
+  setCompilePch(): void {
+    this.setCompileArtifact(CompilerArtifact.Pch);
+  }
+
+  setCompilePcm(): void {
+    this.setCompileArtifact(CompilerArtifact.Pcm);
+  }
+
+  setUnknownCompileAction(): void {
+    if (
+      this.compilerMode.phase === CompilerPhase.Link &&
+      this.compilerMode.artifact === CompilerArtifact.Executable
+    ) {
+      this.setCompileArtifact(CompilerArtifact.Unknown);
+    }
+  }
+
+  setLinkSharedLibrary(): void {
+    this.compilerMode = {
+      phase: CompilerPhase.Link,
+      artifact: CompilerArtifact.SharedLibrary,
+    };
   }
 
   setArchive(): void {
-    this.phase = CompilerPhase.Archive;
-    this.artifact = CompilerArtifact.StaticLibrary;
+    this.compilerMode = {
+      phase: CompilerPhase.Archive,
+      artifact: CompilerArtifact.StaticLibrary,
+    };
   }
 
   setRelocatableLink(): void {
-    this.phase = CompilerPhase.RelocatableLink;
-    this.artifact = CompilerArtifact.Object;
+    this.compilerMode = {
+      phase: CompilerPhase.RelocatableLink,
+      artifact: CompilerArtifact.Object,
+    };
   }
 
   setExplicitLanguage(language: string): void {
@@ -225,15 +310,6 @@ export class CompilerCommandModel {
   }
 
   recordInput(path: string, kind: "source" | "link", index: number): void {
-    if (
-      this.inputFacts.some(
-        (input) =>
-          input.index === index && input.path === path && input.kind === kind,
-      )
-    ) {
-      return;
-    }
-
     this.inputFacts.push({
       path,
       kind,
@@ -263,8 +339,7 @@ export class CompilerCommandModel {
 
     return {
       dialect: this.dialect,
-      phase: this.phase,
-      artifact: this.artifact,
+      compilerMode: { ...this.compilerMode },
       inputs,
       reads: inputs.map((input) => input.path),
       writes: outputResolution.writes,
@@ -273,64 +348,95 @@ export class CompilerCommandModel {
   }
 
   private resolveOutputs(extensions: DriverOutputExtensions): OutputResolution {
-    if (this.artifact === CompilerArtifact.None) {
+    if (this.compilerMode.artifact === CompilerArtifact.None) {
       return { writes: [], edges: [] };
     }
 
-    const perInput =
-      this.phase === CompilerPhase.Compile &&
-      PER_INPUT_COMPILE_ARTIFACTS.includes(this.artifact);
-    const sourceInputs = this.inputFacts.filter(
-      (input) => input.kind === "source",
-    );
-    const edgeInputs = perInput ? sourceInputs : this.inputFacts;
-    const outputNameInputs = perInput
-      ? sourceInputs
-      : this.inputFacts.slice(0, 1);
-    const explicitOutputs = this.outputFacts.filter((output) =>
-      PHASE_OUTPUT_CHANNELS[this.phase].includes(output.channel),
-    );
+    const context = this.selectOutputContext();
+    const explicitOutput = this.selectExplicitOutput();
 
-    if (explicitOutputs.length > 0) {
-      const output = explicitOutputs[explicitOutputs.length - 1]!;
-      const writes = this.materializeExplicitOutput(
-        output.path,
-        outputNameInputs,
+    if (explicitOutput !== undefined) {
+      const writes = this.materializeExplicitOutputPath(
+        explicitOutput.path,
+        context.outputNameInputs,
         extensions,
       );
       return {
         writes,
-        edges: this.outputEdges(writes, edgeInputs),
+        edges: this.outputEdges(writes, context.edgeInputs),
       };
     }
 
-    if (!perInput) {
+    if (!context.perInputDefaultOutput) {
       return { writes: [], edges: [] };
     }
 
-    const extension = this.defaultOutputExtension(extensions);
-    const writes = sourceInputs.map(
-      (input) => defaultOutputStemOfInput(input.path) + extension,
+    const writes = this.defaultOutputPaths(
+      context.outputNameInputs,
+      extensions,
     );
     return {
       writes,
-      edges: this.outputEdges(writes, sourceInputs),
+      edges: this.outputEdges(writes, context.edgeInputs),
     };
   }
 
-  private materializeExplicitOutput(
+  private selectOutputContext(): OutputContext {
+    const perInputDefaultOutput = this.hasPerInputDefaultOutput();
+    const sourceInputs = this.inputFacts.filter(
+      (input) => input.kind === "source",
+    );
+
+    return {
+      edgeInputs: perInputDefaultOutput ? sourceInputs : this.inputFacts,
+      outputNameInputs: perInputDefaultOutput
+        ? sourceInputs
+        : this.inputFacts.slice(0, 1),
+      perInputDefaultOutput,
+    };
+  }
+
+  private selectExplicitOutput(): OutputFact | undefined {
+    const channels = PHASE_OUTPUT_CHANNELS[this.compilerMode.phase];
+    const explicitOutputs = this.outputFacts.filter((output) =>
+      channels.includes(output.channel),
+    );
+    return explicitOutputs[explicitOutputs.length - 1];
+  }
+
+  private materializeExplicitOutputPath(
     outputPath: string,
     outputInputs: readonly CompilerInput[],
     extensions: DriverOutputExtensions,
   ): string[] {
-    if (
-      !isDirectoryOutputPath(outputPath) ||
-      outputInputs.length === 0 ||
-      !this.hasDefaultOutputExtension()
-    ) {
+    if (!this.shouldExpandDirectoryOutput(outputPath, outputInputs)) {
       return [outputPath];
     }
 
+    return this.materializeDirectoryOutputs(
+      outputPath,
+      outputInputs,
+      extensions,
+    );
+  }
+
+  private shouldExpandDirectoryOutput(
+    outputPath: string,
+    outputInputs: readonly CompilerInput[],
+  ): boolean {
+    return (
+      isDirectoryOutputPath(outputPath) &&
+      outputInputs.length > 0 &&
+      this.artifactMetadata().expandDirectoryOutput === true &&
+      this.hasDefaultOutputExtension()
+    );
+  }
+
+  private materializeDirectoryOutputs(
+    outputPath: string,
+    outputInputs: readonly CompilerInput[],
+    extensions: DriverOutputExtensions,
+  ): string[] {
     const extension = this.defaultOutputExtension(extensions);
     return outputInputs.map((input) =>
       fs.path.lexicalNormal(
@@ -339,6 +445,16 @@ export class CompilerCommandModel {
           defaultOutputStemOfInput(input.path) + extension,
         ),
       ),
+    );
+  }
+
+  private defaultOutputPaths(
+    inputs: readonly CompilerInput[],
+    extensions: DriverOutputExtensions,
+  ): string[] {
+    const extension = this.defaultOutputExtension(extensions);
+    return inputs.map(
+      (input) => defaultOutputStemOfInput(input.path) + extension,
     );
   }
 
@@ -364,23 +480,45 @@ export class CompilerCommandModel {
     }));
   }
 
-  private hasDefaultOutputExtension(): boolean {
+  private setCompileArtifact(
+    artifact: Extract<
+      CompilerMode,
+      { phase: typeof CompilerPhase.Compile }
+    >["artifact"],
+  ): void {
+    this.compilerMode = {
+      phase: CompilerPhase.Compile,
+      artifact,
+    };
+  }
+
+  private artifactMetadata(): ArtifactMetadata {
+    return COMPILER_ARTIFACT_METADATA[this.compilerMode.artifact];
+  }
+
+  private hasPerInputDefaultOutput(): boolean {
     return (
-      ARTIFACT_EXTENSION_KEYS.has(this.artifact) ||
-      FIXED_ARTIFACT_EXTENSIONS.has(this.artifact)
+      this.compilerMode.phase === CompilerPhase.Compile &&
+      this.artifactMetadata().perInputDefaultOutput === true
     );
   }
 
+  private hasDefaultOutputExtension(): boolean {
+    return this.artifactMetadata().defaultExtension !== undefined;
+  }
+
   private defaultOutputExtension(extensions: DriverOutputExtensions): string {
-    const extensionKey = ARTIFACT_EXTENSION_KEYS.get(this.artifact);
-    if (extensionKey !== undefined) {
-      return extensions[extensionKey];
+    const extension = this.artifactMetadata().defaultExtension;
+    if (extension?.kind === "driver") {
+      return extensions[extension.key];
     }
 
-    if (FIXED_ARTIFACT_EXTENSIONS.has(this.artifact)) {
-      return FIXED_ARTIFACT_EXTENSIONS.get(this.artifact)!;
+    if (extension?.kind === "fixed") {
+      return extension.extension;
     }
 
-    throw new Error(`no default output extension for ${this.artifact}`);
+    throw new Error(
+      `no default output extension for ${this.compilerMode.artifact}`,
+    );
   }
 }

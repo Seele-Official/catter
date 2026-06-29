@@ -3,7 +3,7 @@ import { cmd, debug, fs } from "catter";
 type ExpectedAnalysis = {
   label: string;
   cmd: string[];
-  artifact: (typeof cmd.CompilerArtifact)[keyof typeof cmd.CompilerArtifact];
+  compilerMode: cmd.CompilerMode;
   inputs: string[];
   outputs: string[];
 };
@@ -68,7 +68,16 @@ function expectAnalysis(expected: ExpectedAnalysis) {
     expected.cmd,
     `${expected.label} unwrapped argv`,
   );
-  expectEq(analysis.artifact, expected.artifact, `${expected.label} artifact`);
+  expectEq(
+    analysis.compilerMode.phase,
+    expected.compilerMode.phase,
+    `${expected.label} phase`,
+  );
+  expectEq(
+    analysis.compilerMode.artifact,
+    expected.compilerMode.artifact,
+    `${expected.label} artifact`,
+  );
   expectArrayEq(analysis.reads, expected.inputs, `${expected.label} reads`);
   expectArrayEq(analysis.writes, expected.outputs, `${expected.label} writes`);
 }
@@ -119,28 +128,40 @@ const cases: ExpectedAnalysis[] = [
   {
     label: "clang llvm ir explicit stdout output",
     cmd: ["clang", "src/t.c", "-S", "-emit-llvm", "-o", "-"],
-    artifact: cmd.CompilerArtifact.LlvmIR,
+    compilerMode: {
+      phase: cmd.CompilerPhase.Compile,
+      artifact: cmd.CompilerArtifact.LlvmIR,
+    },
     inputs: ["src/t.c"],
     outputs: ["-"],
   },
   {
     label: "gcc preprocess explicit language without suffix",
     cmd: ["gcc", "-x", "c", "generated_input", "-E", "-P"],
-    artifact: cmd.CompilerArtifact.Stdout,
+    compilerMode: {
+      phase: cmd.CompilerPhase.Preprocess,
+      artifact: cmd.CompilerArtifact.Stdout,
+    },
     inputs: ["generated_input"],
     outputs: [],
   },
   {
     label: "gcc preprocess to file",
     cmd: ["gcc", "-E", "src/a.c", "-o", "a.i"],
-    artifact: cmd.CompilerArtifact.Stdout,
+    compilerMode: {
+      phase: cmd.CompilerPhase.Preprocess,
+      artifact: cmd.CompilerArtifact.Stdout,
+    },
     inputs: ["src/a.c"],
     outputs: ["a.i"],
   },
   {
     label: "gcc syntax-only explicit language",
     cmd: ["gcc", "-x", "c++", "generated", "-fsyntax-only", "-fno-exceptions"],
-    artifact: cmd.CompilerArtifact.None,
+    compilerMode: {
+      phase: cmd.CompilerPhase.SyntaxOnly,
+      artifact: cmd.CompilerArtifact.None,
+    },
     inputs: ["generated"],
     outputs: [],
   },
@@ -157,7 +178,10 @@ const cases: ExpectedAnalysis[] = [
       "-o",
       "bin/app",
     ],
-    artifact: cmd.CompilerArtifact.Executable,
+    compilerMode: {
+      phase: cmd.CompilerPhase.Link,
+      artifact: cmd.CompilerArtifact.Executable,
+    },
     inputs: ["generated_input", "obj/plain.o"],
     outputs: ["bin/app"],
   },
@@ -173,84 +197,120 @@ const cases: ExpectedAnalysis[] = [
       "-o",
       "partial.o",
     ],
-    artifact: cmd.CompilerArtifact.Object,
+    compilerMode: {
+      phase: cmd.CompilerPhase.RelocatableLink,
+      artifact: cmd.CompilerArtifact.Object,
+    },
     inputs: ["a.o", "b.o"],
     outputs: ["partial.o"],
   },
   {
     label: "gcc compile link input has no default source output",
     cmd: ["gcc", "-x", "none", "obj/plain.o", "-c"],
-    artifact: cmd.CompilerArtifact.Object,
+    compilerMode: {
+      phase: cmd.CompilerPhase.Compile,
+      artifact: cmd.CompilerArtifact.Object,
+    },
     inputs: ["obj/plain.o"],
     outputs: [],
   },
   {
     label: "gcc joined output spelling",
     cmd: ["gcc", "-c", "src/joined.c", "-oobj/joined.o"],
-    artifact: cmd.CompilerArtifact.Object,
+    compilerMode: {
+      phase: cmd.CompilerPhase.Compile,
+      artifact: cmd.CompilerArtifact.Object,
+    },
     inputs: ["src/joined.c"],
     outputs: ["obj/joined.o"],
   },
   {
     label: "clang archive static lib from object inputs",
     cmd: ["clang", "--emit-static-lib", "a.o", "b.o", "-o", "libstuff.a"],
-    artifact: cmd.CompilerArtifact.StaticLibrary,
+    compilerMode: {
+      phase: cmd.CompilerPhase.Archive,
+      artifact: cmd.CompilerArtifact.StaticLibrary,
+    },
     inputs: ["a.o", "b.o"],
     outputs: ["libstuff.a"],
   },
   {
     label: "clang compile multiple translation units with default outputs",
     cmd: ["clang", "-c", "src/a.c", "src/b.cc"],
-    artifact: cmd.CompilerArtifact.Object,
+    compilerMode: {
+      phase: cmd.CompilerPhase.Compile,
+      artifact: cmd.CompilerArtifact.Object,
+    },
     inputs: ["src/a.c", "src/b.cc"],
     outputs: ["a.o", "b.o"],
   },
   {
     label: "clang-cl cl-style compile no suffix into object dir",
     cmd: ["clang-cl", "/c", "/Tp", "src/noext", "/Fo:build/"],
-    artifact: cmd.CompilerArtifact.Object,
+    compilerMode: {
+      phase: cmd.CompilerPhase.Compile,
+      artifact: cmd.CompilerArtifact.Object,
+    },
     inputs: ["src/noext"],
     outputs: [normalizedJoin("build", "noext.obj")],
   },
   {
     label: "msvc cl-style compile explicit object output",
     cmd: ["cl.exe", "/c", "src/main.cpp", "/Foobj/main.obj"],
-    artifact: cmd.CompilerArtifact.Object,
+    compilerMode: {
+      phase: cmd.CompilerPhase.Compile,
+      artifact: cmd.CompilerArtifact.Object,
+    },
     inputs: ["src/main.cpp"],
     outputs: ["obj/main.obj"],
   },
   {
     label: "msvc cl-style shared output directory",
     cmd: ["cl.exe", "/LD", "src/plugin.cpp", "/Fe:bin/"],
-    artifact: cmd.CompilerArtifact.SharedLibrary,
+    compilerMode: {
+      phase: cmd.CompilerPhase.Link,
+      artifact: cmd.CompilerArtifact.SharedLibrary,
+    },
     inputs: ["src/plugin.cpp"],
     outputs: [normalizedJoin("bin", "plugin.dll")],
   },
   {
     label: "msvc cl-style shared link via linker remainder",
     cmd: ["cl.exe", "/link", "/dll", "/out:bin/tool.dll", "foo.obj", "bar.res"],
-    artifact: cmd.CompilerArtifact.SharedLibrary,
+    compilerMode: {
+      phase: cmd.CompilerPhase.Link,
+      artifact: cmd.CompilerArtifact.SharedLibrary,
+    },
     inputs: ["foo.obj", "bar.res"],
     outputs: ["bin/tool.dll"],
   },
   {
     label: "clang driver-mode cl compile no suffix into object dir",
     cmd: ["clang", "--driver-mode=cl", "/c", "/Tp", "src/noext", "/Fo:build/"],
-    artifact: cmd.CompilerArtifact.Object,
+    compilerMode: {
+      phase: cmd.CompilerPhase.Compile,
+      artifact: cmd.CompilerArtifact.Object,
+    },
     inputs: ["src/noext"],
     outputs: [normalizedJoin("build", "noext.obj")],
   },
   {
     label: "clang driver-mode cl shared output directory",
     cmd: ["clang", "--driver-mode=cl", "/LD", "src/plugin.cpp", "/Fe:bin/"],
-    artifact: cmd.CompilerArtifact.SharedLibrary,
+    compilerMode: {
+      phase: cmd.CompilerPhase.Link,
+      artifact: cmd.CompilerArtifact.SharedLibrary,
+    },
     inputs: ["src/plugin.cpp"],
     outputs: [normalizedJoin("bin", "plugin.dll")],
   },
   {
     label: "clang driver-mode cl default object output",
     cmd: ["clang", "--driver-mode=cl", "-c", "main.c"],
-    artifact: cmd.CompilerArtifact.Object,
+    compilerMode: {
+      phase: cmd.CompilerPhase.Compile,
+      artifact: cmd.CompilerArtifact.Object,
+    },
     inputs: ["main.c"],
     outputs: ["main.obj"],
   },
@@ -264,7 +324,10 @@ const cases: ExpectedAnalysis[] = [
       "/out:bin/tool.dll",
       "foo.obj",
     ],
-    artifact: cmd.CompilerArtifact.Executable,
+    compilerMode: {
+      phase: cmd.CompilerPhase.Link,
+      artifact: cmd.CompilerArtifact.Executable,
+    },
     inputs: [],
     outputs: [],
   },
@@ -282,7 +345,10 @@ compilerIdentifier.registerCompilerRule({
 expectAnalysis({
   label: "custom gnu compiler rule",
   cmd: ["my-cross-tool", "-c", "src/custom.c"],
-  artifact: cmd.CompilerArtifact.Object,
+  compilerMode: {
+    phase: cmd.CompilerPhase.Compile,
+    artifact: cmd.CompilerArtifact.Object,
+  },
   inputs: ["src/custom.c"],
   outputs: ["custom.o"],
 });
@@ -310,7 +376,10 @@ compilerIdentifier.registerCompilerRule({
 expectAnalysis({
   label: "custom compiler rule replacement",
   cmd: ["my-cross-tool", "-c", "src/custom.c"],
-  artifact: cmd.CompilerArtifact.Object,
+  compilerMode: {
+    phase: cmd.CompilerPhase.Compile,
+    artifact: cmd.CompilerArtifact.Object,
+  },
   inputs: ["src/custom.c"],
   outputs: ["custom.o"],
 });
