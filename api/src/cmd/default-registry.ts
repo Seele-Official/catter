@@ -22,7 +22,10 @@ export const archiverAnalyzer = new ArchiverAnalyzer();
  *
  * @example
  * ```ts
- * const analysis = cmd.defaultRegistry.analyze({ exe: "clang", argv: ["clang", "-c", "main.c"] });
+ * const result  = cmd.defaultRegistry.analyze({ exe: "clang", argv: ["clang", "-c", "main.c"] });
+ * if (result.isOk()) {
+ *  const analysis = result.value;
+ * }
  * ```
  */
 export const defaultRegistry = new Registry<

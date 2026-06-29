@@ -130,7 +130,7 @@ if (
   throw new Error("expected compiler command analysis variant");
 }
 expectArrayEq(
-  compileAnalysis.sourceFiles,
+  genericCompileAnalysis.value.sourceFiles,
   ["src/a.c", "src/b.c"],
   "generic compile sources",
 );
