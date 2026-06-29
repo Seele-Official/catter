@@ -41,7 +41,7 @@ export type CompilerArtifact =
 /** Built-in parser dialect selected after command identification. */
 export const CompilerDialect = {
   Clang: "clang",
-  Gnu: "gnu",
+  Gcc: "gcc",
   Msvc: "msvc",
   Nvcc: "nvcc",
 } as const;

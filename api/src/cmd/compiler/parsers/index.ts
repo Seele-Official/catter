@@ -1,6 +1,6 @@
 import type { CompilerDialect, CompilerIdentity } from "../types.js";
 import { parseClangCommand } from "./clang.js";
-import { parseGnuCommand } from "./gnu.js";
+import { parseGccCommand } from "./gcc.js";
 import { parseMsvcCommand } from "./msvc.js";
 import { parseNvccCommand } from "./nvcc.js";
 import type { CompilerParseResult } from "./types.js";
@@ -13,8 +13,8 @@ export function parseCompilerCommand(
   switch (identity.dialect satisfies CompilerDialect) {
     case "clang":
       return parseClangCommand(cmd, identity);
-    case "gnu":
-      return parseGnuCommand(cmd, identity);
+    case "gcc":
+      return parseGccCommand(cmd, identity);
     case "msvc":
       return parseMsvcCommand(cmd, identity);
     case "nvcc":

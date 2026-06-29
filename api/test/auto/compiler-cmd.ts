@@ -1,4 +1,4 @@
-import { cmd, debug, fs, os } from "catter";
+import { cmd, debug, fs } from "catter";
 
 type ExpectedAnalysis = {
   label: string;
@@ -176,6 +176,20 @@ const cases: ExpectedAnalysis[] = [
     outputs: ["partial.o"],
   },
   {
+    label: "gcc compile link input has no default source output",
+    cmd: ["gcc", "-x", "none", "obj/plain.o", "-c"],
+    artifact: cmd.CompilerArtifact.Object,
+    inputs: ["obj/plain.o"],
+    outputs: [],
+  },
+  {
+    label: "gcc joined output spelling",
+    cmd: ["gcc", "-c", "src/joined.c", "-oobj/joined.o"],
+    artifact: cmd.CompilerArtifact.Object,
+    inputs: ["src/joined.c"],
+    outputs: ["obj/joined.o"],
+  },
+  {
     label: "clang archive static lib from object inputs",
     cmd: ["clang", "--emit-static-lib", "a.o", "b.o", "-o", "libstuff.a"],
     artifact: cmd.CompilerArtifact.StaticLibrary,
@@ -204,24 +218,42 @@ const cases: ExpectedAnalysis[] = [
     outputs: ["obj/main.obj"],
   },
   {
+    label: "msvc cl-style shared output directory",
+    cmd: ["cl.exe", "/LD", "src/plugin.cpp", "/Fe:bin/"],
+    artifact: cmd.CompilerArtifact.SharedLibrary,
+    inputs: ["src/plugin.cpp"],
+    outputs: [normalizedJoin("bin", "plugin.dll")],
+  },
+  {
     label: "msvc cl-style shared link via linker remainder",
     cmd: ["cl.exe", "/link", "/dll", "/out:bin/tool.dll", "foo.obj", "bar.res"],
     artifact: cmd.CompilerArtifact.SharedLibrary,
     inputs: ["foo.obj", "bar.res"],
     outputs: ["bin/tool.dll"],
   },
-];
-
-if (os.platform() === "windows") {
-  cases.splice(1, 0, {
-    label: "clang cl-style compile no suffix into object dir",
+  {
+    label: "clang driver-mode cl compile no suffix into object dir",
     cmd: ["clang", "--driver-mode=cl", "/c", "/Tp", "src/noext", "/Fo:build/"],
     artifact: cmd.CompilerArtifact.Object,
     inputs: ["src/noext"],
     outputs: [normalizedJoin("build", "noext.obj")],
-  });
-  cases.push({
-    label: "clang cl-style shared link via linker remainder",
+  },
+  {
+    label: "clang driver-mode cl shared output directory",
+    cmd: ["clang", "--driver-mode=cl", "/LD", "src/plugin.cpp", "/Fe:bin/"],
+    artifact: cmd.CompilerArtifact.SharedLibrary,
+    inputs: ["src/plugin.cpp"],
+    outputs: [normalizedJoin("bin", "plugin.dll")],
+  },
+  {
+    label: "clang driver-mode cl default object output",
+    cmd: ["clang", "--driver-mode=cl", "-c", "main.c"],
+    artifact: cmd.CompilerArtifact.Object,
+    inputs: ["main.c"],
+    outputs: ["main.obj"],
+  },
+  {
+    label: "clang driver-mode cl does not parse linker remainder",
     cmd: [
       "clang",
       "--driver-mode=cl",
@@ -229,21 +261,12 @@ if (os.platform() === "windows") {
       "/dll",
       "/out:bin/tool.dll",
       "foo.obj",
-      "bar.res",
     ],
-    artifact: cmd.CompilerArtifact.SharedLibrary,
-    inputs: ["foo.obj", "bar.res"],
-    outputs: ["bin/tool.dll"],
-  });
-} else {
-  cases.push({
-    label: "clang cl-style visibility suppressed default output",
-    cmd: ["clang", "--driver-mode=cl", "-c", "main.c"],
-    artifact: cmd.CompilerArtifact.Object,
-    inputs: ["main.c"],
-    outputs: ["main.o"],
-  });
-}
+    artifact: cmd.CompilerArtifact.Executable,
+    inputs: [],
+    outputs: [],
+  },
+];
 
 for (const testCase of cases) {
   expectAnalysis(testCase);
@@ -251,7 +274,7 @@ for (const testCase of cases) {
 
 cmd.registerCompilerRule({
   key: "test:cross-gcc",
-  dialect: cmd.CompilerDialect.Gnu,
+  dialect: cmd.CompilerDialect.Gcc,
   match: [/^my-cross-tool$/, /^\/opt\/bin\/my-cross-tool$/],
 });
 expectAnalysis({

@@ -17,7 +17,7 @@ function builtinDialectForCompiler(
     case "clang":
       return "clang";
     case "gcc":
-      return "gnu";
+      return "gcc";
     case "clang-cl":
     case "msvc":
       return "msvc";
