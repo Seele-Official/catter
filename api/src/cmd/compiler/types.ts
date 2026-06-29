@@ -18,7 +18,7 @@ export type CompilerPhase = (typeof CompilerPhase)[keyof typeof CompilerPhase];
 /** Main artifact kind produced by a compiler command. */
 export const CompilerArtifact = {
   None: "none",
-  Stdout: "stdout",
+  PreprocessedSource: "preprocessed-source",
   Object: "object",
   Executable: "exe",
   SharedLibrary: "shared",
@@ -38,11 +38,11 @@ export const CompilerArtifact = {
 export type CompilerArtifact =
   (typeof CompilerArtifact)[keyof typeof CompilerArtifact];
 
-/** Coupled compiler phase and produced artifact inferred from driver options. */
+/** Compiler phase and produced artifact content kind inferred from driver options. */
 export type CompilerMode =
   | {
       phase: typeof CompilerPhase.Preprocess;
-      artifact: typeof CompilerArtifact.Stdout;
+      artifact: typeof CompilerArtifact.PreprocessedSource;
     }
   | {
       phase: typeof CompilerPhase.SyntaxOnly;

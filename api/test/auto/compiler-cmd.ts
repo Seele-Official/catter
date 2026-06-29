@@ -173,7 +173,7 @@ const cases: ExpectedAnalysis[] = [
     cmd: ["gcc", "-x", "c", "generated_input", "-E", "-P"],
     compilerMode: {
       phase: cmd.CompilerPhase.Preprocess,
-      artifact: cmd.CompilerArtifact.Stdout,
+      artifact: cmd.CompilerArtifact.PreprocessedSource,
     },
     inputs: ["generated_input"],
     outputs: [],
@@ -183,7 +183,7 @@ const cases: ExpectedAnalysis[] = [
     cmd: ["gcc", "-E", "src/a.c", "-o", "a.i"],
     compilerMode: {
       phase: cmd.CompilerPhase.Preprocess,
-      artifact: cmd.CompilerArtifact.Stdout,
+      artifact: cmd.CompilerArtifact.PreprocessedSource,
     },
     inputs: ["src/a.c"],
     outputs: ["a.i"],
@@ -258,6 +258,56 @@ const cases: ExpectedAnalysis[] = [
     outputs: ["obj/joined.o"],
   },
   {
+    label: "clang llvm bitcode action survives object stop phase",
+    cmd: ["clang", "-emit-llvm", "-c", "src/t.c"],
+    compilerMode: {
+      phase: cmd.CompilerPhase.Compile,
+      artifact: cmd.CompilerArtifact.LlvmBitcode,
+    },
+    inputs: ["src/t.c"],
+    outputs: ["t.bc"],
+  },
+  {
+    label: "clang assembly action survives object stop phase",
+    cmd: ["clang", "-S", "-c", "src/t.c"],
+    compilerMode: {
+      phase: cmd.CompilerPhase.Compile,
+      artifact: cmd.CompilerArtifact.Assembly,
+    },
+    inputs: ["src/t.c"],
+    outputs: ["t.s"],
+  },
+  {
+    label: "clang compile action survives shared link option",
+    cmd: ["clang", "-c", "-shared", "src/t.c"],
+    compilerMode: {
+      phase: cmd.CompilerPhase.Compile,
+      artifact: cmd.CompilerArtifact.Object,
+    },
+    inputs: ["src/t.c"],
+    outputs: ["t.o"],
+  },
+  {
+    label: "clang default executable output",
+    cmd: ["clang", "src/t.c"],
+    compilerMode: {
+      phase: cmd.CompilerPhase.Link,
+      artifact: cmd.CompilerArtifact.Executable,
+    },
+    inputs: ["src/t.c"],
+    outputs: ["a.out"],
+  },
+  {
+    label: "clang default executable output from object input",
+    cmd: ["clang", "obj/t.o"],
+    compilerMode: {
+      phase: cmd.CompilerPhase.Link,
+      artifact: cmd.CompilerArtifact.Executable,
+    },
+    inputs: ["obj/t.o"],
+    outputs: ["a.out"],
+  },
+  {
     label: "clang archive static lib from object inputs",
     cmd: ["clang", "--emit-static-lib", "a.o", "b.o", "-o", "libstuff.a"],
     compilerMode: {
@@ -286,6 +336,26 @@ const cases: ExpectedAnalysis[] = [
     },
     inputs: ["src/noext"],
     outputs: [normalizedJoin("build", "noext.obj")],
+  },
+  {
+    label: "clang-cl cl-style default executable output",
+    cmd: ["clang-cl", "src/main.cpp"],
+    compilerMode: {
+      phase: cmd.CompilerPhase.Link,
+      artifact: cmd.CompilerArtifact.Executable,
+    },
+    inputs: ["src/main.cpp"],
+    outputs: ["main.exe"],
+  },
+  {
+    label: "clang-cl cl-style default shared library output",
+    cmd: ["clang-cl", "/LD", "src/plugin.cpp"],
+    compilerMode: {
+      phase: cmd.CompilerPhase.Link,
+      artifact: cmd.CompilerArtifact.SharedLibrary,
+    },
+    inputs: ["src/plugin.cpp"],
+    outputs: ["plugin.dll"],
   },
   {
     label: "msvc cl-style compile explicit object output",

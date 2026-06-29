@@ -96,7 +96,7 @@ export const LINK_INPUT_SUFFIXES = new Set([
 
 const COMPILER_ARTIFACT_METADATA: Record<CompilerArtifact, ArtifactMetadata> = {
   [CompilerArtifact.None]: {},
-  [CompilerArtifact.Stdout]: {},
+  [CompilerArtifact.PreprocessedSource]: {},
   [CompilerArtifact.Object]: {
     defaultExtension: { kind: "driver", key: "object" },
     perInputDefaultOutput: true,
@@ -237,11 +237,15 @@ export class CompilerCommandModel {
   setPreprocess(): void {
     this.compilerMode = {
       phase: CompilerPhase.Preprocess,
-      artifact: CompilerArtifact.Stdout,
+      artifact: CompilerArtifact.PreprocessedSource,
     };
   }
 
   setSyntaxOnly(): void {
+    if (this.compilerMode.phase === CompilerPhase.Preprocess) {
+      return;
+    }
+
     this.compilerMode = {
       phase: CompilerPhase.SyntaxOnly,
       artifact: CompilerArtifact.None,
@@ -249,10 +253,23 @@ export class CompilerCommandModel {
   }
 
   setCompileObject(): void {
+    if (
+      this.compilerMode.phase === CompilerPhase.Preprocess ||
+      this.compilerMode.phase === CompilerPhase.SyntaxOnly ||
+      (this.compilerMode.phase === CompilerPhase.Compile &&
+        this.compilerMode.artifact !== CompilerArtifact.Unknown)
+    ) {
+      return;
+    }
+
     this.setCompileArtifact(CompilerArtifact.Object);
   }
 
   setCompileAssemblyLike(): void {
+    if (this.hasTerminalNonObjectAction()) {
+      return;
+    }
+
     this.setCompileArtifact(
       this.compilerMode.artifact === CompilerArtifact.LlvmBitcode
         ? CompilerArtifact.LlvmIR
@@ -261,6 +278,10 @@ export class CompilerCommandModel {
   }
 
   setCompileLlvmLike(): void {
+    if (this.hasTerminalNonObjectAction()) {
+      return;
+    }
+
     this.setCompileArtifact(
       this.compilerMode.artifact === CompilerArtifact.Assembly
         ? CompilerArtifact.LlvmIR
@@ -269,10 +290,18 @@ export class CompilerCommandModel {
   }
 
   setCompilePch(): void {
+    if (this.hasTerminalNonObjectAction()) {
+      return;
+    }
+
     this.setCompileArtifact(CompilerArtifact.Pch);
   }
 
   setCompilePcm(): void {
+    if (this.hasTerminalNonObjectAction()) {
+      return;
+    }
+
     this.setCompileArtifact(CompilerArtifact.Pcm);
   }
 
@@ -286,6 +315,10 @@ export class CompilerCommandModel {
   }
 
   setLinkSharedLibrary(): void {
+    if (this.compilerMode.phase !== CompilerPhase.Link) {
+      return;
+    }
+
     this.compilerMode = {
       phase: CompilerPhase.Link,
       artifact: CompilerArtifact.SharedLibrary,
@@ -293,6 +326,10 @@ export class CompilerCommandModel {
   }
 
   setArchive(): void {
+    if (this.compilerMode.phase !== CompilerPhase.Link) {
+      return;
+    }
+
     this.compilerMode = {
       phase: CompilerPhase.Archive,
       artifact: CompilerArtifact.StaticLibrary,
@@ -300,6 +337,10 @@ export class CompilerCommandModel {
   }
 
   setRelocatableLink(): void {
+    if (this.compilerMode.phase !== CompilerPhase.Link) {
+      return;
+    }
+
     this.compilerMode = {
       phase: CompilerPhase.RelocatableLink,
       artifact: CompilerArtifact.Object,
@@ -359,6 +400,17 @@ export class CompilerCommandModel {
     if (explicitOutput !== undefined) {
       const writes = this.materializeExplicitOutputPath(
         explicitOutput.path,
+        context.outputNameInputs,
+        extensions,
+      );
+      return {
+        writes,
+        edges: this.outputEdges(writes, context.edgeInputs),
+      };
+    }
+
+    if (this.hasSingleDefaultOutput()) {
+      const writes = this.defaultSingleOutputPaths(
         context.outputNameInputs,
         extensions,
       );
@@ -459,6 +511,35 @@ export class CompilerCommandModel {
     );
   }
 
+  private defaultSingleOutputPaths(
+    inputs: readonly CompilerInput[],
+    extensions: DriverOutputExtensions,
+  ): string[] {
+    if (inputs.length === 0) {
+      return [];
+    }
+
+    if (extensions.executable.length === 0) {
+      return ["a.out"];
+    }
+
+    const extension = this.defaultSingleOutputExtension(extensions);
+    return [defaultOutputStemOfInput(inputs[0]!.path) + extension];
+  }
+
+  private defaultSingleOutputExtension(
+    extensions: DriverOutputExtensions,
+  ): string {
+    switch (this.compilerMode.artifact) {
+      case CompilerArtifact.SharedLibrary:
+        return extensions.sharedLibrary;
+      case CompilerArtifact.StaticLibrary:
+        return extensions.staticLibrary;
+      default:
+        return extensions.executable;
+    }
+  }
+
   private outputEdges(
     writes: readonly string[],
     inputs: readonly CompilerInput[],
@@ -493,6 +574,13 @@ export class CompilerCommandModel {
     };
   }
 
+  private hasTerminalNonObjectAction(): boolean {
+    return (
+      this.compilerMode.phase === CompilerPhase.Preprocess ||
+      this.compilerMode.phase === CompilerPhase.SyntaxOnly
+    );
+  }
+
   private artifactMetadata(): ArtifactMetadata {
     return COMPILER_ARTIFACT_METADATA[this.compilerMode.artifact];
   }
@@ -502,6 +590,18 @@ export class CompilerCommandModel {
       this.compilerMode.phase === CompilerPhase.Compile &&
       this.artifactMetadata().perInputDefaultOutput === true
     );
+  }
+
+  private hasSingleDefaultOutput(): boolean {
+    switch (this.compilerMode.phase) {
+      case CompilerPhase.Link:
+      case CompilerPhase.Archive:
+      case CompilerPhase.RelocatableLink:
+      case CompilerPhase.DeviceLink:
+        return true;
+      default:
+        return false;
+    }
   }
 
   private hasDefaultOutputExtension(): boolean {

@@ -26,7 +26,7 @@ export class CompilerAnalysis extends Analysis {
   readonly unwrappedExe: string;
   /** Command argv after wrapper removal. */
   readonly unwrappedArgv: readonly string[];
-  /** Coupled compiler phase and main artifact inferred from parsed options. */
+  /** Compiler phase and artifact content kind inferred from parsed options. */
   readonly compilerMode: CompilerMode;
   /** Structured compiler input entries, including source/link role and argv index. */
   readonly inputFiles: readonly CompilerInput[];

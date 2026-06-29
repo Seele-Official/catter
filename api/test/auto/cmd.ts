@@ -186,7 +186,7 @@ expectEq(
 );
 expectEq(
   preprocessAnalysis.compilerMode.artifact,
-  cmd.CompilerArtifact.Stdout,
+  cmd.CompilerArtifact.PreprocessedSource,
   "preprocess artifact",
 );
 expectArrayEq(preprocessAnalysis.reads, ["src/a.c"], "preprocess reads");
