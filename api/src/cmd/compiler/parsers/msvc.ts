@@ -8,7 +8,7 @@ import {
   parseClangClDriverModel,
 } from "./clang-driver.js";
 import { LINK_INPUT_SUFFIXES } from "./driver-model.js";
-import type { CompilerParseResult } from "./types.js";
+import type { CompilerParseResult } from "../types.js";
 
 /**
  * Parses an MSVC-family command using the clang-cl compatible option table.

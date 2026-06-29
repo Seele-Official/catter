@@ -6,7 +6,7 @@ import {
   type CompilerDialect,
   type CompilerInput,
 } from "../types.js";
-import type { CompilerParseResult } from "./types.js";
+import type { CompilerParseResult } from "../types.js";
 
 export type DriverOutputChannel =
   | "primary"

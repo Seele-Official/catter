@@ -4,9 +4,15 @@ import type {
   CommandAnalysis,
   AnalyzedData,
 } from "./model.js";
-import { ArchiverAnalysis } from "./archiver-cmd.js";
-import { CompilerAnalysis } from "./compiler-cmd.js";
+import { ArchiverAnalyzer } from "./archiver-cmd.js";
+import { CompilerAnalyzer } from "./compiler-cmd.js";
 import { Registry } from "./registry.js";
+
+/** Default compiler analyzer instance used by `defaultRegistry`. */
+export const compilerAnalyzer = new CompilerAnalyzer();
+
+/** Default archiver analyzer instance used by `defaultRegistry`. */
+export const archiverAnalyzer = new ArchiverAnalyzer();
 
 /**
  * Shared registry populated with the built-in analyzers.
@@ -19,8 +25,8 @@ import { Registry } from "./registry.js";
  * ```
  */
 export const defaultRegistry = new Registry()
-  .register(CompilerAnalysis)
-  .register(ArchiverAnalysis);
+  .register(compilerAnalyzer)
+  .register(archiverAnalyzer);
 
 /**
  * Analyzes a command with the built-in registry.
@@ -30,7 +36,7 @@ export const defaultRegistry = new Registry()
  * const analysis = cmd.analyze({ exe: "llvm-ar", argv: ["llvm-ar", "rcs", "liba.a", "a.o"] });
  * ```
  */
-export function analyze(command: AnalyzedData): CommandAnalysis | undefined {
+export function analyze(command: AnalyzedData): Analysis | undefined {
   return defaultRegistry.analyze(command);
 }
 
@@ -51,12 +57,10 @@ export function canHandle(command: AnalyzedData): boolean {
  *
  * @example
  * ```ts
- * cmd.register(cmd.CompilerAnalysis);
+ * cmd.register(new cmd.CompilerAnalyzer());
  * ```
  */
-export function register<A extends Analysis>(
-  analyzer: Analyzer<A>,
-): Registry<CommandAnalysis | A> {
+export function register(analyzer: Analyzer): Registry {
   return defaultRegistry.register(analyzer);
 }
 
@@ -65,9 +69,9 @@ export function register<A extends Analysis>(
  *
  * @example
  * ```ts
- * cmd.unregister(cmd.CompilerAnalysis.key);
+ * cmd.unregister(cmd.compilerAnalyzer);
  * ```
  */
-export function unregister(key: string): Registry<CommandAnalysis> {
-  return defaultRegistry.unregister(key);
+export function unregister(analyzer: Analyzer): Registry {
+  return defaultRegistry.unregister(analyzer);
 }

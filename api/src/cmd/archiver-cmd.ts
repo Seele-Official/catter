@@ -1,9 +1,4 @@
-import type {
-  Analysis as AnyAnalysis,
-  Analyzer,
-  AnalyzedData,
-} from "./model.js";
-import { Analysis } from "./model.js";
+import { Analysis, Analyzer, AnalyzedData } from "./model.js";
 
 /**
  * Supported single-letter archive operations.
@@ -45,7 +40,7 @@ export type ArchiverOperation =
  */
 export type ArchiverExe = "ar" | "llvm-ar" | "gcc-ar";
 
-type ArchiverModel = {
+export type ArchiverModel = {
   operation: ArchiverOperation;
   modifiers: string[];
   thin: boolean;
@@ -246,38 +241,6 @@ function analyzeArchiverModel(
 }
 
 export class ArchiverAnalysis extends Analysis {
-  /**
-   * Stable registry key for the archiver analyzer.
-   *
-   * @example
-   * ```ts
-   * cmd.defaultRegistry.unregister(cmd.ArchiverAnalysis.key);
-   * ```
-   */
-  static readonly key = "archiver";
-
-  static analyze(command: AnalyzedData): ArchiverAnalysis | undefined {
-    const model = analyzeArchiverModel(command);
-    return model === undefined
-      ? undefined
-      : new ArchiverAnalysis(model, command);
-  }
-
-  /**
-   * Narrows a generic analysis back to an archiver analysis.
-   *
-   * @example
-   * ```ts
-   * const analysis = cmd.ArchiverAnalysis.from(cmd.analyze({
-   *   exe: "ar",
-   *   argv: ["ar", "rcs", "liba.a", "a.o"],
-   * }));
-   * ```
-   */
-  static from(analysis: AnyAnalysis | undefined): ArchiverAnalysis | undefined {
-    return analysis instanceof ArchiverAnalysis ? analysis : undefined;
-  }
-
   /** Discriminator for command analysis unions. */
   readonly kind = "archiver" as const;
   /** The parsed archive operation. */
@@ -293,12 +256,16 @@ export class ArchiverAnalysis extends Analysis {
   /** Whether GNU MRI script mode was requested. */
   readonly scriptMode: boolean;
 
-  private constructor(model: ArchiverModel, command: AnalyzedData) {
+  constructor(model: ArchiverModel, command: AnalyzedData) {
     super({
       exe: command.exe,
       argv: command.argv,
       reads: model.reads,
       writes: model.writes,
+      edges: model.writes.map((output) => ({
+        output,
+        inputs: [...model.reads],
+      })),
     });
     this.operation = model.operation;
     this.modifiers = [...model.modifiers];
@@ -307,6 +274,31 @@ export class ArchiverAnalysis extends Analysis {
     this.members = [...model.members];
     this.scriptMode = model.scriptMode;
   }
+
+  /**
+   * Narrows a generic analysis back to an archiver analysis.
+   *
+   * @example
+   * ```ts
+   * const analysis = cmd.ArchiverAnalysis.from(cmd.analyze({
+   *   exe: "ar",
+   *   argv: ["ar", "rcs", "liba.a", "a.o"],
+   * }));
+   * ```
+   */
+  static from(analysis: Analysis | undefined): ArchiverAnalysis | undefined {
+    return analysis instanceof ArchiverAnalysis ? analysis : undefined;
+  }
 }
 
-const _archiverAnalyzerCheck: Analyzer<ArchiverAnalysis> = ArchiverAnalysis;
+export class ArchiverAnalyzer extends Analyzer {
+  readonly kind = "archiver" as const;
+
+  analyze(command: AnalyzedData): ArchiverAnalysis | undefined {
+    const model = analyzeArchiverModel(command);
+    if (model) {
+      return new ArchiverAnalysis(model, command);
+    }
+    return undefined;
+  }
+}

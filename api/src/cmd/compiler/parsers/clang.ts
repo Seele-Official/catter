@@ -11,7 +11,7 @@ import {
   collectClangDriverOptions,
   type ClangDriverParsedOption,
 } from "./clang-driver.js";
-import type { CompilerParseResult } from "./types.js";
+import type { CompilerParseResult } from "../types.js";
 
 function usesClDriverMode(parsed: readonly ClangDriverParsedOption[]): boolean {
   return parsed.some(

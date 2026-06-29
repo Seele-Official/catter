@@ -45,8 +45,11 @@ function invocation(argv: string[], exe = argv[0]!): cmd.AnalyzedData {
   };
 }
 
+const compilerIdentifier = new cmd.CompilerIdentifier();
+const compilerAnalyzer = new cmd.CompilerAnalyzer(compilerIdentifier);
+
 function expectAnalysis(expected: ExpectedAnalysis) {
-  const analysis = cmd.CompilerAnalysis.analyze(invocation(expected.cmd));
+  const analysis = compilerAnalyzer.analyze(invocation(expected.cmd));
   debug.assertThrow(analysis !== undefined);
   if (analysis === undefined) {
     throw new Error(`${expected.label}: expected compiler analysis`);
@@ -71,31 +74,30 @@ function expectAnalysis(expected: ExpectedAnalysis) {
 }
 
 debug.assertThrow(
-  cmd.CompilerAnalysis.analyze(invocation(["clang", "-c", "main.cc"])) !==
+  compilerAnalyzer.analyze(invocation(["clang", "-c", "main.cc"])) !==
     undefined,
 );
 debug.assertThrow(
-  cmd.CompilerAnalysis.analyze(invocation(["gcc", "-c", "main.cc"])) !==
+  compilerAnalyzer.analyze(invocation(["gcc", "-c", "main.cc"])) !== undefined,
+);
+debug.assertThrow(
+  compilerAnalyzer.analyze(invocation(["clang-cl", "/c", "main.cc"])) !==
     undefined,
 );
 debug.assertThrow(
-  cmd.CompilerAnalysis.analyze(invocation(["clang-cl", "/c", "main.cc"])) !==
+  compilerAnalyzer.analyze(invocation(["cl.exe", "/c", "main.cc"])) !==
     undefined,
 );
 debug.assertThrow(
-  cmd.CompilerAnalysis.analyze(invocation(["cl.exe", "/c", "main.cc"])) !==
+  compilerAnalyzer.analyze(invocation(["nvcc", "-c", "kernel.cu"])) ===
     undefined,
 );
-debug.assertThrow(
-  cmd.CompilerAnalysis.analyze(invocation(["nvcc", "-c", "kernel.cu"])) ===
-    undefined,
-);
-const nvccIdentity = cmd.identifyCompilerCommand(
+const nvccIdentity = compilerIdentifier.identifyCompilerCommand(
   invocation(["nvcc", "-c", "kernel.cu"]),
 );
 debug.assertThrow(nvccIdentity?.dialect === cmd.CompilerDialect.Nvcc);
 
-const absoluteExeAnalysis = cmd.CompilerAnalysis.analyze(
+const absoluteExeAnalysis = compilerAnalyzer.analyze(
   invocation(["gcc", "-c", "absolute.c"], "/opt/toolchains/bin/gcc"),
 );
 debug.assertThrow(absoluteExeAnalysis !== undefined);
@@ -272,7 +274,7 @@ for (const testCase of cases) {
   expectAnalysis(testCase);
 }
 
-cmd.registerCompilerRule({
+compilerIdentifier.registerCompilerRule({
   key: "test:cross-gcc",
   dialect: cmd.CompilerDialect.Gcc,
   match: [/^my-cross-tool$/, /^\/opt\/bin\/my-cross-tool$/],
@@ -284,7 +286,7 @@ expectAnalysis({
   inputs: ["src/custom.c"],
   outputs: ["custom.o"],
 });
-const customAbsoluteExeAnalysis = cmd.CompilerAnalysis.analyze(
+const customAbsoluteExeAnalysis = compilerAnalyzer.analyze(
   invocation(
     ["my-cross-tool", "-c", "src/custom-absolute.c"],
     "/opt/bin/my-cross-tool",
@@ -300,7 +302,7 @@ expectArrayEq(
   "custom absolute executable writes",
 );
 
-cmd.registerCompilerRule({
+compilerIdentifier.registerCompilerRule({
   key: "test:cross-gcc",
   dialect: cmd.CompilerDialect.Clang,
   match: /^my-cross-tool$/,
@@ -312,9 +314,9 @@ expectAnalysis({
   inputs: ["src/custom.c"],
   outputs: ["custom.o"],
 });
-cmd.unregisterCompilerRule("test:cross-gcc");
+compilerIdentifier.unregisterCompilerRule("test:cross-gcc");
 debug.assertThrow(
-  cmd.CompilerAnalysis.analyze(
+  compilerAnalyzer.analyze(
     invocation(["my-cross-tool", "-c", "src/custom.c"]),
   ) === undefined,
 );

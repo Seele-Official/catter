@@ -1,3 +1,6 @@
+import type { CompilerAnalysis, CompilerAnalyzer } from "./compiler-cmd.js";
+import type { ArchiverAnalysis, ArchiverAnalyzer } from "./archiver-cmd.js";
+
 /**
  * Describes one concrete dependency edge produced by a command.
  *
@@ -44,6 +47,12 @@ export type AnalyzedData = {
  *       argv: ["toy", "in.dat", "out.pkg"],
  *       reads: ["in.dat"],
  *       writes: ["out.pkg"],
+ *       edges: [
+ *         {
+ *           output: "out.pkg",
+ *           inputs: ["in.dat"],
+ *         },
+ *       ],
  *     });
  *   }
  * }
@@ -66,51 +75,50 @@ export abstract class Analysis {
     argv: readonly string[];
     reads: readonly string[];
     writes: readonly string[];
-    edges?: readonly Edge[];
+    edges: readonly Edge[];
   }) {
     this.exe = data.exe;
     this.argv = [...data.argv];
     this.reads = [...data.reads];
     this.writes = [...data.writes];
-    this.edges =
-      data.edges?.map((edge) => ({
-        output: edge.output,
-        inputs: [...edge.inputs],
-      })) ??
-      data.writes.map((output) => ({
-        output,
-        inputs: [...data.reads],
-      }));
+    this.edges = [...data.edges];
   }
 }
 
 /**
  * Pluggable analyzer contract used by `Registry`.
  *
- * A concrete analysis type usually implements this interface through static
- * `key` and `analyze()` members.
+ * Concrete analyzers are stateful objects registered into a `Registry`.
  *
  * @example
  * ```ts
- * class ToyAnalysis extends cmd.Analysis {
- *   static readonly key = "toy";
- *   static analyze(command: cmd.AnalyzedData) {
- *     return command.exe === "toy" ? new ToyAnalysis() : undefined;
+ * class ToyAnalyzer extends cmd.Analyzer {
+ *   analyze(command: cmd.AnalyzedData) {
+ *     return command.exe === "toy"
+ *       ? new ToyAnalysis(command, "in.dat", "out.pkg")
+ *       : undefined;
  *   }
- *   constructor() {
- *     super({ exe: "toy", argv: ["toy"], reads: [], writes: [] });
+ * }
+ *
+ * class ToyAnalysis extends cmd.Analysis {
+ *   constructor(command: cmd.AnalyzedData, input: string, output: string) {
+ *     super({
+ *       exe: command.exe,
+ *       argv: command.argv,
+ *       reads: [input],
+ *       writes: [output],
+ *       edges: [{ output, inputs: [input] }],
+ *     });
  *   }
  * }
  * ```
  */
-export interface Analyzer<A extends Analysis = Analysis> {
-  /** Stable registry key used for replacement and removal. */
-  readonly key: string;
+export abstract class Analyzer {
   /** Performs analysis and returns a typed result when successful. */
-  analyze(command: AnalyzedData): A | undefined;
+  abstract analyze(command: AnalyzedData): Analysis | undefined;
 }
 
 /** Built-in command analysis result variants. */
-export type CommandAnalysis =
-  | import("./compiler-cmd.js").CompilerAnalysis
-  | import("./archiver-cmd.js").ArchiverAnalysis;
+export type CommandAnalysis = CompilerAnalysis | ArchiverAnalysis;
+
+export type CommandAnalyzer = CompilerAnalyzer | ArchiverAnalyzer;

@@ -3,7 +3,7 @@ import { parseClangCommand } from "./clang.js";
 import { parseGccCommand } from "./gcc.js";
 import { parseMsvcCommand } from "./msvc.js";
 import { parseNvccCommand } from "./nvcc.js";
-import type { CompilerParseResult } from "./types.js";
+import type { CompilerParseResult } from "../types.js";
 
 /** Dispatches a command to the builtin parser selected by compiler identity. */
 export function parseCompilerCommand(
@@ -19,5 +19,7 @@ export function parseCompilerCommand(
       return parseMsvcCommand(cmd, identity);
     case "nvcc":
       return parseNvccCommand(cmd, identity);
+    default:
+      return undefined;
   }
 }

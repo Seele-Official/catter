@@ -5,7 +5,7 @@ import {
   collectClangDriverConsumedArgIndexes,
   parseClangGnuDriverModel,
 } from "./clang-driver.js";
-import type { CompilerParseResult } from "./types.js";
+import type { CompilerParseResult } from "../types.js";
 
 /**
  * Parses a GCC command with the clang driver option table as a temporary model.

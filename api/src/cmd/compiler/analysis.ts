@@ -1,12 +1,8 @@
-import { Analysis } from "../model.js";
-import type {
-  Analysis as AnyAnalysis,
-  Analyzer,
-  AnalyzedData,
-} from "../model.js";
-import { identifyCompilerCommand } from "./identify.js";
+import { Analysis, Analyzer } from "../model.js";
+import type { Analysis as AnyAnalysis, AnalyzedData } from "../model.js";
+import { CompilerIdentifier } from "./identify.js";
 import { parseCompilerCommand } from "./parsers/index.js";
-import type { CompilerParseResult } from "./parsers/types.js";
+import type { CompilerParseResult } from "./types.js";
 import type {
   CompilerArtifact,
   CompilerInput,
@@ -22,24 +18,6 @@ import { unwrapCompilerCommand } from "./unwrap.js";
  * command was identified and parsed.
  */
 export class CompilerAnalysis extends Analysis {
-  /** Stable registry key for the compiler analyzer. */
-  static readonly key = "compiler";
-
-  /** Analyzes a compiler command, returning `undefined` when it is unsupported. */
-  static analyze(command: AnalyzedData): CompilerAnalysis | undefined {
-    const unwrapped = unwrapCompilerCommand(command);
-    const identity = identifyCompilerCommand(unwrapped);
-    if (identity === undefined) {
-      return undefined;
-    }
-
-    const model = parseCompilerCommand(unwrapped.argv, identity);
-    if (model) {
-      return new CompilerAnalysis(model, command, unwrapped);
-    }
-    return undefined;
-  }
-
   /** Narrows a generic analysis result back to a compiler analysis. */
   static from(analysis: AnyAnalysis | undefined): CompilerAnalysis | undefined {
     return analysis instanceof CompilerAnalysis ? analysis : undefined;
@@ -58,7 +36,7 @@ export class CompilerAnalysis extends Analysis {
   /** Source input paths selected from `inputFiles`. */
   readonly sourceFiles: readonly string[];
 
-  private constructor(
+  constructor(
     model: CompilerParseResult,
     command: AnalyzedData,
     unwrapped: UnwrappedCompilerCommand,
@@ -81,4 +59,24 @@ export class CompilerAnalysis extends Analysis {
   }
 }
 
-const _compilerAnalyzerCheck: Analyzer<CompilerAnalysis> = CompilerAnalysis;
+/** Analyzer for recognized compiler driver commands. */
+export class CompilerAnalyzer extends Analyzer {
+  readonly kind = "compiler" as const;
+
+  private readonly identifier;
+
+  constructor(identifier: CompilerIdentifier = new CompilerIdentifier()) {
+    super();
+    this.identifier = identifier;
+  }
+  analyze(command: AnalyzedData): CompilerAnalysis | undefined {
+    const unwrapped = unwrapCompilerCommand(command);
+    const identity = this.identifier.identifyCompilerCommand(unwrapped);
+    const model = parseCompilerCommand(unwrapped.argv, identity);
+
+    if (model) {
+      return new CompilerAnalysis(model, command, unwrapped);
+    }
+    return undefined;
+  }
+}

@@ -12,7 +12,7 @@ import {
   CompilerCommandModel,
   type DriverOutputExtensions,
 } from "./driver-model.js";
-import type { CompilerParseResult } from "./types.js";
+import type { CompilerParseResult } from "../types.js";
 
 export type ClangDriverParsedOption = {
   raw: OptionItem;

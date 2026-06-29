@@ -8,43 +8,43 @@ import type { Analysis, Analyzer, AnalyzedData } from "./model.js";
  *
  * @example
  * ```ts
- * const registry = new cmd.Registry().register(cmd.CompilerAnalysis);
+ * const registry = new cmd.Registry().register(new cmd.CompilerAnalyzer());
  * const analysis = registry.analyze({ exe: "clang", argv: ["clang", "-c", "main.c"] });
  * ```
  */
-export class Registry<A extends Analysis = never> {
+export class Registry {
   private readonly analyzerList: Analyzer[] = [];
 
   /**
-   * Registers an analyzer class or object under its `key`.
-   *
-   * If another analyzer with the same key already exists, it is replaced.
+   * Registers an analyzer instance.
    *
    * @example
    * ```ts
    * const registry = new cmd.Registry();
-   * registry.register(cmd.CompilerAnalysis);
+   * registry.register(new cmd.CompilerAnalyzer());
    * ```
    */
-  register<B extends Analysis>(analyzer: Analyzer<B>): Registry<A | B> {
-    this.unregister(analyzer.key);
-    this.analyzerList.push(analyzer as Analyzer);
-    return this as Registry<A | B>;
+  register(analyzer: Analyzer): Registry {
+    this.unregister(analyzer);
+    this.analyzerList.push(analyzer);
+    return this;
   }
 
   /**
-   * Removes a previously registered analyzer by key.
+   * Removes a previously registered analyzer instance.
    *
    * @example
    * ```ts
-   * const registry = new cmd.Registry().register(cmd.CompilerAnalysis);
-   * registry.unregister(cmd.CompilerAnalysis.key);
+   * const analyzer = new cmd.CompilerAnalyzer();
+   * const registry = new cmd.Registry().register(analyzer);
+   * registry.unregister(analyzer);
    * ```
    */
-  unregister(key: string): this {
-    const index = this.analyzerList.findIndex((item) => item.key === key);
-    if (index !== -1) {
-      this.analyzerList.splice(index, 1);
+  unregister(analyzer: Analyzer): this {
+    for (let index = this.analyzerList.length - 1; index >= 0; --index) {
+      if (this.analyzerList[index] === analyzer) {
+        this.analyzerList.splice(index, 1);
+      }
     }
     return this;
   }
@@ -55,7 +55,7 @@ export class Registry<A extends Analysis = never> {
    * @example
    * ```ts
    * const analyzers = new cmd.Registry()
-   *   .register(cmd.CompilerAnalysis)
+   *   .register(new cmd.CompilerAnalyzer())
    *   .analyzers();
    * ```
    */
@@ -69,7 +69,7 @@ export class Registry<A extends Analysis = never> {
    * @example
    * ```ts
    * const ok = new cmd.Registry()
-   *   .register(cmd.CompilerAnalysis)
+   *   .register(new cmd.CompilerAnalyzer())
    *   .canHandle({ exe: "gcc", argv: ["gcc", "-c", "main.c"] });
    * ```
    */
@@ -83,15 +83,15 @@ export class Registry<A extends Analysis = never> {
    * @example
    * ```ts
    * const analysis = new cmd.Registry()
-   *   .register(cmd.CompilerAnalysis)
+   *   .register(new cmd.CompilerAnalyzer())
    *   .analyze({ exe: "clang", argv: ["clang", "-c", "main.c"] });
    * ```
    */
-  analyze(command: AnalyzedData): A | undefined {
+  analyze(command: AnalyzedData): Analysis | undefined {
     for (const analyzer of this.analyzerList) {
       const result = analyzer.analyze(command);
       if (result !== undefined) {
-        return result as A;
+        return result;
       }
     }
 

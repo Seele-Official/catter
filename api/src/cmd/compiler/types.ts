@@ -1,5 +1,5 @@
 import type { Compiler } from "catter-c";
-import type { AnalyzedData } from "../model.js";
+import type { AnalyzedData, Edge } from "../model.js";
 
 /** High-level compiler pipeline phase. */
 export const CompilerPhase = {
@@ -44,9 +44,10 @@ export const CompilerDialect = {
   Gcc: "gcc",
   Msvc: "msvc",
   Nvcc: "nvcc",
+  Unknown: "unknown",
 } as const;
 
-/** Union of builtin parser dialect values. */
+/** Union of parser dialect values selected during compiler identification. */
 export type CompilerDialect =
   (typeof CompilerDialect)[keyof typeof CompilerDialect];
 
@@ -83,7 +84,7 @@ export interface CompilerRule {
 export interface CompilerIdentity {
   /** Builtin identity key or custom rule key. */
   key: string;
-  /** Builtin parser dialect selected for the command. */
+  /** Parser dialect selected for the command, or `unknown` when unsupported. */
   dialect: CompilerDialect;
 }
 
@@ -94,3 +95,13 @@ export interface UnwrappedCompilerCommand {
   /** Command argv after wrapper removal. Currently this is unchanged. */
   argv: readonly string[];
 }
+
+export type CompilerParseResult = {
+  dialect: CompilerDialect;
+  phase: CompilerPhase;
+  artifact: CompilerArtifact;
+  inputs: CompilerInput[];
+  reads: string[];
+  writes: string[];
+  edges: Edge[];
+};
