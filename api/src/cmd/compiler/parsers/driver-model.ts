@@ -1,5 +1,6 @@
 import * as fs from "../../../fs.js";
 import type { Edge } from "../../model.js";
+import { CompilerModelError } from "../errors.js";
 import {
   CompilerArtifact,
   CompilerPhase,
@@ -517,7 +518,7 @@ export class CompilerCommandModel {
       return extension.extension;
     }
 
-    throw new Error(
+    throw new CompilerModelError(
       `no default output extension for ${this.compilerMode.artifact}`,
     );
   }

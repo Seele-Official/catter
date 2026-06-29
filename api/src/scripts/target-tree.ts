@@ -106,11 +106,16 @@ export function targetTree(): service.CatterContextService {
         return;
       }
 
-      const analysis = analyzeCmd({
+      const analysisResult = analyzeCmd({
         exe: data.data.exe,
         argv: data.data.argv,
       });
-      const targetEntries = analysis?.edges ?? [];
+      if (analysisResult.isErr()) {
+        return;
+      }
+
+      const analysis = analysisResult.value;
+      const targetEntries = analysis.edges;
       const entries = targetEntries
         .map((entry) => {
           const output = normalizePath(data.data.cwd, entry.output);
@@ -141,9 +146,7 @@ export function targetTree(): service.CatterContextService {
         }
       }
 
-      if (analysis !== undefined) {
-        ctx.ignoreDescendants();
-      }
+      ctx.ignoreDescendants();
     },
   });
 }

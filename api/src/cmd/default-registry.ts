@@ -1,9 +1,10 @@
 import type {
-  Analysis,
-  Analyzer,
   CommandAnalysis,
+  CommandAnalyzerError,
   AnalyzedData,
+  IAnalyzer,
 } from "./model.js";
+import type { Result } from "../neverthrow/index.js";
 import { ArchiverAnalyzer } from "./archiver-cmd.js";
 import { CompilerAnalyzer } from "./compiler-cmd.js";
 import { Registry } from "./registry.js";
@@ -24,7 +25,10 @@ export const archiverAnalyzer = new ArchiverAnalyzer();
  * const analysis = cmd.defaultRegistry.analyze({ exe: "clang", argv: ["clang", "-c", "main.c"] });
  * ```
  */
-export const defaultRegistry = new Registry()
+export const defaultRegistry = new Registry<
+  CommandAnalysis,
+  CommandAnalyzerError
+>()
   .register(compilerAnalyzer)
   .register(archiverAnalyzer);
 
@@ -36,20 +40,10 @@ export const defaultRegistry = new Registry()
  * const analysis = cmd.analyze({ exe: "llvm-ar", argv: ["llvm-ar", "rcs", "liba.a", "a.o"] });
  * ```
  */
-export function analyze(command: AnalyzedData): Analysis | undefined {
+export function analyze(
+  command: AnalyzedData,
+): Result<CommandAnalysis, CommandAnalyzerError[]> {
   return defaultRegistry.analyze(command);
-}
-
-/**
- * Checks whether the built-in registry recognizes a command.
- *
- * @example
- * ```ts
- * const ok = cmd.canHandle({ exe: "clang", argv: ["clang", "-c", "main.c"] });
- * ```
- */
-export function canHandle(command: AnalyzedData): boolean {
-  return defaultRegistry.canHandle(command);
 }
 
 /**
@@ -60,7 +54,9 @@ export function canHandle(command: AnalyzedData): boolean {
  * cmd.register(new cmd.CompilerAnalyzer());
  * ```
  */
-export function register(analyzer: Analyzer): Registry {
+export function register(
+  analyzer: IAnalyzer<CommandAnalysis, CommandAnalyzerError>,
+): Registry<CommandAnalysis, CommandAnalyzerError> {
   return defaultRegistry.register(analyzer);
 }
 
@@ -72,6 +68,8 @@ export function register(analyzer: Analyzer): Registry {
  * cmd.unregister(cmd.compilerAnalyzer);
  * ```
  */
-export function unregister(analyzer: Analyzer): Registry {
+export function unregister(
+  analyzer: IAnalyzer<CommandAnalysis, CommandAnalyzerError>,
+): Registry<CommandAnalysis, CommandAnalyzerError> {
   return defaultRegistry.unregister(analyzer);
 }

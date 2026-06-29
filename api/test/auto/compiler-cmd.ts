@@ -45,15 +45,50 @@ function invocation(argv: string[], exe = argv[0]!): cmd.AnalyzedData {
   };
 }
 
+function expectCompilerAnalysis(
+  result: ReturnType<cmd.CompilerAnalyzer["analyze"]>,
+  label: string,
+): cmd.CompilerAnalysis {
+  debug.assertThrow(result.isOk());
+  if (result.isErr()) {
+    throw new Error(
+      `${label}: expected compiler analysis, got ${result.error}`,
+    );
+  }
+  const analysis = result.value;
+  if (!isCompilerAnalysis(analysis)) {
+    throw new Error(`${label}: expected compiler analysis`);
+  }
+  return analysis;
+}
+
+function isCompilerAnalysis(
+  analysis: cmd.Analysis,
+): analysis is cmd.CompilerAnalysis {
+  return analysis.kind === "compiler";
+}
+
+function expectAnalysisError(
+  result: ReturnType<cmd.CompilerAnalyzer["analyze"]>,
+  label: string,
+): cmd.AnalysisError {
+  debug.assertThrow(result.isErr());
+  if (result.isOk()) {
+    throw new Error(`${label}: expected analysis error`);
+  }
+  debug.assertThrow(result.error instanceof Error);
+  debug.assertThrow(result.error instanceof cmd.AnalysisError);
+  return result.error;
+}
+
 const compilerIdentifier = new cmd.CompilerIdentifier();
 const compilerAnalyzer = new cmd.CompilerAnalyzer(compilerIdentifier);
 
 function expectAnalysis(expected: ExpectedAnalysis) {
-  const analysis = compilerAnalyzer.analyze(invocation(expected.cmd));
-  debug.assertThrow(analysis !== undefined);
-  if (analysis === undefined) {
-    throw new Error(`${expected.label}: expected compiler analysis`);
-  }
+  const analysis = expectCompilerAnalysis(
+    compilerAnalyzer.analyze(invocation(expected.cmd)),
+    expected.label,
+  );
 
   expectEq(analysis.kind, "compiler", `${expected.label} kind`);
   expectEq(analysis.exe, expected.cmd[0], `${expected.label} exe`);
@@ -83,36 +118,34 @@ function expectAnalysis(expected: ExpectedAnalysis) {
 }
 
 debug.assertThrow(
-  compilerAnalyzer.analyze(invocation(["clang", "-c", "main.cc"])) !==
-    undefined,
+  compilerAnalyzer.analyze(invocation(["clang", "-c", "main.cc"])).isOk(),
 );
 debug.assertThrow(
-  compilerAnalyzer.analyze(invocation(["gcc", "-c", "main.cc"])) !== undefined,
+  compilerAnalyzer.analyze(invocation(["gcc", "-c", "main.cc"])).isOk(),
 );
 debug.assertThrow(
-  compilerAnalyzer.analyze(invocation(["clang-cl", "/c", "main.cc"])) !==
-    undefined,
+  compilerAnalyzer.analyze(invocation(["clang-cl", "/c", "main.cc"])).isOk(),
 );
 debug.assertThrow(
-  compilerAnalyzer.analyze(invocation(["cl.exe", "/c", "main.cc"])) !==
-    undefined,
+  compilerAnalyzer.analyze(invocation(["cl.exe", "/c", "main.cc"])).isOk(),
 );
 debug.assertThrow(
-  compilerAnalyzer.analyze(invocation(["nvcc", "-c", "kernel.cu"])) ===
-    undefined,
+  expectAnalysisError(
+    compilerAnalyzer.analyze(invocation(["nvcc", "-c", "kernel.cu"])),
+    "nvcc",
+  ) instanceof cmd.CompilerUnsupportedError,
 );
 const nvccIdentity = compilerIdentifier.identifyCompilerCommand(
   invocation(["nvcc", "-c", "kernel.cu"]),
 );
 debug.assertThrow(nvccIdentity?.dialect === cmd.CompilerDialect.Nvcc);
 
-const absoluteExeAnalysis = compilerAnalyzer.analyze(
-  invocation(["gcc", "-c", "absolute.c"], "/opt/toolchains/bin/gcc"),
+const absoluteExeAnalysis = expectCompilerAnalysis(
+  compilerAnalyzer.analyze(
+    invocation(["gcc", "-c", "absolute.c"], "/opt/toolchains/bin/gcc"),
+  ),
+  "absolute executable compiler analysis",
 );
-debug.assertThrow(absoluteExeAnalysis !== undefined);
-if (absoluteExeAnalysis === undefined) {
-  throw new Error("expected absolute executable compiler analysis");
-}
 expectEq(
   absoluteExeAnalysis.exe,
   "/opt/toolchains/bin/gcc",
@@ -352,16 +385,15 @@ expectAnalysis({
   inputs: ["src/custom.c"],
   outputs: ["custom.o"],
 });
-const customAbsoluteExeAnalysis = compilerAnalyzer.analyze(
-  invocation(
-    ["my-cross-tool", "-c", "src/custom-absolute.c"],
-    "/opt/bin/my-cross-tool",
+const customAbsoluteExeAnalysis = expectCompilerAnalysis(
+  compilerAnalyzer.analyze(
+    invocation(
+      ["my-cross-tool", "-c", "src/custom-absolute.c"],
+      "/opt/bin/my-cross-tool",
+    ),
   ),
+  "custom absolute executable compiler analysis",
 );
-debug.assertThrow(customAbsoluteExeAnalysis !== undefined);
-if (customAbsoluteExeAnalysis === undefined) {
-  throw new Error("expected custom absolute executable compiler analysis");
-}
 expectArrayEq(
   customAbsoluteExeAnalysis.writes,
   ["custom-absolute.o"],
@@ -385,7 +417,10 @@ expectAnalysis({
 });
 compilerIdentifier.unregisterCompilerRule("test:cross-gcc");
 debug.assertThrow(
-  compilerAnalyzer.analyze(
-    invocation(["my-cross-tool", "-c", "src/custom.c"]),
-  ) === undefined,
+  expectAnalysisError(
+    compilerAnalyzer.analyze(
+      invocation(["my-cross-tool", "-c", "src/custom.c"]),
+    ),
+    "unregistered custom compiler",
+  ) instanceof cmd.CompilerUnsupportedError,
 );

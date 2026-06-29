@@ -1,4 +1,5 @@
 import type { CompilerDialect, CompilerIdentity } from "../types.js";
+import { CompilerUnsupportedError } from "../errors.js";
 import { parseClangCommand } from "./clang.js";
 import { parseGccCommand } from "./gcc.js";
 import { parseMsvcCommand } from "./msvc.js";
@@ -9,7 +10,7 @@ import type { CompilerParseResult } from "../types.js";
 export function parseCompilerCommand(
   cmd: readonly string[],
   identity: CompilerIdentity,
-): CompilerParseResult | undefined {
+): CompilerParseResult {
   switch (identity.dialect satisfies CompilerDialect) {
     case "clang":
       return parseClangCommand(cmd, identity);
@@ -20,6 +21,8 @@ export function parseCompilerCommand(
     case "nvcc":
       return parseNvccCommand(cmd, identity);
     default:
-      return undefined;
+      throw new CompilerUnsupportedError(
+        `unsupported compiler dialect: ${identity.dialect}`,
+      );
   }
 }

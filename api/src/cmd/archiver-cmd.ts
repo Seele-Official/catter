@@ -1,4 +1,41 @@
-import { Analysis, Analyzer, AnalyzedData } from "./model.js";
+import { fromThrowable, type Result } from "../neverthrow/index.js";
+import { Analysis, AnalysisError, Analyzer, AnalyzedData } from "./model.js";
+
+export class ArchiverNotRecognizedError extends AnalysisError {
+  readonly kind = "archiver-not-recognized" as const;
+}
+
+export class ArchiverUnsupportedError extends AnalysisError {
+  readonly kind = "archiver-unsupported" as const;
+}
+
+export class ArchiverParseError extends AnalysisError {
+  readonly kind = "archiver-parse" as const;
+}
+
+export type ArchiverAnalysisError =
+  | ArchiverNotRecognizedError
+  | ArchiverUnsupportedError
+  | ArchiverParseError;
+
+function toArchiverAnalysisError(
+  value: unknown,
+  context: string,
+): ArchiverAnalysisError {
+  if (
+    value instanceof ArchiverNotRecognizedError ||
+    value instanceof ArchiverUnsupportedError ||
+    value instanceof ArchiverParseError
+  ) {
+    return value;
+  }
+
+  if (value instanceof Error) {
+    return new ArchiverParseError(`${context}: ${value.message}`);
+  }
+
+  return new ArchiverParseError(`${context}: ${String(value)}`);
+}
 
 /**
  * Supported single-letter archive operations.
@@ -137,16 +174,16 @@ function parseOperationToken(
   };
 }
 
-function analyzeArchiverModel(
-  command: AnalyzedData,
-): ArchiverModel | undefined {
+function analyzeArchiverModel(command: AnalyzedData): ArchiverModel {
   if (command.argv.length === 0) {
-    return undefined;
+    throw new ArchiverNotRecognizedError("empty argv");
   }
 
   const exe = exeStem(command.exe);
   if (!isArchiverExe(exe)) {
-    return undefined;
+    throw new ArchiverNotRecognizedError(
+      `not a recognized archiver executable: ${command.exe}`,
+    );
   }
 
   const cmd = command.argv;
@@ -156,7 +193,9 @@ function analyzeArchiverModel(
   while (index < cmd.length) {
     const token = cmd[index];
     if (token === "-M") {
-      return undefined;
+      throw new ArchiverUnsupportedError(
+        "archiver MRI script mode is not supported",
+      );
     }
     if (token === "--thin" || token === "-T") {
       thin = true;
@@ -191,29 +230,37 @@ function analyzeArchiverModel(
       continue;
     }
     if (isOptionToken(token)) {
-      return undefined;
+      throw new ArchiverUnsupportedError(
+        `unsupported archiver option: ${token}`,
+      );
     }
     break;
   }
 
   if (index >= cmd.length) {
-    return undefined;
+    throw new ArchiverUnsupportedError(
+      "archiver command has no operation token",
+    );
   }
 
   const parsedOperation = parseOperationToken(cmd[index]);
   if (parsedOperation === undefined) {
-    return undefined;
+    throw new ArchiverUnsupportedError(
+      `unsupported archiver operation token: ${cmd[index]}`,
+    );
   }
   ++index;
 
   const archive = cmd[index];
   if (archive === undefined) {
-    return undefined;
+    throw new ArchiverUnsupportedError("archiver command has no archive path");
   }
   ++index;
 
   if (!MODELED_ARCHIVER_OPERATIONS.has(parsedOperation.operation)) {
-    return undefined;
+    throw new ArchiverUnsupportedError(
+      `archiver operation is not modeled: ${parsedOperation.operation}`,
+    );
   }
 
   const members = cmd.slice(index);
@@ -274,31 +321,17 @@ export class ArchiverAnalysis extends Analysis {
     this.members = [...model.members];
     this.scriptMode = model.scriptMode;
   }
-
-  /**
-   * Narrows a generic analysis back to an archiver analysis.
-   *
-   * @example
-   * ```ts
-   * const analysis = cmd.ArchiverAnalysis.from(cmd.analyze({
-   *   exe: "ar",
-   *   argv: ["ar", "rcs", "liba.a", "a.o"],
-   * }));
-   * ```
-   */
-  static from(analysis: Analysis | undefined): ArchiverAnalysis | undefined {
-    return analysis instanceof ArchiverAnalysis ? analysis : undefined;
-  }
 }
 
 export class ArchiverAnalyzer extends Analyzer {
   readonly kind = "archiver" as const;
 
-  analyze(command: AnalyzedData): ArchiverAnalysis | undefined {
-    const model = analyzeArchiverModel(command);
-    if (model) {
-      return new ArchiverAnalysis(model, command);
-    }
-    return undefined;
+  analyze(
+    command: AnalyzedData,
+  ): Result<ArchiverAnalysis, ArchiverAnalysisError> {
+    return fromThrowable(
+      () => new ArchiverAnalysis(analyzeArchiverModel(command), command),
+      (error) => toArchiverAnalysisError(error, "archiver analysis failed"),
+    )();
   }
 }

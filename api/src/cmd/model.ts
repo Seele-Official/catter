@@ -1,5 +1,11 @@
 import type { CompilerAnalysis, CompilerAnalyzer } from "./compiler-cmd.js";
-import type { ArchiverAnalysis, ArchiverAnalyzer } from "./archiver-cmd.js";
+import type {
+  ArchiverAnalysis,
+  ArchiverAnalysisError,
+  ArchiverAnalyzer,
+} from "./archiver-cmd.js";
+import type { CompilerAnalysisError } from "./compiler-cmd.js";
+import type { Result } from "../neverthrow/index.js";
 
 /**
  * Describes one concrete dependency edge produced by a command.
@@ -27,6 +33,14 @@ export type AnalyzedData = {
   readonly exe: string;
   readonly argv: readonly string[];
 };
+
+export abstract class AnalysisError extends Error {
+  abstract readonly kind: string;
+  constructor(message: string) {
+    super(message);
+    this.name = new.target.name;
+  }
+}
 
 /**
  * Shared process invocation data and file effects for one analyzed command.
@@ -59,6 +73,8 @@ export type AnalyzedData = {
  * ```
  */
 export abstract class Analysis {
+  /** Discriminator used to narrow concrete analysis variants. */
+  abstract readonly kind: string;
   /** Executable path or name used for analysis. */
   readonly exe: string;
   /** Full argument vector used for analysis. */
@@ -92,11 +108,18 @@ export abstract class Analysis {
  *
  * @example
  * ```ts
+ * class ToyAnalysisError extends cmd.AnalysisError {
+ *   readonly kind = "toy" as const;
+ * }
+ *
  * class ToyAnalyzer extends cmd.Analyzer {
+ *   readonly kind = "toy" as const;
+ *
  *   analyze(command: cmd.AnalyzedData) {
- *     return command.exe === "toy"
- *       ? new ToyAnalysis(command, "in.dat", "out.pkg")
- *       : undefined;
+ *     if (command.exe === "toy") {
+ *       return neverthrow.ok(new ToyAnalysis(command, "in.dat", "out.pkg"));
+ *     }
+ *     return neverthrow.err(new ToyAnalysisError("not a toy command"));
  *   }
  * }
  *
@@ -114,11 +137,24 @@ export abstract class Analysis {
  * ```
  */
 export abstract class Analyzer {
+  abstract readonly kind: string;
   /** Performs analysis and returns a typed result when successful. */
-  abstract analyze(command: AnalyzedData): Analysis | undefined;
+  abstract analyze(command: AnalyzedData): Result<Analysis, AnalysisError>;
+}
+
+export interface IAnalyzer<
+  T extends Analysis = Analysis,
+  R extends AnalysisError = AnalysisError,
+> {
+  analyze(command: AnalyzedData): Result<T, R>;
 }
 
 /** Built-in command analysis result variants. */
 export type CommandAnalysis = CompilerAnalysis | ArchiverAnalysis;
+
+/** Built-in command analyzer error variants. */
+export type CommandAnalyzerError =
+  | CompilerAnalysisError
+  | ArchiverAnalysisError;
 
 export type CommandAnalyzer = CompilerAnalyzer | ArchiverAnalyzer;

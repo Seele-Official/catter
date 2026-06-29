@@ -1,5 +1,7 @@
-import { Analysis, Analyzer } from "../model.js";
-import type { Analysis as AnyAnalysis, AnalyzedData } from "../model.js";
+import { fromThrowable, type Result } from "../../neverthrow/index.js";
+import { Analysis, AnalysisError, Analyzer } from "../model.js";
+import type { AnalyzedData } from "../model.js";
+import { CompilerAnalysisError, toCompilerAnalysisError } from "./errors.js";
 import { CompilerIdentifier } from "./identify.js";
 import { parseCompilerCommand } from "./parsers/index.js";
 import type { CompilerParseResult } from "./types.js";
@@ -18,11 +20,6 @@ import { unwrapCompilerCommand } from "./unwrap.js";
  * command was identified and parsed.
  */
 export class CompilerAnalysis extends Analysis {
-  /** Narrows a generic analysis result back to a compiler analysis. */
-  static from(analysis: AnyAnalysis | undefined): CompilerAnalysis | undefined {
-    return analysis instanceof CompilerAnalysis ? analysis : undefined;
-  }
-
   /** Discriminator for command analysis unions. */
   readonly kind = "compiler" as const;
   /** Executable path or name after wrapper removal. */
@@ -69,14 +66,19 @@ export class CompilerAnalyzer extends Analyzer {
     super();
     this.identifier = identifier;
   }
-  analyze(command: AnalyzedData): CompilerAnalysis | undefined {
-    const unwrapped = unwrapCompilerCommand(command);
-    const identity = this.identifier.identifyCompilerCommand(unwrapped);
-    const model = parseCompilerCommand(unwrapped.argv, identity);
 
-    if (model) {
-      return new CompilerAnalysis(model, command, unwrapped);
-    }
-    return undefined;
+  analyze(
+    command: AnalyzedData,
+  ): Result<CompilerAnalysis, CompilerAnalysisError> {
+    return fromThrowable(
+      () => {
+        const unwrapped = unwrapCompilerCommand(command);
+        const identity = this.identifier.identifyCompilerCommand(unwrapped);
+
+        const model = parseCompilerCommand(unwrapped.argv, identity);
+        return new CompilerAnalysis(model, command, unwrapped);
+      },
+      (error) => toCompilerAnalysisError(error, "compiler analysis failed"),
+    )();
   }
 }

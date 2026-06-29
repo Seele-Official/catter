@@ -9,8 +9,7 @@ import {
   type CDBCommand,
   type CDBEntry,
   type CDBItem,
-  CompilerAnalysis,
-  analyze as analyzeCmd,
+  analyze,
   cdbItemsOf,
 } from "../cmd/index.js";
 
@@ -245,13 +244,16 @@ export function cdb(
       }
 
       const command = data.data;
-      const analysis = CompilerAnalysis.from(
-        analyzeCmd({
-          exe: command.exe,
-          argv: command.argv,
-        }),
-      );
-      if (analysis === undefined) {
+      const analysisResult = analyze({
+        exe: command.exe,
+        argv: command.argv,
+      });
+      if (analysisResult.isErr()) {
+        return;
+      }
+
+      const analysis = analysisResult.value;
+      if (analysis.kind !== "compiler") {
         return;
       }
       capturedCompilerCommandIds.add(ctx.id);

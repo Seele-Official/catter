@@ -1,4 +1,10 @@
-import type { Analysis, Analyzer, AnalyzedData } from "./model.js";
+import { err, ok, type Result } from "../neverthrow/index.js";
+import {
+  AnalysisError,
+  type Analysis,
+  type AnalyzedData,
+  type IAnalyzer,
+} from "./model.js";
 
 /**
  * Ordered registry of command analyzers.
@@ -12,8 +18,11 @@ import type { Analysis, Analyzer, AnalyzedData } from "./model.js";
  * const analysis = registry.analyze({ exe: "clang", argv: ["clang", "-c", "main.c"] });
  * ```
  */
-export class Registry {
-  private readonly analyzerList: Analyzer[] = [];
+export class Registry<
+  T extends Analysis = Analysis,
+  R extends AnalysisError = AnalysisError,
+> {
+  private readonly analyzerList: IAnalyzer<T, R>[] = [];
 
   /**
    * Registers an analyzer instance.
@@ -24,7 +33,7 @@ export class Registry {
    * registry.register(new cmd.CompilerAnalyzer());
    * ```
    */
-  register(analyzer: Analyzer): Registry {
+  register(analyzer: IAnalyzer<T, R>): this {
     this.unregister(analyzer);
     this.analyzerList.push(analyzer);
     return this;
@@ -40,7 +49,7 @@ export class Registry {
    * registry.unregister(analyzer);
    * ```
    */
-  unregister(analyzer: Analyzer): this {
+  unregister(analyzer: IAnalyzer<T, R>): this {
     for (let index = this.analyzerList.length - 1; index >= 0; --index) {
       if (this.analyzerList[index] === analyzer) {
         this.analyzerList.splice(index, 1);
@@ -59,42 +68,22 @@ export class Registry {
    *   .analyzers();
    * ```
    */
-  analyzers(): readonly Analyzer[] {
+  analyzers(): readonly IAnalyzer<T, R>[] {
     return this.analyzerList;
   }
 
-  /**
-   * Checks whether any registered analyzer claims the command.
-   *
-   * @example
-   * ```ts
-   * const ok = new cmd.Registry()
-   *   .register(new cmd.CompilerAnalyzer())
-   *   .canHandle({ exe: "gcc", argv: ["gcc", "-c", "main.c"] });
-   * ```
-   */
-  canHandle(command: AnalyzedData): boolean {
-    return this.analyze(command) !== undefined;
-  }
+  /** Runs analyzers in order and returns the first successful analysis. */
+  analyze(command: AnalyzedData): Result<T, R[]> {
+    let errors: R[] = [];
 
-  /**
-   * Runs the first matching analyzer and returns its result.
-   *
-   * @example
-   * ```ts
-   * const analysis = new cmd.Registry()
-   *   .register(new cmd.CompilerAnalyzer())
-   *   .analyze({ exe: "clang", argv: ["clang", "-c", "main.c"] });
-   * ```
-   */
-  analyze(command: AnalyzedData): Analysis | undefined {
     for (const analyzer of this.analyzerList) {
       const result = analyzer.analyze(command);
-      if (result !== undefined) {
-        return result;
+      if (result.isOk()) {
+        return ok(result.value);
       }
+      errors.push(result.error);
     }
 
-    return undefined;
+    return err(errors);
   }
 }

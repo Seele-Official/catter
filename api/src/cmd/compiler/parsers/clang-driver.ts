@@ -7,6 +7,7 @@ import {
   type OptionTable,
 } from "../../../option/types.js";
 import type { CompilerDialect } from "../types.js";
+import { CompilerParseError } from "../errors.js";
 import {
   CompilerCommandModel,
   type DriverOutputExtensions,
@@ -60,7 +61,7 @@ export function collectClangDriverOptions(
 ): ClangDriverParsedOption[] {
   const collected = option.collect("clang", [...args], visibility);
   if (!Array.isArray(collected)) {
-    throw new Error(`fatal error in parsing: ${collected}`);
+    throw new CompilerParseError(`fatal error in parsing: ${collected}`);
   }
 
   return collected.map((raw) => {
@@ -80,7 +81,7 @@ export function clangDriverOptionValue(
 ): string {
   const value = parsedItem.item.values[valueIndex];
   if (value === undefined) {
-    throw new Error(
+    throw new CompilerParseError(
       `clang option ${parsedItem.raw.key} is missing value ${valueIndex}`,
     );
   }
