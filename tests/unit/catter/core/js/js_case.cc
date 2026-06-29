@@ -116,7 +116,7 @@ void run_basic_js_case(std::string_view file_name, bool with_fs_test_env) {
         run_async_js_case(std::move(source), full_path.string());
     } catch(qjs::Exception& ex) {
         output::redln("{}", ex.what());
-        throw ex;
+        throw;
     }
 }
 

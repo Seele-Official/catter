@@ -113,8 +113,6 @@ export type CompilerMatcher = RegExp | ((command: AnalyzedData) => boolean);
 
 /** Custom rule that maps an executable pattern to one builtin parser dialect. */
 export interface CompilerRule {
-  /** Stable rule key used for replacement and removal. */
-  key: string;
   /** Builtin parser dialect to use after this rule matches. */
   dialect: CompilerDialect;
   /** One matcher or a list of alternative matchers. */

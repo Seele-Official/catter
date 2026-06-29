@@ -29,8 +29,8 @@ export const defaultRegistry = new Registry<
   CommandAnalysis,
   CommandAnalyzerError
 >()
-  .register(compilerAnalyzer)
-  .register(archiverAnalyzer);
+  .register("compiler", compilerAnalyzer)
+  .register("archiver", archiverAnalyzer);
 
 /**
  * Analyzes a command with the built-in registry.
@@ -51,25 +51,26 @@ export function analyze(
  *
  * @example
  * ```ts
- * cmd.register(new cmd.CompilerAnalyzer());
+ * cmd.register("compiler", new cmd.CompilerAnalyzer());
  * ```
  */
 export function register(
+  key: string,
   analyzer: IAnalyzer<CommandAnalysis, CommandAnalyzerError>,
 ): Registry<CommandAnalysis, CommandAnalyzerError> {
-  return defaultRegistry.register(analyzer);
+  return defaultRegistry.register(key, analyzer);
 }
 
 /**
- * Unregisters an analyzer from the shared built-in registry.
+ * Unregisters an analyzer from the shared built-in registry by key.
  *
  * @example
  * ```ts
- * cmd.unregister(cmd.compilerAnalyzer);
+ * cmd.unregister("compiler");
  * ```
  */
 export function unregister(
-  analyzer: IAnalyzer<CommandAnalysis, CommandAnalyzerError>,
+  key: string,
 ): Registry<CommandAnalysis, CommandAnalyzerError> {
-  return defaultRegistry.unregister(analyzer);
+  return defaultRegistry.unregister(key);
 }

@@ -370,8 +370,7 @@ for (const testCase of cases) {
   expectAnalysis(testCase);
 }
 
-compilerIdentifier.registerCompilerRule({
-  key: "test:cross-gcc",
+compilerIdentifier.registerCompilerRule("test:cross-gcc", {
   dialect: cmd.CompilerDialect.Gcc,
   match: [/^my-cross-tool$/, /^\/opt\/bin\/my-cross-tool$/],
 });
@@ -400,8 +399,7 @@ expectArrayEq(
   "custom absolute executable writes",
 );
 
-compilerIdentifier.registerCompilerRule({
-  key: "test:cross-gcc",
+compilerIdentifier.registerCompilerRule("test:cross-gcc", {
   dialect: cmd.CompilerDialect.Clang,
   match: /^my-cross-tool$/,
 });

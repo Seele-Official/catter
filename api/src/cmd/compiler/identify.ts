@@ -9,7 +9,7 @@ import type {
 } from "./types.js";
 
 export class CompilerIdentifier {
-  private customRules: CompilerRule[] = [];
+  private readonly customRules = new Map<string, CompilerRule>();
 
   /**
    * Registers or replaces a custom compiler identification rule.
@@ -18,41 +18,32 @@ export class CompilerIdentifier {
    * cross compilers or project-specific driver names that should be parsed as one
    * of the builtin dialects.
    */
-  registerCompilerRule(rule: CompilerRule): void {
-    this.unregisterCompilerRule(rule.key);
-    this.customRules.push({
-      ...rule,
-      match: Array.isArray(rule.match) ? [...rule.match] : rule.match,
-    });
+  registerCompilerRule(key: string, rule: CompilerRule): void {
+    this.customRules.delete(key);
+    this.customRules.set(key, rule);
   }
 
   /** Removes a previously registered custom compiler rule by key. */
   unregisterCompilerRule(key: string): void {
-    const index = this.customRules.findIndex((rule) => rule.key === key);
-    if (index !== -1) {
-      this.customRules.splice(index, 1);
-    }
+    this.customRules.delete(key);
   }
 
   /** Returns the currently registered custom compiler rules in match order. */
   compilerRules(): readonly CompilerRule[] {
-    return this.customRules.map((rule) => ({
-      ...rule,
-      match: Array.isArray(rule.match) ? [...rule.match] : rule.match,
-    }));
+    return [...this.customRules.values()];
   }
 
   /**
    * Identifies the compiler command and selects a builtin parser dialect, fall back to the `unknown` dialect
    */
   identifyCompilerCommand(command: AnalyzedData): CompilerIdentity {
-    for (const rule of this.customRules) {
+    for (const [key, rule] of this.customRules) {
       if (!this.ruleMatches(rule, command)) {
         continue;
       }
 
       return {
-        key: rule.key,
+        key,
         dialect: rule.dialect,
       };
     }

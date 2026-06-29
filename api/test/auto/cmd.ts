@@ -319,7 +319,7 @@ const toyAnalyzer = new ToyAnalyzer();
 const localRegistry = new cmd.Registry<
   ToyAnalysis,
   cmd.AnalysisError
->().register(toyAnalyzer);
+>().register("toy", toyAnalyzer);
 const localResult = expectOk(
   localRegistry.analyze(invocation(["toy-bundle", "input.dat", "output.pkg"])),
   "local registry",
@@ -336,7 +336,7 @@ expectArrayEq(localResult.reads, ["input.dat"], "local reads");
 expectArrayEq(localResult.writes, ["output.pkg"], "local writes");
 expectEq(localResult.edges.length, 1, "local edge count");
 expectEq(localResult.edges[0].output, "output.pkg", "local edge output");
-localRegistry.unregister(toyAnalyzer);
+localRegistry.unregister("toy");
 debug.assertThrow(
   localRegistry
     .analyze(invocation(["toy-bundle", "input.dat", "output.pkg"]))
@@ -353,7 +353,7 @@ type LocalAnalysis = cmd.CompilerAnalysis | ToyAnalysis;
 const mixedRegistry = new cmd.Registry<
   LocalAnalysis,
   cmd.AnalysisError
->().register(compilerAnalyzer);
+>().register("compiler", compilerAnalyzer);
 const mixedResult = expectOk(
   mixedRegistry.analyze(invocation(["gcc", "-c", "mixed.c"])),
   "mixed registry",
