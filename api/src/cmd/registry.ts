@@ -74,7 +74,7 @@ export class Registry<
 
   /** Runs analyzers in order and returns the first successful analysis. */
   analyze(command: AnalyzedData): Result<T, R[]> {
-    let errors: R[] = [];
+    const errors: R[] = [];
 
     for (const analyzer of this.analyzerList) {
       const result = analyzer.analyze(command);
