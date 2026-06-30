@@ -1,8 +1,10 @@
 import type { CompilerIdentity } from "../types.js";
 import {
   CLANG_OUTPUT_EXTENSIONS,
-  parseClangGnuDriverModel,
+  buildClangGnuDriverModel,
+  collectClangDriverOptions,
 } from "./clang-driver.js";
+import { ClangVisibility } from "../../../option/clang.js";
 import type { CompilerParseResult } from "../types.js";
 
 /**
@@ -15,7 +17,9 @@ export function parseGccCommand(
   cmd: readonly string[],
   identity: CompilerIdentity,
 ): CompilerParseResult {
-  return parseClangGnuDriverModel(cmd, identity.dialect).model.finalize(
-    CLANG_OUTPUT_EXTENSIONS,
-  );
+  const args = cmd.slice(1);
+  return buildClangGnuDriverModel(
+    collectClangDriverOptions(args, ClangVisibility.DefaultVis),
+    identity.dialect,
+  ).model.finalize(CLANG_OUTPUT_EXTENSIONS);
 }

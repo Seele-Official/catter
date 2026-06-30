@@ -13,7 +13,6 @@ import {
   LINK_INPUT_SUFFIXES,
   type DriverOutputExtensions,
 } from "./driver-model.js";
-import type { CompilerParseResult } from "../types.js";
 
 export type ClangDriverParsedOption = {
   raw: OptionItem;
@@ -23,7 +22,6 @@ export type ClangDriverParsedOption = {
 };
 
 export type ParsedClangDriverModel = {
-  args: readonly string[];
   parsed: ClangDriverParsedOption[];
   model: CompilerCommandModel;
 };
@@ -246,7 +244,6 @@ function applyTemporaryClangClLinkerRemainder(
 }
 
 export function buildClangGnuDriverModel(
-  args: readonly string[],
   parsed: ClangDriverParsedOption[],
   dialect: CompilerDialect,
 ): ParsedClangDriverModel {
@@ -256,32 +253,10 @@ export function buildClangGnuDriverModel(
     applyParsedGnuClangDriverOption(model, parsedItem);
   }
 
-  return { args, parsed, model };
-}
-
-export function parseClangGnuDriverModel(
-  cmd: readonly string[],
-  dialect: CompilerDialect,
-): ParsedClangDriverModel {
-  const args = cmd.slice(1);
-  return buildClangGnuDriverModel(
-    args,
-    collectClangDriverOptions(args, ClangVisibility.DefaultVis),
-    dialect,
-  );
-}
-
-export function parseClangGnuDriverCommand(
-  cmd: readonly string[],
-  dialect: CompilerDialect,
-): CompilerParseResult {
-  return parseClangGnuDriverModel(cmd, dialect).model.finalize(
-    CLANG_OUTPUT_EXTENSIONS,
-  );
+  return { parsed, model };
 }
 
 export function buildClangClDriverModel(
-  args: readonly string[],
   parsed: ClangDriverParsedOption[],
   dialect: CompilerDialect,
 ): ParsedClangDriverModel {
@@ -291,26 +266,5 @@ export function buildClangClDriverModel(
     applyParsedClangClDriverOption(model, parsedItem);
   }
 
-  return { args, parsed, model };
-}
-
-export function parseClangClDriverModel(
-  cmd: readonly string[],
-  dialect: CompilerDialect,
-): ParsedClangDriverModel {
-  const args = cmd.slice(1);
-  return buildClangClDriverModel(
-    args,
-    collectClangDriverOptions(args, CLANG_CL_VISIBILITY),
-    dialect,
-  );
-}
-
-export function parseClangClDriverCommand(
-  cmd: readonly string[],
-  dialect: CompilerDialect,
-): CompilerParseResult {
-  return parseClangClDriverModel(cmd, dialect).model.finalize(
-    CLANG_CL_OUTPUT_EXTENSIONS,
-  );
+  return { parsed, model };
 }

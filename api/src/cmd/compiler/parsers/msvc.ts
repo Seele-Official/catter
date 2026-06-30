@@ -1,7 +1,9 @@
 import type { CompilerIdentity } from "../types.js";
 import {
   CLANG_CL_OUTPUT_EXTENSIONS,
-  parseClangClDriverModel,
+  buildClangClDriverModel,
+  CLANG_CL_VISIBILITY,
+  collectClangDriverOptions,
 } from "./clang-driver.js";
 import type { CompilerParseResult } from "../types.js";
 
@@ -15,7 +17,9 @@ export function parseMsvcCommand(
   cmd: readonly string[],
   identity: CompilerIdentity,
 ): CompilerParseResult {
-  return parseClangClDriverModel(cmd, identity.dialect).model.finalize(
-    CLANG_CL_OUTPUT_EXTENSIONS,
-  );
+  const args = cmd.slice(1);
+  return buildClangClDriverModel(
+    collectClangDriverOptions(args, CLANG_CL_VISIBILITY),
+    identity.dialect,
+  ).model.finalize(CLANG_CL_OUTPUT_EXTENSIONS);
 }
