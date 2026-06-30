@@ -13,11 +13,14 @@ import type {
 import { unwrapCompilerCommand } from "./unwrap.js";
 
 /**
- * Analysis result for a recognized compiler driver command.
+ * Analysis result for a recognized compiler driver invocation.
  *
- * The base `Analysis` fields expose generic file effects:
- * `reads`, `writes`, and `edges`. Compiler-specific fields describe how the
- * command was identified and parsed.
+ * This is driver-level analysis, not compile-only analysis. A compiler driver
+ * can preprocess, compile, link, archive, or dispatch another tool; the
+ * `compilerMode` field describes the high-level action inferred for this
+ * invocation. The base `Analysis` fields expose the logical file effects that
+ * the driver command is expected to produce: `reads`, `writes`, and `edges`.
+ * Compiler-specific fields describe how the command was identified and parsed.
  */
 export class CompilerAnalysis extends Analysis {
   /** Discriminator for command analysis unions. */

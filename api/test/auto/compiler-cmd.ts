@@ -418,21 +418,22 @@ const cases: ExpectedAnalysis[] = [
     outputs: ["main.obj"],
   },
   {
-    label: "clang driver-mode cl does not parse linker remainder",
+    label: "clang driver-mode cl parses linker remainder after input",
     cmd: [
       "clang",
       "--driver-mode=cl",
+      "foo.obj",
       "/link",
       "/dll",
       "/out:bin/tool.dll",
-      "foo.obj",
+      "bar.res",
     ],
     compilerMode: {
       phase: cmd.CompilerPhase.Link,
-      artifact: cmd.CompilerArtifact.Executable,
+      artifact: cmd.CompilerArtifact.SharedLibrary,
     },
-    inputs: [],
-    outputs: [],
+    inputs: ["foo.obj", "bar.res"],
+    outputs: ["bin/tool.dll"],
   },
 ];
 

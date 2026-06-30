@@ -1,4 +1,5 @@
 import * as option from "../../../option/index.js";
+import * as fs from "../../../fs.js";
 import { ClangID, ClangVisibility } from "../../../option/clang.js";
 import {
   OptionKindClass,
@@ -10,6 +11,7 @@ import type { CompilerDialect } from "../types.js";
 import { CompilerParseError } from "../errors.js";
 import {
   CompilerCommandModel,
+  LINK_INPUT_SUFFIXES,
   type DriverOutputExtensions,
 } from "./driver-model.js";
 import type { CompilerParseResult } from "../types.js";
@@ -240,9 +242,55 @@ function applyParsedClangClDriverOption(
         parsedItem.item.index,
       );
       break;
+    case ClangID.ID__SLASH_link:
+      applyTemporaryClangClLinkerRemainder(model, parsedItem);
+      break;
     default:
       applyParsedGnuClangDriverOption(model, parsedItem);
       break;
+  }
+}
+
+function isLinkerRemainderInput(token: string): boolean {
+  if (token.length === 0 || token.startsWith("@")) {
+    return false;
+  }
+  if (!token.startsWith("-") && !token.startsWith("/")) {
+    return true;
+  }
+  return LINK_INPUT_SUFFIXES.has(fs.path.extension(token).toLowerCase());
+}
+
+function applyTemporaryClangClLinkerRemainder(
+  model: CompilerCommandModel,
+  parsedItem: ClangDriverParsedOption,
+): void {
+  // Temporary COFF linker remainder extraction. Keep this narrow until the
+  // command registry has a dedicated linker analyzer/parser for link.exe/lld-link.
+  const values = parsedItem.item.values;
+  for (let index = 0; index < values.length; ++index) {
+    const token = values[index]!;
+    const lower = token.toLowerCase();
+
+    if (lower === "/dll") {
+      model.setLinkSharedLibrary();
+      continue;
+    }
+
+    if (lower.startsWith("/out:")) {
+      model.recordOutput("linker", token.slice(5), parsedItem.item.index);
+      continue;
+    }
+
+    if (lower === "/out" && index + 1 < values.length) {
+      model.recordOutput("linker", values[index + 1]!, parsedItem.item.index);
+      ++index;
+      continue;
+    }
+
+    if (isLinkerRemainderInput(token)) {
+      model.recordInput(token, "link", parsedItem.item.index);
+    }
   }
 }
 
