@@ -2,7 +2,6 @@ import * as option from "../../../option/index.js";
 import * as fs from "../../../fs.js";
 import { ClangID, ClangVisibility } from "../../../option/clang.js";
 import {
-  OptionKindClass,
   type OptionInfo,
   type OptionItem,
   type OptionTable,
@@ -88,54 +87,6 @@ export function clangDriverOptionValue(
     );
   }
   return value;
-}
-
-export function clangDriverParsedArgCount(
-  args: readonly string[],
-  item: OptionItem,
-  info: OptionInfo,
-): number {
-  switch (info.kind) {
-    case OptionKindClass.GroupClass:
-    case OptionKindClass.InputClass:
-    case OptionKindClass.UnknownClass:
-    case OptionKindClass.FlagClass:
-    case OptionKindClass.JoinedClass:
-    case OptionKindClass.RemainingArgsJoinedClass:
-    case OptionKindClass.CommaJoinedClass:
-      return 1;
-    case OptionKindClass.ValuesClass:
-    case OptionKindClass.SeparateClass:
-    case OptionKindClass.RemainingArgsClass:
-    case OptionKindClass.MultiArgClass:
-      return 1 + item.values.length;
-    case OptionKindClass.JoinedOrSeparateClass:
-      return args[item.index] === item.key ? 1 + item.values.length : 1;
-    case OptionKindClass.JoinedAndSeparateClass:
-      return item.values.length === 0 ? 1 : item.values.length;
-    default:
-      return 1;
-  }
-}
-
-export function collectClangDriverConsumedArgIndexes(
-  args: readonly string[],
-  parsed: readonly ClangDriverParsedOption[],
-): Set<number> {
-  const indexes = new Set<number>();
-
-  for (const parsedItem of parsed) {
-    const count = clangDriverParsedArgCount(
-      args,
-      parsedItem.raw,
-      parsedItem.rawInfo,
-    );
-    for (let offset = 0; offset < count; ++offset) {
-      indexes.add(parsedItem.raw.index + offset);
-    }
-  }
-
-  return indexes;
 }
 
 function applyParsedGnuClangDriverOption(
