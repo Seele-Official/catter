@@ -13,7 +13,7 @@ import type {
   CompilerParseResult,
 } from "../types.js";
 import { CompilerParseError } from "../errors.js";
-import { resolveCompilerMode } from "./driver-model.js";
+import { resolveCompilerMode } from "./compiler-mode.js";
 
 export type ClangDriverParsedOption = {
   raw: OptionItem;
