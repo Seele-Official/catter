@@ -1,6 +1,5 @@
 import type { CompilerIdentity } from "../types.js";
 import {
-  CLANG_OUTPUT_EXTENSIONS,
   buildClangGnuDriverModel,
   collectClangDriverOptions,
 } from "./clang-driver.js";
@@ -21,5 +20,5 @@ export function parseGccCommand(
   return buildClangGnuDriverModel(
     collectClangDriverOptions(args, ClangVisibility.DefaultVis),
     identity.dialect,
-  ).model.finalize(CLANG_OUTPUT_EXTENSIONS);
+  );
 }

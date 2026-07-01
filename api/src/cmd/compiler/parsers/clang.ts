@@ -1,16 +1,17 @@
-import type { CompilerIdentity } from "../types.js";
 import { ClangID, ClangVisibility } from "../../../option/clang.js";
 import {
   buildClangClDriverModel,
   buildClangGnuDriverModel,
-  CLANG_CL_OUTPUT_EXTENSIONS,
   CLANG_CL_VISIBILITY,
-  CLANG_OUTPUT_EXTENSIONS,
   clangDriverOptionValue,
   collectClangDriverOptions,
   type ClangDriverParsedOption,
 } from "./clang-driver.js";
-import type { CompilerParseResult } from "../types.js";
+import {
+  CompilerDialect,
+  type CompilerIdentity,
+  type CompilerParseResult,
+} from "../types.js";
 
 function getClangDriverModeIndex(
   parsed: readonly ClangDriverParsedOption[],
@@ -33,15 +34,10 @@ export function parseClangCommand(
 
   if (clangDriverModeIndex !== -1) {
     return buildClangClDriverModel(
-      collectClangDriverOptions(
-        args.splice(clangDriverModeIndex, 1),
-        CLANG_CL_VISIBILITY,
-      ),
-      identity.dialect,
-    ).model.finalize(CLANG_CL_OUTPUT_EXTENSIONS);
+      collectClangDriverOptions(args, CLANG_CL_VISIBILITY),
+      CompilerDialect.Msvc,
+    );
   }
 
-  return buildClangGnuDriverModel(parsed, identity.dialect).model.finalize(
-    CLANG_OUTPUT_EXTENSIONS,
-  );
+  return buildClangGnuDriverModel(parsed, identity.dialect);
 }

@@ -1,12 +1,14 @@
 import { fromThrowable, type Result } from "../../neverthrow/index.js";
-import { Analysis, AnalysisError, Analyzer } from "../model.js";
+import { Analysis, Analyzer } from "../model.js";
 import type { AnalyzedData } from "../model.js";
 import { CompilerAnalysisError, toCompilerAnalysisError } from "./errors.js";
 import { CompilerIdentifier } from "./identify.js";
 import { parseCompilerCommand } from "./parsers/index.js";
-import type { CompilerParseResult } from "./types.js";
+import { resolveCompilerCommand } from "./resolver.js";
 import type {
-  CompilerInput,
+  CompilerAnalyzerOptions,
+  CompilerParseResult,
+  CompilerResolveResult,
   CompilerMode,
   UnwrappedCompilerCommand,
 } from "./types.js";
@@ -31,31 +33,27 @@ export class CompilerAnalysis extends Analysis {
   readonly unwrappedArgv: readonly string[];
   /** Compiler phase and artifact content kind inferred from parsed options. */
   readonly compilerMode: CompilerMode;
-  /** Structured compiler input entries, including source/link role and argv index. */
-  readonly inputFiles: readonly CompilerInput[];
-  /** Source input paths selected from `inputFiles`. */
+  /** Source input paths resolved from parser facts and candidates. */
   readonly sourceFiles: readonly string[];
 
   constructor(
-    model: CompilerParseResult,
+    parsed: CompilerParseResult,
+    resolved: CompilerResolveResult,
     command: AnalyzedData,
     unwrapped: UnwrappedCompilerCommand,
   ) {
     super({
       exe: command.exe,
       argv: command.argv,
-      reads: model.reads,
-      writes: model.writes,
-      edges: model.edges,
+      reads: resolved.reads,
+      writes: resolved.writes,
+      edges: resolved.edges,
     });
 
     this.unwrappedExe = unwrapped.exe;
     this.unwrappedArgv = [...unwrapped.argv];
-    this.compilerMode = { ...model.compilerMode };
-    this.inputFiles = model.inputs.map((input) => ({ ...input }));
-    this.sourceFiles = this.inputFiles
-      .filter((input) => input.kind === "source")
-      .map((input) => input.path);
+    this.compilerMode = { ...parsed.compilerMode };
+    this.sourceFiles = [...resolved.sourceFiles];
   }
 }
 
@@ -64,10 +62,21 @@ export class CompilerAnalyzer extends Analyzer {
   readonly kind = "compiler" as const;
 
   private readonly identifier;
+  private readonly resolver;
 
-  constructor(identifier: CompilerIdentifier = new CompilerIdentifier()) {
+  constructor(
+    identifierOrOptions: CompilerIdentifier | CompilerAnalyzerOptions = {},
+  ) {
     super();
-    this.identifier = identifier;
+    if (identifierOrOptions instanceof CompilerIdentifier) {
+      this.identifier = identifierOrOptions;
+      this.resolver = resolveCompilerCommand;
+      return;
+    }
+
+    this.identifier =
+      identifierOrOptions.identifier ?? new CompilerIdentifier();
+    this.resolver = identifierOrOptions.resolver ?? resolveCompilerCommand;
   }
 
   analyze(
@@ -78,8 +87,9 @@ export class CompilerAnalyzer extends Analyzer {
         const unwrapped = unwrapCompilerCommand(command);
         const identity = this.identifier.identifyCompilerCommand(unwrapped);
 
-        const model = parseCompilerCommand(unwrapped.argv, identity);
-        return new CompilerAnalysis(model, command, unwrapped);
+        const parsed = parseCompilerCommand(unwrapped.argv, identity);
+        const resolved = this.resolver(parsed);
+        return new CompilerAnalysis(parsed, resolved, command, unwrapped);
       },
       (error) => toCompilerAnalysisError(error, "compiler analysis failed"),
     )();

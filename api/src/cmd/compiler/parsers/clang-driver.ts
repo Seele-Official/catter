@@ -1,18 +1,19 @@
 import * as option from "../../../option/index.js";
-import * as fs from "../../../fs.js";
 import { ClangID, ClangVisibility } from "../../../option/clang.js";
 import {
   type OptionInfo,
   type OptionItem,
   type OptionTable,
 } from "../../../option/types.js";
-import type { CompilerDialect } from "../types.js";
+import type {
+  CompilerAction,
+  CompilerDialect,
+  CompilerInput,
+  CompilerOutput,
+  CompilerParseResult,
+} from "../types.js";
 import { CompilerParseError } from "../errors.js";
-import {
-  CompilerCommandModel,
-  LINK_INPUT_SUFFIXES,
-  type DriverOutputExtensions,
-} from "./driver-model.js";
+import { resolveCompilerMode } from "./driver-model.js";
 
 export type ClangDriverParsedOption = {
   raw: OptionItem;
@@ -21,23 +22,14 @@ export type ClangDriverParsedOption = {
   info: OptionInfo;
 };
 
-export type ParsedClangDriverModel = {
-  parsed: ClangDriverParsedOption[];
-  model: CompilerCommandModel;
-};
-
-export const CLANG_OUTPUT_EXTENSIONS: DriverOutputExtensions = {
-  object: ".o",
-  executable: "",
-  sharedLibrary: "",
-  staticLibrary: ".a",
-};
-
-export const CLANG_CL_OUTPUT_EXTENSIONS: DriverOutputExtensions = {
-  object: ".obj",
-  executable: ".exe",
-  sharedLibrary: ".dll",
-  staticLibrary: ".lib",
+type ClangDriverParserState = {
+  dialect: CompilerDialect;
+  explicitLanguage: string | undefined;
+  compilerActions: CompilerAction[];
+  inputCandidates: CompilerInput[];
+  outputCandidates: CompilerOutput[];
+  inputs: CompilerInput[];
+  outputs: CompilerOutput[];
 };
 
 export const CLANG_CL_VISIBILITY =
@@ -88,114 +80,180 @@ export function clangDriverOptionValue(
 }
 
 function applyParsedGnuClangDriverOption(
-  model: CompilerCommandModel,
+  state: ClangDriverParserState,
   parsedItem: ClangDriverParsedOption,
 ): void {
   switch (parsedItem.item.id as ClangID) {
     case ClangID.ID_c:
     case ClangID.ID_emit_obj:
-      model.setCompileObject();
+      state.compilerActions.push({
+        kind: "compile-object",
+        index: parsedItem.item.index,
+      });
       break;
     case ClangID.ID_S:
-      model.setCompileAssemblyLike();
+      state.compilerActions.push({
+        kind: "compile-assembly-like",
+        index: parsedItem.item.index,
+      });
       break;
     case ClangID.ID_E:
-      model.setPreprocess();
+      state.compilerActions.push({
+        kind: "preprocess",
+        index: parsedItem.item.index,
+      });
       break;
     case ClangID.ID_fsyntax_only:
-      model.setSyntaxOnly();
+      state.compilerActions.push({
+        kind: "syntax-only",
+        index: parsedItem.item.index,
+      });
       break;
     case ClangID.ID_emit_llvm:
     case ClangID.ID_emit_llvm_bc:
-      model.setCompileLlvmLike();
+      state.compilerActions.push({
+        kind: "compile-llvm-like",
+        index: parsedItem.item.index,
+      });
       break;
     case ClangID.ID_emit_pch:
-      model.setCompilePch();
+      state.compilerActions.push({
+        kind: "compile-pch",
+        index: parsedItem.item.index,
+      });
       break;
     case ClangID.ID_emit_module:
     case ClangID.ID_emit_module_interface:
     case ClangID.ID_emit_reduced_module_interface:
-      model.setCompilePcm();
+      state.compilerActions.push({
+        kind: "compile-pcm",
+        index: parsedItem.item.index,
+      });
       break;
     case ClangID.ID_emit_static_lib:
-      model.setArchive();
+      state.compilerActions.push({
+        kind: "archive",
+        index: parsedItem.item.index,
+      });
       break;
     case ClangID.ID_shared:
-      model.setLinkSharedLibrary();
+      state.compilerActions.push({
+        kind: "link-shared-library",
+        index: parsedItem.item.index,
+      });
       break;
     case ClangID.ID_r:
-      model.setRelocatableLink();
+      state.compilerActions.push({
+        kind: "relocatable-link",
+        index: parsedItem.item.index,
+      });
       break;
     case ClangID.ID_o:
-      model.recordOutput(
-        "primary",
-        clangDriverOptionValue(parsedItem),
-        parsedItem.item.index,
-      );
+      state.outputs.push({
+        path: clangDriverOptionValue(parsedItem),
+        kind: "primary-artifact",
+        index: parsedItem.item.index,
+        source: {
+          kind: "option",
+          option: parsedItem.raw.key,
+          optionIndex: parsedItem.item.index,
+        },
+      });
       break;
     case ClangID.ID_x:
-      model.setExplicitLanguage(clangDriverOptionValue(parsedItem));
+      state.explicitLanguage = clangDriverOptionValue(parsedItem);
       break;
     case ClangID.ID_INPUT:
-      model.recordClassifiedInput(parsedItem.item.key, parsedItem.item.index);
+      state.inputCandidates.push({
+        path: parsedItem.item.key,
+        index: parsedItem.item.index,
+        source: { kind: "argument" },
+        language: state.explicitLanguage,
+      });
       break;
     default:
       if (parsedItem.info.group === ClangID.ID_Action_Group) {
-        model.setUnknownCompileAction();
+        state.compilerActions.push({
+          kind: "unknown-compile-action",
+          index: parsedItem.item.index,
+        });
       }
       break;
   }
 }
 
 function applyParsedClangClDriverOption(
-  model: CompilerCommandModel,
+  state: ClangDriverParserState,
   parsedItem: ClangDriverParsedOption,
 ): void {
   switch (parsedItem.item.id as ClangID) {
     case ClangID.ID__SLASH_LD:
     case ClangID.ID__SLASH_LDd:
-      model.setLinkSharedLibrary();
+      state.compilerActions.push({
+        kind: "link-shared-library",
+        index: parsedItem.item.index,
+      });
       break;
     case ClangID.ID__SLASH_o:
-      model.recordOutput(
-        "primary",
-        clangDriverOptionValue(parsedItem),
-        parsedItem.item.index,
-      );
+      state.outputs.push({
+        path: clangDriverOptionValue(parsedItem),
+        kind: "primary-artifact",
+        index: parsedItem.item.index,
+        source: {
+          kind: "option",
+          option: parsedItem.raw.key,
+          optionIndex: parsedItem.item.index,
+        },
+      });
       break;
     case ClangID.ID__SLASH_Fo:
-      model.recordOutput(
-        "object",
-        clangDriverOptionValue(parsedItem),
-        parsedItem.item.index,
-      );
+      state.outputs.push({
+        path: clangDriverOptionValue(parsedItem),
+        kind: "object-file",
+        index: parsedItem.item.index,
+        source: {
+          kind: "option",
+          option: parsedItem.raw.key,
+          optionIndex: parsedItem.item.index,
+        },
+      });
       break;
     case ClangID.ID__SLASH_Fe:
-      model.recordOutput(
-        "executable",
-        clangDriverOptionValue(parsedItem),
-        parsedItem.item.index,
-      );
+      state.outputs.push({
+        path: clangDriverOptionValue(parsedItem),
+        kind: "linked-artifact",
+        index: parsedItem.item.index,
+        source: {
+          kind: "option",
+          option: parsedItem.raw.key,
+          optionIndex: parsedItem.item.index,
+        },
+      });
       break;
     case ClangID.ID__SLASH_TC:
-      model.setExplicitLanguage("c");
+      state.explicitLanguage = "c";
       break;
     case ClangID.ID__SLASH_TP:
-      model.setExplicitLanguage("c++");
+      state.explicitLanguage = "c++";
       break;
     case ClangID.ID__SLASH_Tc:
     case ClangID.ID__SLASH_Tp:
-      model.recordInput(
-        clangDriverOptionValue(parsedItem),
-        "source",
-        parsedItem.item.index,
-      );
+      state.inputs.push({
+        path: clangDriverOptionValue(parsedItem),
+        index: parsedItem.item.index,
+        source: {
+          kind: "option",
+          option: parsedItem.raw.key,
+          optionIndex: parsedItem.item.index,
+        },
+        language: parsedItem.item.id === ClangID.ID__SLASH_Tc ? "c" : "c++",
+      });
       break;
     case ClangID.ID__SLASH_link:
-      applyTemporaryClangClLinkerRemainder(model, parsedItem);
+      applyTemporaryClangClLinkerRemainder(state, parsedItem);
       break;
     default:
-      applyParsedGnuClangDriverOption(model, parsedItem);
+      applyParsedGnuClangDriverOption(state, parsedItem);
       break;
   }
 }
@@ -204,14 +262,11 @@ function isLinkerRemainderInput(token: string): boolean {
   if (token.length === 0 || token.startsWith("@")) {
     return false;
   }
-  if (!token.startsWith("-") && !token.startsWith("/")) {
-    return true;
-  }
-  return LINK_INPUT_SUFFIXES.has(fs.path.extension(token).toLowerCase());
+  return !token.startsWith("-") && !token.startsWith("/");
 }
 
 function applyTemporaryClangClLinkerRemainder(
-  model: CompilerCommandModel,
+  state: ClangDriverParserState,
   parsedItem: ClangDriverParsedOption,
 ): void {
   // Temporary COFF linker remainder extraction. Keep this narrow until the
@@ -219,26 +274,60 @@ function applyTemporaryClangClLinkerRemainder(
   const values = parsedItem.item.values;
   for (let index = 0; index < values.length; ++index) {
     const token = values[index]!;
+    const tokenIndex = parsedItem.item.index + 1 + index;
     const lower = token.toLowerCase();
 
     if (lower === "/dll") {
-      model.setLinkSharedLibrary();
+      state.compilerActions.push({
+        kind: "link-shared-library",
+        index: tokenIndex,
+      });
       continue;
     }
 
     if (lower.startsWith("/out:")) {
-      model.recordOutput("linker", token.slice(5), parsedItem.item.index);
+      state.outputs.push({
+        path: token.slice(5),
+        kind: "linked-artifact",
+        index: tokenIndex,
+        source: {
+          kind: "remainder-option",
+          boundary: parsedItem.raw.key,
+          boundaryIndex: parsedItem.item.index,
+          option: token.slice(0, 5),
+          optionIndex: tokenIndex,
+        },
+      });
       continue;
     }
 
     if (lower === "/out" && index + 1 < values.length) {
-      model.recordOutput("linker", values[index + 1]!, parsedItem.item.index);
+      state.outputs.push({
+        path: values[index + 1]!,
+        kind: "linked-artifact",
+        index: tokenIndex + 1,
+        source: {
+          kind: "remainder-option",
+          boundary: parsedItem.raw.key,
+          boundaryIndex: parsedItem.item.index,
+          option: token,
+          optionIndex: tokenIndex,
+        },
+      });
       ++index;
       continue;
     }
 
     if (isLinkerRemainderInput(token)) {
-      model.recordInput(token, "link", parsedItem.item.index);
+      state.inputs.push({
+        path: token,
+        index: tokenIndex,
+        source: {
+          kind: "remainder-argument",
+          boundary: parsedItem.raw.key,
+          boundaryIndex: parsedItem.item.index,
+        },
+      });
     }
   }
 }
@@ -246,25 +335,57 @@ function applyTemporaryClangClLinkerRemainder(
 export function buildClangGnuDriverModel(
   parsed: ClangDriverParsedOption[],
   dialect: CompilerDialect,
-): ParsedClangDriverModel {
-  const model = new CompilerCommandModel(dialect);
+): CompilerParseResult {
+  const state: ClangDriverParserState = {
+    dialect,
+    explicitLanguage: undefined,
+    compilerActions: [],
+    inputCandidates: [],
+    outputCandidates: [],
+    inputs: [],
+    outputs: [],
+  };
 
   for (const parsedItem of parsed) {
-    applyParsedGnuClangDriverOption(model, parsedItem);
+    applyParsedGnuClangDriverOption(state, parsedItem);
   }
 
-  return { parsed, model };
+  return {
+    dialect: state.dialect,
+    compilerMode: resolveCompilerMode(state.compilerActions),
+    compilerActions: state.compilerActions,
+    inputCandidates: state.inputCandidates,
+    outputCandidates: state.outputCandidates,
+    inputs: state.inputs,
+    outputs: state.outputs,
+  };
 }
 
 export function buildClangClDriverModel(
   parsed: ClangDriverParsedOption[],
   dialect: CompilerDialect,
-): ParsedClangDriverModel {
-  const model = new CompilerCommandModel(dialect);
+): CompilerParseResult {
+  const state: ClangDriverParserState = {
+    dialect,
+    explicitLanguage: undefined,
+    compilerActions: [],
+    inputCandidates: [],
+    outputCandidates: [],
+    inputs: [],
+    outputs: [],
+  };
 
   for (const parsedItem of parsed) {
-    applyParsedClangClDriverOption(model, parsedItem);
+    applyParsedClangClDriverOption(state, parsedItem);
   }
 
-  return { parsed, model };
+  return {
+    dialect: state.dialect,
+    compilerMode: resolveCompilerMode(state.compilerActions),
+    compilerActions: state.compilerActions,
+    inputCandidates: state.inputCandidates,
+    outputCandidates: state.outputCandidates,
+    inputs: state.inputs,
+    outputs: state.outputs,
+  };
 }

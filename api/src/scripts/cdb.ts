@@ -258,12 +258,10 @@ export function cdb(
       }
       capturedCompilerCommandIds.add(ctx.id);
 
-      for (const input of analysis.inputFiles) {
-        if (input.kind === "source") {
-          const full = pathOf(command.cwd, input.path);
-          if (full !== undefined) {
-            srcFiles.set(full, input.path);
-          }
+      for (const source of analysis.sourceFiles) {
+        const full = pathOf(command.cwd, source);
+        if (full !== undefined) {
+          srcFiles.set(full, source);
         }
       }
 

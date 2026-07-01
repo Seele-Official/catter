@@ -1,6 +1,5 @@
 import type { CompilerIdentity } from "../types.js";
 import {
-  CLANG_CL_OUTPUT_EXTENSIONS,
   buildClangClDriverModel,
   CLANG_CL_VISIBILITY,
   collectClangDriverOptions,
@@ -21,5 +20,5 @@ export function parseMsvcCommand(
   return buildClangClDriverModel(
     collectClangDriverOptions(args, CLANG_CL_VISIBILITY),
     identity.dialect,
-  ).model.finalize(CLANG_CL_OUTPUT_EXTENSIONS);
+  );
 }

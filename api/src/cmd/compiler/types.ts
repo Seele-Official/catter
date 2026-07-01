@@ -1,5 +1,6 @@
 import type { Compiler } from "catter-c";
 import type { AnalyzedData, Edge } from "../model.js";
+import type { CompilerIdentifier } from "./identify.js";
 
 /** High-level compiler pipeline phase. */
 export const CompilerPhase = {
@@ -92,15 +93,107 @@ export const CompilerDialect = {
 export type CompilerDialect =
   (typeof CompilerDialect)[keyof typeof CompilerDialect];
 
-/** One parsed compiler input, including its inferred role. */
-export interface CompilerInput {
+export type CompilerFactSource =
+  | {
+      kind: "argument";
+    }
+  | {
+      kind: "option";
+      option: string;
+      optionIndex: number;
+    }
+  | {
+      kind: "remainder-argument";
+      boundary: string;
+      boundaryIndex: number;
+    }
+  | {
+      kind: "remainder-option";
+      boundary: string;
+      boundaryIndex: number;
+      option: string;
+      optionIndex: number;
+    };
+
+export type CompilerActionKind =
+  | "preprocess"
+  | "syntax-only"
+  | "compile-object"
+  | "compile-assembly-like"
+  | "compile-llvm-like"
+  | "compile-pch"
+  | "compile-pcm"
+  | "unknown-compile-action"
+  | "link-shared-library"
+  | "archive"
+  | "relocatable-link";
+
+/** One parsed compiler action before mode resolution. */
+export type CompilerAction = {
+  /** Driver action represented by the parsed option. */
+  kind: CompilerActionKind;
+  /** Original argv index for the action option token. */
+  index: number;
+};
+
+export type CompilerInput = {
   /** Path token as it appeared in the compiler command. */
   path: string;
-  /** Whether the input is parsed as a translation-unit source or link input. */
-  kind: "source" | "link";
   /** Original argv index for the input token. */
   index: number;
-}
+  /** Parser evidence for this input fact. */
+  source: CompilerFactSource;
+  /** Explicit source language in effect when this input was parsed. */
+  language?: string;
+};
+
+export type CompilerOutputKind =
+  | "primary-artifact"
+  | "object-file"
+  | "linked-artifact";
+
+export type CompilerOutput = {
+  /** Path token as it appeared in the compiler command. */
+  path: string;
+  /** Driver-level output purpose selected by the option spelling. */
+  kind: CompilerOutputKind;
+  /** Original argv index for the output option token. */
+  index: number;
+  /** Parser evidence for this output fact. */
+  source: CompilerFactSource;
+};
+
+export type CompilerDriverParseResult = {
+  dialect: CompilerDialect;
+  compilerMode: CompilerMode;
+  compilerActions: CompilerAction[];
+  inputCandidates: CompilerInput[];
+  outputCandidates: CompilerOutput[];
+  inputs: CompilerInput[];
+  outputs: CompilerOutput[];
+};
+
+export type CompilerResolveResult = {
+  inputs: CompilerInput[];
+  sourceFiles: string[];
+  reads: string[];
+  writes: string[];
+  edges: Edge[];
+};
+
+export type CompilerResolver = (
+  parsed: CompilerDriverParseResult,
+) => CompilerResolveResult;
+
+export type CompilerAnalyzerOptions = {
+  identifier?: CompilerIdentifier;
+  resolver?: CompilerResolver;
+};
+
+export type CompilerParseResult = CompilerDriverParseResult;
+
+export type CompilerAnalysisResult = CompilerDriverParseResult &
+  CompilerResolveResult;
 
 /**
  * Matcher used by a custom compiler rule.
@@ -134,12 +227,3 @@ export interface UnwrappedCompilerCommand {
   /** Command argv after wrapper removal. Currently this is unchanged. */
   argv: readonly string[];
 }
-
-export type CompilerParseResult = {
-  dialect: CompilerDialect;
-  compilerMode: CompilerMode;
-  inputs: CompilerInput[];
-  reads: string[];
-  writes: string[];
-  edges: Edge[];
-};

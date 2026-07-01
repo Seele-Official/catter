@@ -157,6 +157,107 @@ expectArrayEq(
   "absolute executable writes",
 );
 
+let capturedParse: cmd.CompilerParseResult | undefined;
+const parserIrAnalyzer = new cmd.CompilerAnalyzer({
+  resolver(parsed) {
+    capturedParse = parsed;
+    return cmd.resolveCompilerCommand(parsed);
+  },
+});
+const parserIrAnalysis = expectCompilerAnalysis(
+  parserIrAnalyzer.analyze(
+    invocation(["clang", "-S", "-emit-llvm", "src/t.c", "-o", "-"]),
+  ),
+  "parser ir compiler analysis",
+);
+debug.assertThrow(capturedParse !== undefined);
+if (capturedParse === undefined) {
+  throw new Error("parser ir did not capture parse result");
+}
+const parserIr = capturedParse;
+expectEq(
+  parserIrAnalysis.compilerMode.artifact,
+  cmd.CompilerArtifact.LlvmIR,
+  "parser ir resolved artifact",
+);
+expectEq(parserIr.compilerActions.length, 2, "parser ir action count");
+expectEq(
+  parserIr.compilerActions[0]!.kind,
+  "compile-assembly-like",
+  "parser ir first action",
+);
+expectEq(
+  parserIr.compilerActions[1]!.kind,
+  "compile-llvm-like",
+  "parser ir second action",
+);
+expectEq(parserIr.inputs.length, 0, "parser ir definite input count");
+expectEq(parserIr.inputCandidates.length, 1, "parser ir input candidate count");
+expectEq(
+  parserIr.inputCandidates[0]!.path,
+  "src/t.c",
+  "parser ir input candidate path",
+);
+expectEq(parserIr.outputs.length, 1, "parser ir output fact count");
+expectEq(
+  parserIr.outputCandidates.length,
+  0,
+  "parser ir output candidate count",
+);
+expectEq(parserIr.outputs[0]!.path, "-", "parser ir output fact path");
+
+let capturedRemainderParse: cmd.CompilerParseResult | undefined;
+const remainderIrAnalyzer = new cmd.CompilerAnalyzer({
+  resolver(parsed) {
+    capturedRemainderParse = parsed;
+    return cmd.resolveCompilerCommand(parsed);
+  },
+});
+expectCompilerAnalysis(
+  remainderIrAnalyzer.analyze(
+    invocation([
+      "clang",
+      "--driver-mode=cl",
+      "foo.obj",
+      "/link",
+      "/dll",
+      "/out:bin/tool.dll",
+      "bar.res",
+    ]),
+  ),
+  "parser ir linker remainder analysis",
+);
+debug.assertThrow(capturedRemainderParse !== undefined);
+if (capturedRemainderParse === undefined) {
+  throw new Error("parser ir did not capture linker remainder parse result");
+}
+const remainderIr = capturedRemainderParse;
+expectEq(
+  remainderIr.compilerActions[0]!.index,
+  3,
+  "parser ir linker remainder action index",
+);
+expectEq(
+  remainderIr.outputs[0]!.index,
+  4,
+  "parser ir linker remainder output index",
+);
+expectEq(
+  remainderIr.inputs[0]!.index,
+  5,
+  "parser ir linker remainder input index",
+);
+expectEq(
+  remainderIr.outputs[0]!.kind,
+  "linked-artifact",
+  "parser ir linker remainder output kind",
+);
+expectEq(
+  remainderIr.inputs[0]!.source.kind,
+  "remainder-argument",
+  "parser ir linker remainder input source",
+);
+
 const cases: ExpectedAnalysis[] = [
   {
     label: "clang llvm ir explicit stdout output",
