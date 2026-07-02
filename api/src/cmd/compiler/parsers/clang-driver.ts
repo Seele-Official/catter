@@ -1,10 +1,6 @@
 import * as option from "../../../option/index.js";
 import { ClangID, ClangVisibility } from "../../../option/clang.js";
-import {
-  type OptionInfo,
-  type OptionItem,
-  type OptionTable,
-} from "../../../option/types.js";
+import { type OptionInfo, type OptionItem } from "../../../option/types.js";
 import type {
   CompilerAction,
   CompilerDialect,
@@ -17,7 +13,6 @@ import { resolveCompilerMode } from "./compiler-mode.js";
 
 export type ClangDriverParsedOption = {
   raw: OptionItem;
-  rawInfo: OptionInfo;
   item: OptionItem;
   info: OptionInfo;
 };
@@ -35,17 +30,6 @@ type ClangDriverParserState = {
 export const CLANG_CL_VISIBILITY =
   ClangVisibility.DefaultVis | ClangVisibility.CLOption;
 
-function cloneOptionItem(item: OptionItem): OptionItem {
-  return {
-    ...item,
-    values: [...item.values],
-  };
-}
-
-function normalizeOptionItem(table: OptionTable, item: OptionItem): OptionItem {
-  return option.convertToUnalias(table, cloneOptionItem(item));
-}
-
 export function collectClangDriverOptions(
   args: readonly string[],
   visibility: number = ClangVisibility.DefaultVis,
@@ -56,10 +40,12 @@ export function collectClangDriverOptions(
   }
 
   return collected.map((raw) => {
-    const item = normalizeOptionItem("clang", raw);
+    const item = option.convertToUnalias("clang", {
+      ...raw,
+      values: [...raw.values],
+    });
     return {
       raw,
-      rawInfo: option.info("clang", raw),
       item,
       info: option.info("clang", item),
     };
@@ -187,6 +173,31 @@ function applyParsedClangClDriverOption(
   parsedItem: ClangDriverParsedOption,
 ): void {
   switch (parsedItem.item.id as ClangID) {
+    case ClangID.ID_c:
+      state.compilerActions.push({
+        kind: "compile-object",
+        index: parsedItem.item.index,
+      });
+      break;
+    case ClangID.ID_E:
+      state.compilerActions.push({
+        kind: "preprocess",
+        index: parsedItem.item.index,
+      });
+      break;
+    case ClangID.ID_P:
+    case ClangID.ID__SLASH_P:
+      state.compilerActions.push({
+        kind: "preprocess",
+        index: parsedItem.item.index,
+      });
+      break;
+    case ClangID.ID_fsyntax_only:
+      state.compilerActions.push({
+        kind: "syntax-only",
+        index: parsedItem.item.index,
+      });
+      break;
     case ClangID.ID__SLASH_LD:
     case ClangID.ID__SLASH_LDd:
       state.compilerActions.push({
@@ -194,6 +205,7 @@ function applyParsedClangClDriverOption(
         index: parsedItem.item.index,
       });
       break;
+    case ClangID.ID_o:
     case ClangID.ID__SLASH_o:
       state.outputs.push({
         path: clangDriverOptionValue(parsedItem),
@@ -205,6 +217,9 @@ function applyParsedClangClDriverOption(
           optionIndex: parsedItem.item.index,
         },
       });
+      break;
+    case ClangID.ID_x:
+      state.explicitLanguage = clangDriverOptionValue(parsedItem);
       break;
     case ClangID.ID__SLASH_Fo:
       state.outputs.push({
@@ -257,7 +272,6 @@ function applyParsedClangClDriverOption(
       state.explicitLanguage = "c++";
       break;
     case ClangID.ID__SLASH_Tc:
-    case ClangID.ID__SLASH_Tp:
       state.inputs.push({
         path: clangDriverOptionValue(parsedItem),
         index: parsedItem.item.index,
@@ -266,23 +280,40 @@ function applyParsedClangClDriverOption(
           option: parsedItem.raw.key,
           optionIndex: parsedItem.item.index,
         },
-        language: parsedItem.item.id === ClangID.ID__SLASH_Tc ? "c" : "c++",
+        language: "c",
+      });
+    case ClangID.ID__SLASH_Tp: {
+      state.inputs.push({
+        path: clangDriverOptionValue(parsedItem),
+        index: parsedItem.item.index,
+        source: {
+          kind: "option",
+          option: parsedItem.raw.key,
+          optionIndex: parsedItem.item.index,
+        },
+        language: "c++",
       });
       break;
+    }
     case ClangID.ID__SLASH_link:
       applyTemporaryClangClLinkerRemainder(state, parsedItem);
       break;
+    case ClangID.ID_INPUT:
+      state.inputCandidates.push({
+        path: parsedItem.item.key,
+        index: parsedItem.item.index,
+        source: { kind: "argument" },
+        language: state.explicitLanguage,
+      });
+      break;
     default:
-      applyParsedGnuClangDriverOption(state, parsedItem);
+      if (parsedItem.info.group === ClangID.ID_Action_Group) {
+        throw new CompilerParseError(
+          `unsupported clang-cl action option ${parsedItem.raw.key}`,
+        );
+      }
       break;
   }
-}
-
-function isLinkerRemainderInput(token: string): boolean {
-  if (token.length === 0 || token.startsWith("@")) {
-    return false;
-  }
-  return !token.startsWith("-") && !token.startsWith("/");
 }
 
 function applyTemporaryClangClLinkerRemainder(
@@ -338,17 +369,23 @@ function applyTemporaryClangClLinkerRemainder(
       continue;
     }
 
-    if (isLinkerRemainderInput(token)) {
-      state.inputs.push({
-        path: token,
-        index: tokenIndex,
-        source: {
-          kind: "remainder-argument",
-          boundary: parsedItem.raw.key,
-          boundaryIndex: parsedItem.item.index,
-        },
-      });
+    if (token.length === 0 || token.startsWith("@")) {
+      continue;
     }
+
+    if (token.startsWith("-") || token.startsWith("/")) {
+      continue;
+    }
+
+    state.inputs.push({
+      path: token,
+      index: tokenIndex,
+      source: {
+        kind: "remainder-argument",
+        boundary: parsedItem.raw.key,
+        boundaryIndex: parsedItem.item.index,
+      },
+    });
   }
 }
 

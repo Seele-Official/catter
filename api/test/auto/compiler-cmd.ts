@@ -497,6 +497,16 @@ const cases: ExpectedAnalysis[] = [
     outputs: ["main.exe"],
   },
   {
+    label: "clang-cl dash preprocess to file mode",
+    cmd: ["clang-cl", "-P", "src/main.cpp"],
+    compilerMode: {
+      phase: cmd.CompilerPhase.Preprocess,
+      artifact: cmd.CompilerArtifact.PreprocessedSource,
+    },
+    inputs: ["src/main.cpp"],
+    outputs: [], // TODO: clang-cl /P default output is stdout, but we don't have a way to represent that yet
+  },
+  {
     label: "clang-cl assembly listing does not stop link",
     cmd: ["clang-cl", "/FA", "src/main.cpp"],
     compilerMode: {
@@ -637,6 +647,17 @@ const cases: ExpectedAnalysis[] = [
 for (const testCase of cases) {
   expectAnalysis(testCase);
 }
+
+expectAnalysisError(
+  compilerAnalyzer.analyze(invocation(["clang-cl", "-S", "src/main.cpp"])),
+  "clang-cl gnu assembly stop action",
+);
+expectAnalysisError(
+  compilerAnalyzer.analyze(
+    invocation(["clang-cl", "-emit-llvm", "-c", "src/main.cpp"]),
+  ),
+  "clang-cl gnu llvm artifact action",
+);
 
 compilerIdentifier.registerCompilerRule("test:cross-gcc", {
   dialect: cmd.CompilerDialect.Gcc,

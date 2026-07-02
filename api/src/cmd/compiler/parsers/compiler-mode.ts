@@ -6,32 +6,6 @@ import {
   type CompilerMode,
 } from "../types.js";
 
-function initialMode(): CompilerMode {
-  return {
-    phase: CompilerPhase.Link,
-    artifact: CompilerArtifact.Executable,
-  };
-}
-
-function compileArtifact(
-  artifact: Extract<
-    CompilerMode,
-    { phase: typeof CompilerPhase.Compile }
-  >["artifact"],
-): CompilerMode {
-  return {
-    phase: CompilerPhase.Compile,
-    artifact,
-  };
-}
-
-function isTerminalNonObject(mode: CompilerMode): boolean {
-  return (
-    mode.phase === CompilerPhase.Preprocess ||
-    mode.phase === CompilerPhase.SyntaxOnly
-  );
-}
-
 function applyGnuCompilerAction(
   mode: CompilerMode,
   action: CompilerAction,
@@ -43,9 +17,13 @@ function applyGnuCompilerAction(
         artifact: CompilerArtifact.PreprocessedSource,
       };
     case "syntax-only":
-      return mode.phase === CompilerPhase.Preprocess
-        ? mode
-        : { phase: CompilerPhase.SyntaxOnly, artifact: CompilerArtifact.None };
+      if (mode.phase === CompilerPhase.Preprocess) {
+        return mode;
+      }
+      return {
+        phase: CompilerPhase.SyntaxOnly,
+        artifact: CompilerArtifact.None,
+      };
     case "compile-object":
       if (
         mode.phase === CompilerPhase.Preprocess ||
@@ -55,59 +33,101 @@ function applyGnuCompilerAction(
       ) {
         return mode;
       }
-      return compileArtifact(CompilerArtifact.Object);
+      return {
+        phase: CompilerPhase.Compile,
+        artifact: CompilerArtifact.Object,
+      };
     case "compile-assembly-like":
-      if (isTerminalNonObject(mode)) {
+      if (
+        mode.phase === CompilerPhase.Preprocess ||
+        mode.phase === CompilerPhase.SyntaxOnly
+      ) {
         return mode;
       }
-      return compileArtifact(
-        mode.artifact === CompilerArtifact.LlvmBitcode
-          ? CompilerArtifact.LlvmIR
-          : CompilerArtifact.Assembly,
-      );
+      if (mode.artifact === CompilerArtifact.LlvmBitcode) {
+        return {
+          phase: CompilerPhase.Compile,
+          artifact: CompilerArtifact.LlvmIR,
+        };
+      }
+      return {
+        phase: CompilerPhase.Compile,
+        artifact: CompilerArtifact.Assembly,
+      };
     case "compile-llvm-like":
-      if (isTerminalNonObject(mode)) {
+      if (
+        mode.phase === CompilerPhase.Preprocess ||
+        mode.phase === CompilerPhase.SyntaxOnly
+      ) {
         return mode;
       }
-      return compileArtifact(
-        mode.artifact === CompilerArtifact.Assembly
-          ? CompilerArtifact.LlvmIR
-          : CompilerArtifact.LlvmBitcode,
-      );
+      if (mode.artifact === CompilerArtifact.Assembly) {
+        return {
+          phase: CompilerPhase.Compile,
+          artifact: CompilerArtifact.LlvmIR,
+        };
+      }
+      return {
+        phase: CompilerPhase.Compile,
+        artifact: CompilerArtifact.LlvmBitcode,
+      };
     case "compile-pch":
-      return isTerminalNonObject(mode)
-        ? mode
-        : compileArtifact(CompilerArtifact.Pch);
+      if (
+        mode.phase === CompilerPhase.Preprocess ||
+        mode.phase === CompilerPhase.SyntaxOnly
+      ) {
+        return mode;
+      }
+      return {
+        phase: CompilerPhase.Compile,
+        artifact: CompilerArtifact.Pch,
+      };
     case "compile-pcm":
-      return isTerminalNonObject(mode)
-        ? mode
-        : compileArtifact(CompilerArtifact.Pcm);
+      if (
+        mode.phase === CompilerPhase.Preprocess ||
+        mode.phase === CompilerPhase.SyntaxOnly
+      ) {
+        return mode;
+      }
+      return {
+        phase: CompilerPhase.Compile,
+        artifact: CompilerArtifact.Pcm,
+      };
     case "unknown-compile-action":
-      return mode.phase === CompilerPhase.Link &&
+      if (
+        mode.phase === CompilerPhase.Link &&
         mode.artifact === CompilerArtifact.Executable
-        ? compileArtifact(CompilerArtifact.Unknown)
-        : mode;
+      ) {
+        return {
+          phase: CompilerPhase.Compile,
+          artifact: CompilerArtifact.Unknown,
+        };
+      }
+      return mode;
     case "link-shared-library":
-      return mode.phase === CompilerPhase.Link
-        ? {
-            phase: CompilerPhase.Link,
-            artifact: CompilerArtifact.SharedLibrary,
-          }
-        : mode;
+      if (mode.phase !== CompilerPhase.Link) {
+        return mode;
+      }
+      return {
+        phase: CompilerPhase.Link,
+        artifact: CompilerArtifact.SharedLibrary,
+      };
     case "archive":
-      return mode.phase === CompilerPhase.Link
-        ? {
-            phase: CompilerPhase.Archive,
-            artifact: CompilerArtifact.StaticLibrary,
-          }
-        : mode;
+      if (mode.phase !== CompilerPhase.Link) {
+        return mode;
+      }
+      return {
+        phase: CompilerPhase.Archive,
+        artifact: CompilerArtifact.StaticLibrary,
+      };
     case "relocatable-link":
-      return mode.phase === CompilerPhase.Link
-        ? {
-            phase: CompilerPhase.RelocatableLink,
-            artifact: CompilerArtifact.Object,
-          }
-        : mode;
+      if (mode.phase !== CompilerPhase.Link) {
+        return mode;
+      }
+      return {
+        phase: CompilerPhase.RelocatableLink,
+        artifact: CompilerArtifact.Object,
+      };
     case "emit-assembly-listing":
       return mode;
   }
@@ -118,33 +138,73 @@ function applyClangClCompilerAction(
   action: CompilerAction,
 ): CompilerMode {
   switch (action.kind) {
-    case "emit-assembly-listing":
-      return mode;
     case "preprocess":
+      return {
+        phase: CompilerPhase.Preprocess,
+        artifact: CompilerArtifact.PreprocessedSource,
+      };
     case "syntax-only":
+      if (mode.phase === CompilerPhase.Preprocess) {
+        return mode;
+      }
+      return {
+        phase: CompilerPhase.SyntaxOnly,
+        artifact: CompilerArtifact.None,
+      };
     case "compile-object":
+      if (
+        mode.phase === CompilerPhase.Preprocess ||
+        mode.phase === CompilerPhase.SyntaxOnly
+      ) {
+        return mode;
+      }
+      return {
+        phase: CompilerPhase.Compile,
+        artifact: CompilerArtifact.Object,
+      };
     case "compile-assembly-like":
     case "compile-llvm-like":
     case "compile-pch":
     case "compile-pcm":
+      return mode;
     case "unknown-compile-action":
+      if (
+        mode.phase === CompilerPhase.Link &&
+        mode.artifact === CompilerArtifact.Executable
+      ) {
+        return {
+          phase: CompilerPhase.Compile,
+          artifact: CompilerArtifact.Unknown,
+        };
+      }
+      return mode;
     case "link-shared-library":
+      if (mode.phase !== CompilerPhase.Link) {
+        return mode;
+      }
+      return {
+        phase: CompilerPhase.Link,
+        artifact: CompilerArtifact.SharedLibrary,
+      };
     case "archive":
+      if (mode.phase !== CompilerPhase.Link) {
+        return mode;
+      }
+      return {
+        phase: CompilerPhase.Archive,
+        artifact: CompilerArtifact.StaticLibrary,
+      };
     case "relocatable-link":
-      return applyGnuCompilerAction(mode, action);
+      if (mode.phase !== CompilerPhase.Link) {
+        return mode;
+      }
+      return {
+        phase: CompilerPhase.RelocatableLink,
+        artifact: CompilerArtifact.Object,
+      };
+    case "emit-assembly-listing":
+      return mode;
   }
-}
-
-function resolveGnuCompilerMode(
-  actions: readonly CompilerAction[],
-): CompilerMode {
-  return actions.reduce(applyGnuCompilerAction, initialMode());
-}
-
-function resolveClangClCompilerMode(
-  actions: readonly CompilerAction[],
-): CompilerMode {
-  return actions.reduce(applyClangClCompilerAction, initialMode());
 }
 
 export function resolveCompilerMode(
@@ -153,11 +213,17 @@ export function resolveCompilerMode(
 ): CompilerMode {
   switch (dialect) {
     case CompilerDialect.Msvc:
-      return resolveClangClCompilerMode(actions);
+      return actions.reduce(applyClangClCompilerAction, {
+        phase: CompilerPhase.Link,
+        artifact: CompilerArtifact.Executable,
+      });
     case CompilerDialect.Clang:
     case CompilerDialect.Gcc:
     case CompilerDialect.Nvcc:
     case CompilerDialect.Unknown:
-      return resolveGnuCompilerMode(actions);
+      return actions.reduce(applyGnuCompilerAction, {
+        phase: CompilerPhase.Link,
+        artifact: CompilerArtifact.Executable,
+      });
   }
 }
