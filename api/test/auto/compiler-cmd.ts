@@ -82,7 +82,9 @@ function expectAnalysisError(
 }
 
 const compilerIdentifier = new cmd.CompilerIdentifier();
-const compilerAnalyzer = new cmd.CompilerAnalyzer(compilerIdentifier);
+const compilerAnalyzer = new cmd.CompilerAnalyzer({
+  identifier: compilerIdentifier,
+});
 
 function expectAnalysis(expected: ExpectedAnalysis) {
   const analysis = expectCompilerAnalysis(

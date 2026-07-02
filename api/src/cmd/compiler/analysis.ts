@@ -64,19 +64,10 @@ export class CompilerAnalyzer extends Analyzer {
   private readonly identifier;
   private readonly resolver;
 
-  constructor(
-    identifierOrOptions: CompilerIdentifier | CompilerAnalyzerOptions = {},
-  ) {
+  constructor(options: CompilerAnalyzerOptions = {}) {
     super();
-    if (identifierOrOptions instanceof CompilerIdentifier) {
-      this.identifier = identifierOrOptions;
-      this.resolver = resolveCompilerCommand;
-      return;
-    }
-
-    this.identifier =
-      identifierOrOptions.identifier ?? new CompilerIdentifier();
-    this.resolver = identifierOrOptions.resolver ?? resolveCompilerCommand;
+    this.identifier = options.identifier ?? new CompilerIdentifier();
+    this.resolver = options.resolver ?? resolveCompilerCommand;
   }
 
   analyze(
