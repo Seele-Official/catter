@@ -6,204 +6,223 @@ import {
   type CompilerMode,
 } from "../types.js";
 
-function applyGnuCompilerAction(
-  mode: CompilerMode,
-  action: CompilerAction,
-): CompilerMode {
-  switch (action.kind) {
-    case "preprocess":
-      return {
-        phase: CompilerPhase.Preprocess,
-        artifact: CompilerArtifact.PreprocessedSource,
-      };
-    case "syntax-only":
-      if (mode.phase === CompilerPhase.Preprocess) {
-        return mode;
-      }
-      return {
-        phase: CompilerPhase.SyntaxOnly,
-        artifact: CompilerArtifact.None,
-      };
-    case "compile-object":
-      if (
-        mode.phase === CompilerPhase.Preprocess ||
-        mode.phase === CompilerPhase.SyntaxOnly ||
-        (mode.phase === CompilerPhase.Compile &&
-          mode.artifact !== CompilerArtifact.Unknown)
-      ) {
-        return mode;
-      }
-      return {
-        phase: CompilerPhase.Compile,
-        artifact: CompilerArtifact.Object,
-      };
-    case "compile-assembly-like":
-      if (
-        mode.phase === CompilerPhase.Preprocess ||
-        mode.phase === CompilerPhase.SyntaxOnly
-      ) {
-        return mode;
-      }
-      if (mode.artifact === CompilerArtifact.LlvmBitcode) {
-        return {
-          phase: CompilerPhase.Compile,
-          artifact: CompilerArtifact.LlvmIR,
-        };
-      }
-      return {
-        phase: CompilerPhase.Compile,
-        artifact: CompilerArtifact.Assembly,
-      };
-    case "compile-llvm-like":
-      if (
-        mode.phase === CompilerPhase.Preprocess ||
-        mode.phase === CompilerPhase.SyntaxOnly
-      ) {
-        return mode;
-      }
-      if (mode.artifact === CompilerArtifact.Assembly) {
-        return {
-          phase: CompilerPhase.Compile,
-          artifact: CompilerArtifact.LlvmIR,
-        };
-      }
-      return {
-        phase: CompilerPhase.Compile,
-        artifact: CompilerArtifact.LlvmBitcode,
-      };
-    case "compile-pch":
-      if (
-        mode.phase === CompilerPhase.Preprocess ||
-        mode.phase === CompilerPhase.SyntaxOnly
-      ) {
-        return mode;
-      }
-      return {
-        phase: CompilerPhase.Compile,
-        artifact: CompilerArtifact.Pch,
-      };
-    case "compile-pcm":
-      if (
-        mode.phase === CompilerPhase.Preprocess ||
-        mode.phase === CompilerPhase.SyntaxOnly
-      ) {
-        return mode;
-      }
-      return {
-        phase: CompilerPhase.Compile,
-        artifact: CompilerArtifact.Pcm,
-      };
-    case "unknown-compile-action":
-      if (
-        mode.phase === CompilerPhase.Link &&
-        mode.artifact === CompilerArtifact.Executable
-      ) {
-        return {
-          phase: CompilerPhase.Compile,
-          artifact: CompilerArtifact.Unknown,
-        };
-      }
-      return mode;
-    case "link-shared-library":
-      if (mode.phase !== CompilerPhase.Link) {
-        return mode;
-      }
-      return {
-        phase: CompilerPhase.Link,
-        artifact: CompilerArtifact.SharedLibrary,
-      };
-    case "archive":
-      if (mode.phase !== CompilerPhase.Link) {
-        return mode;
-      }
-      return {
-        phase: CompilerPhase.Archive,
-        artifact: CompilerArtifact.StaticLibrary,
-      };
-    case "relocatable-link":
-      if (mode.phase !== CompilerPhase.Link) {
-        return mode;
-      }
-      return {
-        phase: CompilerPhase.RelocatableLink,
-        artifact: CompilerArtifact.Object,
-      };
-    case "emit-assembly-listing":
-      return mode;
-  }
+type CompileArtifact = Extract<
+  CompilerMode,
+  { phase: typeof CompilerPhase.Compile }
+>["artifact"];
+
+type LinkPlan =
+  | "executable"
+  | "shared-library"
+  | "static-library"
+  | "relocatable-object";
+
+type CompilerPipelineFacts = {
+  preprocess: boolean;
+  syntaxOnly: boolean;
+  compileArtifact: CompileArtifact | undefined;
+  sawAssemblyLike: boolean;
+  sawLlvmLike: boolean;
+  linkPlan: LinkPlan;
+};
+
+function collectInitialPipelineFacts(): CompilerPipelineFacts {
+  return {
+    preprocess: false,
+    syntaxOnly: false,
+    compileArtifact: undefined,
+    sawAssemblyLike: false,
+    sawLlvmLike: false,
+    linkPlan: "executable",
+  };
 }
 
-function applyClangClCompilerAction(
-  mode: CompilerMode,
-  action: CompilerAction,
-): CompilerMode {
-  switch (action.kind) {
-    case "preprocess":
+function collectGnuPipelineFacts(
+  actions: readonly CompilerAction[],
+): CompilerPipelineFacts {
+  const facts = collectInitialPipelineFacts();
+
+  for (const action of actions) {
+    switch (action.kind) {
+      case "preprocess":
+        facts.preprocess = true;
+        break;
+      case "syntax-only":
+        facts.syntaxOnly = true;
+        break;
+      case "compile-object":
+        if (facts.compileArtifact === undefined) {
+          facts.compileArtifact = CompilerArtifact.Object;
+          break;
+        }
+        if (facts.compileArtifact === CompilerArtifact.Unknown) {
+          facts.compileArtifact = CompilerArtifact.Object;
+        }
+        break;
+      case "compile-assembly-like":
+        facts.sawAssemblyLike = true;
+        if (facts.sawLlvmLike) {
+          facts.compileArtifact = CompilerArtifact.LlvmIR;
+          break;
+        }
+        facts.compileArtifact = CompilerArtifact.Assembly;
+        break;
+      case "compile-llvm-like":
+        facts.sawLlvmLike = true;
+        if (facts.sawAssemblyLike) {
+          facts.compileArtifact = CompilerArtifact.LlvmIR;
+          break;
+        }
+        facts.compileArtifact = CompilerArtifact.LlvmBitcode;
+        break;
+      case "compile-pch":
+        facts.compileArtifact = CompilerArtifact.Pch;
+        break;
+      case "compile-pcm":
+        facts.compileArtifact = CompilerArtifact.Pcm;
+        break;
+      case "unknown-compile-action":
+        if (facts.compileArtifact === undefined) {
+          facts.compileArtifact = CompilerArtifact.Unknown;
+        }
+        break;
+      case "link-shared-library":
+        if (facts.linkPlan === "executable") {
+          facts.linkPlan = "shared-library";
+        }
+        break;
+      case "archive":
+        if (facts.linkPlan === "executable") {
+          facts.linkPlan = "static-library";
+          break;
+        }
+        if (facts.linkPlan === "shared-library") {
+          facts.linkPlan = "static-library";
+        }
+        break;
+      case "relocatable-link":
+        if (facts.linkPlan === "executable") {
+          facts.linkPlan = "relocatable-object";
+          break;
+        }
+        if (facts.linkPlan === "shared-library") {
+          facts.linkPlan = "relocatable-object";
+        }
+        break;
+      case "emit-assembly-listing":
+        break;
+    }
+  }
+
+  return facts;
+}
+
+function collectClangClPipelineFacts(
+  actions: readonly CompilerAction[],
+): CompilerPipelineFacts {
+  const facts = collectInitialPipelineFacts();
+
+  for (const action of actions) {
+    switch (action.kind) {
+      case "preprocess":
+        facts.preprocess = true;
+        break;
+      case "syntax-only":
+        facts.syntaxOnly = true;
+        break;
+      case "compile-object":
+        if (facts.compileArtifact === undefined) {
+          facts.compileArtifact = CompilerArtifact.Object;
+          break;
+        }
+        if (facts.compileArtifact === CompilerArtifact.Unknown) {
+          facts.compileArtifact = CompilerArtifact.Object;
+        }
+        break;
+      case "compile-assembly-like":
+      case "compile-llvm-like":
+      case "compile-pch":
+      case "compile-pcm":
+        break;
+      case "unknown-compile-action":
+        if (facts.compileArtifact === undefined) {
+          facts.compileArtifact = CompilerArtifact.Unknown;
+        }
+        break;
+      case "link-shared-library":
+        if (facts.linkPlan === "executable") {
+          facts.linkPlan = "shared-library";
+        }
+        break;
+      case "archive":
+        if (facts.linkPlan === "executable") {
+          facts.linkPlan = "static-library";
+          break;
+        }
+        if (facts.linkPlan === "shared-library") {
+          facts.linkPlan = "static-library";
+        }
+        break;
+      case "relocatable-link":
+        if (facts.linkPlan === "executable") {
+          facts.linkPlan = "relocatable-object";
+          break;
+        }
+        if (facts.linkPlan === "shared-library") {
+          facts.linkPlan = "relocatable-object";
+        }
+        break;
+      case "emit-assembly-listing":
+        break;
+    }
+  }
+
+  return facts;
+}
+
+function resolvePipelineFacts(facts: CompilerPipelineFacts): CompilerMode {
+  if (facts.preprocess) {
+    return {
+      phase: CompilerPhase.Preprocess,
+      artifact: CompilerArtifact.PreprocessedSource,
+    };
+  }
+
+  if (facts.syntaxOnly) {
+    return {
+      phase: CompilerPhase.SyntaxOnly,
+      artifact: CompilerArtifact.None,
+    };
+  }
+
+  if (facts.compileArtifact !== undefined) {
+    return {
+      phase: CompilerPhase.Compile,
+      artifact: facts.compileArtifact,
+    };
+  }
+
+  switch (facts.linkPlan) {
+    case "executable":
       return {
-        phase: CompilerPhase.Preprocess,
-        artifact: CompilerArtifact.PreprocessedSource,
+        phase: CompilerPhase.Link,
+        artifact: CompilerArtifact.Executable,
       };
-    case "syntax-only":
-      if (mode.phase === CompilerPhase.Preprocess) {
-        return mode;
-      }
-      return {
-        phase: CompilerPhase.SyntaxOnly,
-        artifact: CompilerArtifact.None,
-      };
-    case "compile-object":
-      if (
-        mode.phase === CompilerPhase.Preprocess ||
-        mode.phase === CompilerPhase.SyntaxOnly
-      ) {
-        return mode;
-      }
-      return {
-        phase: CompilerPhase.Compile,
-        artifact: CompilerArtifact.Object,
-      };
-    case "compile-assembly-like":
-    case "compile-llvm-like":
-    case "compile-pch":
-    case "compile-pcm":
-      return mode;
-    case "unknown-compile-action":
-      if (
-        mode.phase === CompilerPhase.Link &&
-        mode.artifact === CompilerArtifact.Executable
-      ) {
-        return {
-          phase: CompilerPhase.Compile,
-          artifact: CompilerArtifact.Unknown,
-        };
-      }
-      return mode;
-    case "link-shared-library":
-      if (mode.phase !== CompilerPhase.Link) {
-        return mode;
-      }
+    case "shared-library":
       return {
         phase: CompilerPhase.Link,
         artifact: CompilerArtifact.SharedLibrary,
       };
-    case "archive":
-      if (mode.phase !== CompilerPhase.Link) {
-        return mode;
-      }
+    case "static-library":
       return {
         phase: CompilerPhase.Archive,
         artifact: CompilerArtifact.StaticLibrary,
       };
-    case "relocatable-link":
-      if (mode.phase !== CompilerPhase.Link) {
-        return mode;
-      }
+    case "relocatable-object":
       return {
         phase: CompilerPhase.RelocatableLink,
         artifact: CompilerArtifact.Object,
       };
-    case "emit-assembly-listing":
-      return mode;
   }
 }
 
@@ -213,17 +232,11 @@ export function resolveCompilerMode(
 ): CompilerMode {
   switch (dialect) {
     case CompilerDialect.Msvc:
-      return actions.reduce(applyClangClCompilerAction, {
-        phase: CompilerPhase.Link,
-        artifact: CompilerArtifact.Executable,
-      });
+      return resolvePipelineFacts(collectClangClPipelineFacts(actions));
     case CompilerDialect.Clang:
     case CompilerDialect.Gcc:
     case CompilerDialect.Nvcc:
     case CompilerDialect.Unknown:
-      return actions.reduce(applyGnuCompilerAction, {
-        phase: CompilerPhase.Link,
-        artifact: CompilerArtifact.Executable,
-      });
+      return resolvePipelineFacts(collectGnuPipelineFacts(actions));
   }
 }
