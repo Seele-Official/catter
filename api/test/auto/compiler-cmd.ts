@@ -258,6 +258,54 @@ expectEq(
   "parser ir linker remainder input source",
 );
 
+let capturedAssemblyListingParse: cmd.CompilerParseResult | undefined;
+const assemblyListingIrAnalyzer = new cmd.CompilerAnalyzer({
+  resolver(parsed) {
+    capturedAssemblyListingParse = parsed;
+    return cmd.resolveCompilerCommand(parsed);
+  },
+});
+expectCompilerAnalysis(
+  assemblyListingIrAnalyzer.analyze(
+    invocation(["clang", "--driver-mode=cl", "/FA", "/Faasm/", "src/main.cpp"]),
+  ),
+  "parser ir assembly listing analysis",
+);
+debug.assertThrow(capturedAssemblyListingParse !== undefined);
+if (capturedAssemblyListingParse === undefined) {
+  throw new Error("parser ir did not capture assembly listing parse result");
+}
+const assemblyListingIr = capturedAssemblyListingParse;
+expectEq(
+  assemblyListingIr.compilerActions.length,
+  2,
+  "parser ir assembly listing action count",
+);
+expectEq(
+  assemblyListingIr.compilerActions[0]!.kind,
+  "emit-assembly-listing",
+  "parser ir first assembly listing action",
+);
+expectEq(
+  assemblyListingIr.compilerActions[1]!.kind,
+  "emit-assembly-listing",
+  "parser ir second assembly listing action",
+);
+const assemblyListingPathAction = assemblyListingIr.compilerActions[1]!;
+if (assemblyListingPathAction.kind !== "emit-assembly-listing") {
+  throw new Error("parser ir expected assembly listing path action");
+}
+expectEq(
+  assemblyListingPathAction.path,
+  "asm/",
+  "parser ir assembly listing path",
+);
+expectEq(
+  assemblyListingIr.outputs.length,
+  0,
+  "parser ir assembly listing output fact count",
+);
+
 const cases: ExpectedAnalysis[] = [
   {
     label: "clang llvm ir explicit stdout output",
@@ -449,6 +497,36 @@ const cases: ExpectedAnalysis[] = [
     outputs: ["main.exe"],
   },
   {
+    label: "clang-cl assembly listing does not stop link",
+    cmd: ["clang-cl", "/FA", "src/main.cpp"],
+    compilerMode: {
+      phase: cmd.CompilerPhase.Link,
+      artifact: cmd.CompilerArtifact.Executable,
+    },
+    inputs: ["src/main.cpp"],
+    outputs: ["main.exe", "main.asm"],
+  },
+  {
+    label: "clang-cl assembly listing directory output",
+    cmd: ["clang-cl", "/c", "/FA", "/Faasm/", "src/main.cpp"],
+    compilerMode: {
+      phase: cmd.CompilerPhase.Compile,
+      artifact: cmd.CompilerArtifact.Object,
+    },
+    inputs: ["src/main.cpp"],
+    outputs: ["main.obj", normalizedJoin("asm", "main.asm")],
+  },
+  {
+    label: "clang-cl assembly listing single file output",
+    cmd: ["clang-cl", "/c", "/Faasm.lst", "src/main.cpp"],
+    compilerMode: {
+      phase: cmd.CompilerPhase.Compile,
+      artifact: cmd.CompilerArtifact.Object,
+    },
+    inputs: ["src/main.cpp"],
+    outputs: ["main.obj", "asm.lst"],
+  },
+  {
     label: "clang-cl cl-style default shared library output",
     cmd: ["clang-cl", "/LD", "src/plugin.cpp"],
     compilerMode: {
@@ -507,6 +585,24 @@ const cases: ExpectedAnalysis[] = [
     },
     inputs: ["src/plugin.cpp"],
     outputs: [normalizedJoin("bin", "plugin.dll")],
+  },
+  {
+    label: "clang driver-mode cl assembly listing keeps shared link mode",
+    cmd: [
+      "clang",
+      "--driver-mode=cl",
+      "/FA",
+      "src/plugin.cpp",
+      "/link",
+      "/dll",
+      "/out:bin/plugin.dll",
+    ],
+    compilerMode: {
+      phase: cmd.CompilerPhase.Link,
+      artifact: cmd.CompilerArtifact.SharedLibrary,
+    },
+    inputs: ["src/plugin.cpp"],
+    outputs: ["bin/plugin.dll", "plugin.asm"],
   },
   {
     label: "clang driver-mode cl default object output",

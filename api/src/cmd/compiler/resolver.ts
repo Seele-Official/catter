@@ -478,6 +478,88 @@ function outputEdges(
   }));
 }
 
+function assemblyListingDefaultPath(input: ResolvedCompilerInput): string {
+  return defaultOutputStemOfInput(input.path) + ".asm";
+}
+
+function assemblyListingDirectoryPaths(
+  outputPath: string,
+  inputs: readonly ResolvedCompilerInput[],
+): string[] {
+  return inputs.map((input) =>
+    fs.path.lexicalNormal(
+      fs.path.joinAll(outputPath, assemblyListingDefaultPath(input)),
+    ),
+  );
+}
+
+function assemblyListingPaths(
+  outputPath: string | undefined,
+  inputs: readonly ResolvedCompilerInput[],
+): string[] {
+  if (inputs.length === 0) {
+    return [];
+  }
+
+  if (outputPath === undefined || outputPath.length === 0) {
+    return inputs.map(assemblyListingDefaultPath);
+  }
+
+  if (isDirectoryOutputPath(outputPath)) {
+    return assemblyListingDirectoryPaths(outputPath, inputs);
+  }
+
+  return inputs.length === 1 ? [outputPath] : [];
+}
+
+function shouldResolveAssemblyListingOutputs(mode: CompilerMode): boolean {
+  switch (mode.phase) {
+    case CompilerPhase.Compile:
+    case CompilerPhase.Link:
+    case CompilerPhase.Archive:
+    case CompilerPhase.RelocatableLink:
+    case CompilerPhase.DeviceLink:
+      return true;
+    case CompilerPhase.Preprocess:
+    case CompilerPhase.SyntaxOnly:
+      return false;
+  }
+}
+
+function resolveAssemblyListingOutputs(
+  parsed: CompilerParseResult,
+  inputs: readonly ResolvedCompilerInput[],
+): OutputResolution {
+  if (!shouldResolveAssemblyListingOutputs(parsed.compilerMode)) {
+    return { writes: [], edges: [] };
+  }
+
+  const sourceInputs = inputs.filter((input) => input.usage === "source");
+  let hasAssemblyListingRequest = false;
+  let outputPath: string | undefined;
+
+  for (const action of parsed.compilerActions) {
+    if (action.kind !== "emit-assembly-listing") {
+      continue;
+    }
+
+    hasAssemblyListingRequest = true;
+    if (action.path !== undefined) {
+      outputPath = action.path;
+    }
+  }
+
+  if (!hasAssemblyListingRequest) {
+    return { writes: [], edges: [] };
+  }
+
+  const writes = assemblyListingPaths(outputPath, sourceInputs);
+  return {
+    writes,
+    edges: outputEdges(writes, sourceInputs),
+  };
+}
+
 function resolveOutputs(
   parsed: CompilerParseResult,
   inputs: readonly ResolvedCompilerInput[],
@@ -536,6 +618,10 @@ export function resolveCompilerCommand(
 ): CompilerResolveResult {
   const inputs = resolveInputs(parsed);
   const outputResolution = resolveOutputs(parsed, inputs);
+  const assemblyListingResolution = resolveAssemblyListingOutputs(
+    parsed,
+    inputs,
+  );
 
   return {
     inputs: publicInputs(inputs),
@@ -543,7 +629,7 @@ export function resolveCompilerCommand(
       .filter((input) => input.usage === "source")
       .map((input) => input.path),
     reads: inputs.map((input) => input.path),
-    writes: outputResolution.writes,
-    edges: outputResolution.edges,
+    writes: [...outputResolution.writes, ...assemblyListingResolution.writes],
+    edges: [...outputResolution.edges, ...assemblyListingResolution.edges],
   };
 }

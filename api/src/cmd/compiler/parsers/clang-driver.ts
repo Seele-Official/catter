@@ -230,6 +230,26 @@ function applyParsedClangClDriverOption(
         },
       });
       break;
+    case ClangID.ID__SLASH_FA:
+      state.compilerActions.push({
+        kind: "emit-assembly-listing",
+        index: parsedItem.item.index,
+      });
+      break;
+    case ClangID.ID__SLASH_Fa:
+      if (parsedItem.item.values[0] === undefined) {
+        state.compilerActions.push({
+          kind: "emit-assembly-listing",
+          index: parsedItem.item.index,
+        });
+      } else {
+        state.compilerActions.push({
+          kind: "emit-assembly-listing",
+          index: parsedItem.item.index,
+          path: parsedItem.item.values[0],
+        });
+      }
+      break;
     case ClangID.ID__SLASH_TC:
       state.explicitLanguage = "c";
       break;
@@ -352,7 +372,7 @@ export function buildClangGnuDriverModel(
 
   return {
     dialect: state.dialect,
-    compilerMode: resolveCompilerMode(state.compilerActions),
+    compilerMode: resolveCompilerMode(state.dialect, state.compilerActions),
     compilerActions: state.compilerActions,
     inputCandidates: state.inputCandidates,
     outputCandidates: state.outputCandidates,
@@ -381,7 +401,7 @@ export function buildClangClDriverModel(
 
   return {
     dialect: state.dialect,
-    compilerMode: resolveCompilerMode(state.compilerActions),
+    compilerMode: resolveCompilerMode(state.dialect, state.compilerActions),
     compilerActions: state.compilerActions,
     inputCandidates: state.inputCandidates,
     outputCandidates: state.outputCandidates,

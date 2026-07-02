@@ -1,5 +1,6 @@
 import {
   CompilerArtifact,
+  CompilerDialect,
   CompilerPhase,
   type CompilerAction,
   type CompilerMode,
@@ -31,7 +32,7 @@ function isTerminalNonObject(mode: CompilerMode): boolean {
   );
 }
 
-function applyCompilerAction(
+function applyGnuCompilerAction(
   mode: CompilerMode,
   action: CompilerAction,
 ): CompilerMode {
@@ -107,11 +108,56 @@ function applyCompilerAction(
             artifact: CompilerArtifact.Object,
           }
         : mode;
+    case "emit-assembly-listing":
+      return mode;
   }
 }
 
-export function resolveCompilerMode(
+function applyClangClCompilerAction(
+  mode: CompilerMode,
+  action: CompilerAction,
+): CompilerMode {
+  switch (action.kind) {
+    case "emit-assembly-listing":
+      return mode;
+    case "preprocess":
+    case "syntax-only":
+    case "compile-object":
+    case "compile-assembly-like":
+    case "compile-llvm-like":
+    case "compile-pch":
+    case "compile-pcm":
+    case "unknown-compile-action":
+    case "link-shared-library":
+    case "archive":
+    case "relocatable-link":
+      return applyGnuCompilerAction(mode, action);
+  }
+}
+
+function resolveGnuCompilerMode(
   actions: readonly CompilerAction[],
 ): CompilerMode {
-  return actions.reduce(applyCompilerAction, initialMode());
+  return actions.reduce(applyGnuCompilerAction, initialMode());
+}
+
+function resolveClangClCompilerMode(
+  actions: readonly CompilerAction[],
+): CompilerMode {
+  return actions.reduce(applyClangClCompilerAction, initialMode());
+}
+
+export function resolveCompilerMode(
+  dialect: CompilerDialect,
+  actions: readonly CompilerAction[],
+): CompilerMode {
+  switch (dialect) {
+    case CompilerDialect.Msvc:
+      return resolveClangClCompilerMode(actions);
+    case CompilerDialect.Clang:
+    case CompilerDialect.Gcc:
+    case CompilerDialect.Nvcc:
+    case CompilerDialect.Unknown:
+      return resolveGnuCompilerMode(actions);
+  }
 }

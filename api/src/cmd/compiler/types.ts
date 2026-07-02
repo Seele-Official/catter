@@ -115,26 +115,33 @@ export type CompilerFactSource =
       optionIndex: number;
     };
 
-export type CompilerActionKind =
-  | "preprocess"
-  | "syntax-only"
-  | "compile-object"
-  | "compile-assembly-like"
-  | "compile-llvm-like"
-  | "compile-pch"
-  | "compile-pcm"
-  | "unknown-compile-action"
-  | "link-shared-library"
-  | "archive"
-  | "relocatable-link";
-
 /** One parsed compiler action before mode resolution. */
-export type CompilerAction = {
-  /** Driver action represented by the parsed option. */
-  kind: CompilerActionKind;
-  /** Original argv index for the action option token. */
-  index: number;
-};
+export type CompilerAction =
+  | {
+      /** Driver action represented by the parsed option. */
+      kind:
+        | "preprocess"
+        | "syntax-only"
+        | "compile-object"
+        | "compile-assembly-like"
+        | "compile-llvm-like"
+        | "compile-pch"
+        | "compile-pcm"
+        | "unknown-compile-action"
+        | "link-shared-library"
+        | "archive"
+        | "relocatable-link";
+      /** Original argv index for the action option token. */
+      index: number;
+    }
+  | {
+      /** Side assembly/listing output requested by a CL-style option. */
+      kind: "emit-assembly-listing";
+      /** Original argv index for the action option token. */
+      index: number;
+      /** Optional /Fa path token; omitted when the driver uses per-input defaults. */
+      path?: string;
+    };
 
 export type CompilerInput = {
   /** Path token as it appeared in the compiler command. */
