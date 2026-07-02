@@ -163,7 +163,7 @@ export type CompilerOutput = {
   source: CompilerFactSource;
 };
 
-export type CompilerDriverParseResult = {
+export type CompilerParseResult = {
   dialect: CompilerDialect;
   compilerMode: CompilerMode;
   compilerActions: CompilerAction[];
@@ -182,18 +182,13 @@ export type CompilerResolveResult = {
 };
 
 export type CompilerResolver = (
-  parsed: CompilerDriverParseResult,
+  parsed: CompilerParseResult,
 ) => CompilerResolveResult;
 
 export type CompilerAnalyzerOptions = {
   identifier?: CompilerIdentifier;
   resolver?: CompilerResolver;
 };
-
-export type CompilerParseResult = CompilerDriverParseResult;
-
-export type CompilerAnalysisResult = CompilerDriverParseResult &
-  CompilerResolveResult;
 
 /**
  * Matcher used by a custom compiler rule.

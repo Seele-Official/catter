@@ -13,10 +13,10 @@ import {
   type CompilerParseResult,
 } from "../types.js";
 
-function getClangDriverModeIndex(
+function findClangDriverMode(
   parsed: readonly ClangDriverParsedOption[],
-): number {
-  return parsed.findIndex(
+): boolean {
+  return parsed.some(
     (parsedItem) =>
       parsedItem.item.id === ClangID.ID_driver_mode &&
       clangDriverOptionValue(parsedItem).toLowerCase() === "cl",
@@ -30,9 +30,8 @@ export function parseClangCommand(
 ): CompilerParseResult {
   const args = cmd.slice(1);
   const parsed = collectClangDriverOptions(args, ClangVisibility.DefaultVis);
-  const clangDriverModeIndex = getClangDriverModeIndex(parsed);
 
-  if (clangDriverModeIndex !== -1) {
+  if (findClangDriverMode(parsed)) {
     return buildClangClDriverModel(
       collectClangDriverOptions(args, CLANG_CL_VISIBILITY),
       CompilerDialect.Msvc,

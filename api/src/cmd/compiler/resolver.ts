@@ -5,7 +5,7 @@ import {
   CompilerArtifact,
   CompilerDialect,
   CompilerPhase,
-  type CompilerDriverParseResult,
+  type CompilerParseResult,
   type CompilerInput,
   type CompilerMode,
   type CompilerOutput,
@@ -292,9 +292,7 @@ function compareInputOrder(
   return left.index - right.index;
 }
 
-function resolveInputs(
-  parsed: CompilerDriverParseResult,
-): ResolvedCompilerInput[] {
+function resolveInputs(parsed: CompilerParseResult): ResolvedCompilerInput[] {
   return [
     ...parsed.inputs.map(resolveInput),
     ...parsed.inputCandidates.map(resolveInputCandidate),
@@ -481,7 +479,7 @@ function outputEdges(
 }
 
 function resolveOutputs(
-  parsed: CompilerDriverParseResult,
+  parsed: CompilerParseResult,
   inputs: readonly ResolvedCompilerInput[],
 ): OutputResolution {
   const mode = parsed.compilerMode;
@@ -534,7 +532,7 @@ function resolveOutputs(
 }
 
 export function resolveCompilerCommand(
-  parsed: CompilerDriverParseResult,
+  parsed: CompilerParseResult,
 ): CompilerResolveResult {
   const inputs = resolveInputs(parsed);
   const outputResolution = resolveOutputs(parsed, inputs);
