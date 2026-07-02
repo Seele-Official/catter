@@ -180,17 +180,77 @@ export type CompilerParseResult = {
   outputs: CompilerOutput[];
 };
 
+/** Strategy used by the resolver when deciding whether parser input candidates are real file reads. */
+export type CompilerInputCandidateInference = "none" | "suffix" | "all";
+
+/** Fallback behavior for input candidates that cannot be classified by language or suffix. */
+export type CompilerUnknownInputCandidatePolicy = "ignore" | "read-as-link";
+
+/** Configures how compiler parser facts are resolved into visible file reads, writes, and edges. */
+export type CompilerResolverOptions = {
+  /** Controls whether and how `inputCandidates` are promoted to inferred reads. */
+  inputCandidateInference?: CompilerInputCandidateInference;
+  /** Controls unknown candidate handling when `inputCandidateInference` is `suffix`. */
+  unknownInputCandidate?: CompilerUnknownInputCandidatePolicy;
+  /** Whether to infer driver default outputs when no matching explicit output fact exists. */
+  inferDefaultOutputs?: boolean;
+  /** Whether directory-like explicit output paths are expanded into per-input file paths. */
+  expandDirectoryOutputs?: boolean;
+  /** Whether CL-style assembly listing actions should add side-effect writes. */
+  inferAssemblyListings?: boolean;
+  /** Whether to attach detailed resolver decisions and diagnostics to the result. */
+  debug?: boolean;
+};
+
+/** Machine-readable resolver diagnostic used for debugging parser or resolver coverage gaps. */
+export type CompilerResolveDiagnostic = {
+  /** Stable diagnostic identifier. */
+  code: string;
+  /** Human-readable diagnostic details. */
+  message: string;
+  /** Related path token, when the diagnostic is tied to a specific file-like value. */
+  path?: string;
+  /** Related argv index, when available from the parser fact. */
+  index?: number;
+  /** Parser evidence associated with the diagnostic, when available. */
+  source?: CompilerFactSource;
+};
+
+/** Input candidate rejected by the resolver, with the policy reason that rejected it. */
+export type CompilerRejectedInputCandidate = {
+  /** Candidate fact supplied by the parser. */
+  input: CompilerInput;
+  /** Short policy reason for rejection. */
+  reason: string;
+};
+
+/** Optional detailed trace of resolver decisions. */
+export type CompilerResolveDebug = {
+  /** Fully resolved options used for this resolution pass. */
+  options: Required<CompilerResolverOptions>;
+  /** Input candidates promoted to inferred reads. */
+  acceptedInputCandidates: CompilerInput[];
+  /** Input candidates rejected by the configured policy. */
+  rejectedInputCandidates: CompilerRejectedInputCandidate[];
+  /** Reads inferred from parser candidates rather than explicit input facts. */
+  inferredReads: CompilerInput[];
+  /** Writes inferred from compiler defaults or side-output conventions. */
+  inferredWrites: string[];
+  /** Diagnostics emitted while resolving parser facts. */
+  diagnostics: CompilerResolveDiagnostic[];
+};
+
 export type CompilerResolveResult = {
-  inputs: CompilerInput[];
-  sourceFiles: string[];
   reads: string[];
   writes: string[];
   edges: Edge[];
+  sourceFiles: string[];
+  debug?: CompilerResolveDebug;
 };
 
-export type CompilerResolver = (
-  parsed: CompilerParseResult,
-) => CompilerResolveResult;
+export interface CompilerResolver {
+  resolve(parsed: CompilerParseResult): CompilerResolveResult;
+}
 
 export type CompilerAnalyzerOptions = {
   identifier?: CompilerIdentifier;

@@ -4,7 +4,7 @@ import type { AnalyzedData } from "../model.js";
 import { CompilerAnalysisError, toCompilerAnalysisError } from "./errors.js";
 import { CompilerIdentifier } from "./identify.js";
 import { parseCompilerCommand } from "./parsers/index.js";
-import { resolveCompilerCommand } from "./resolver.js";
+import { CompilerCommandResolver } from "./resolver.js";
 import type {
   CompilerAnalyzerOptions,
   CompilerParseResult,
@@ -67,7 +67,7 @@ export class CompilerAnalyzer extends Analyzer {
   constructor(options: CompilerAnalyzerOptions = {}) {
     super();
     this.identifier = options.identifier ?? new CompilerIdentifier();
-    this.resolver = options.resolver ?? resolveCompilerCommand;
+    this.resolver = options.resolver ?? new CompilerCommandResolver();
   }
 
   analyze(
@@ -79,7 +79,7 @@ export class CompilerAnalyzer extends Analyzer {
         const identity = this.identifier.identifyCompilerCommand(unwrapped);
 
         const parsed = parseCompilerCommand(unwrapped.argv, identity);
-        const resolved = this.resolver(parsed);
+        const resolved = this.resolver.resolve(parsed);
         return new CompilerAnalysis(parsed, resolved, command, unwrapped);
       },
       (error) => toCompilerAnalysisError(error, "compiler analysis failed"),

@@ -1,253 +1,136 @@
 import * as fs from "../../fs.js";
+import { err, ok, type Result } from "../../neverthrow/index.js";
 import type { Edge } from "../model.js";
-import { CompilerModelError } from "./errors.js";
 import {
   CompilerArtifact,
   CompilerDialect,
   CompilerPhase,
-  type CompilerParseResult,
+  type CompilerAction,
   type CompilerInput,
-  type CompilerMode,
   type CompilerOutput,
   type CompilerOutputKind,
+  type CompilerParseResult,
+  type CompilerResolveDebug,
+  type CompilerResolveDiagnostic,
   type CompilerResolveResult,
+  type CompilerResolverOptions,
 } from "./types.js";
 
-type OutputResolution = {
-  writes: string[];
-  edges: Edge[];
+type ReadRole = "source" | "link";
+type ReadOrigin = "explicit" | "inferred";
+type WriteOrigin = "explicit" | "inferred";
+type ResolvedRead = {
+  readonly input: CompilerInput;
+  readonly role: ReadRole;
+  readonly origin: ReadOrigin;
 };
 
-type DriverOutputExtensions = {
-  object: string;
-  executable: string;
-  sharedLibrary: string;
-  staticLibrary: string;
+type ResolvedWrite = {
+  readonly path: string;
+  readonly origin: WriteOrigin;
+  readonly reads: readonly ResolvedRead[];
 };
 
-type ArtifactMetadata = {
-  readonly defaultExtension?:
-    | {
-        readonly kind: "driver";
-        readonly key: keyof DriverOutputExtensions;
-      }
-    | { readonly kind: "fixed"; readonly extension: string };
-  readonly perInputDefaultOutput?: boolean;
-  readonly expandDirectoryOutput?: boolean;
+type DriverExtensions = {
+  readonly object: string;
+  readonly executable: string;
+  readonly sharedLibrary: string;
+  readonly staticLibrary: string;
 };
 
-type OutputContext = {
-  readonly edgeInputs: readonly ResolvedCompilerInput[];
-  readonly outputNameInputs: readonly ResolvedCompilerInput[];
-  readonly perInputDefaultOutput: boolean;
+type ResolverState = {
+  acceptedInputCandidates: CompilerInput[];
+  rejectedInputCandidates: CompilerResolveDebug["rejectedInputCandidates"];
+  inferredReads: CompilerInput[];
+  inferredWrites: string[];
+  diagnostics: CompilerResolveDiagnostic[];
 };
 
-type ResolvedCompilerInputUsage = "source" | "link";
-
-type ResolvedCompilerInput = CompilerInput & {
-  readonly usage: ResolvedCompilerInputUsage;
+const DEFAULT_OPTIONS: Required<CompilerResolverOptions> = {
+  inputCandidateInference: "suffix",
+  unknownInputCandidate: "ignore",
+  inferDefaultOutputs: true,
+  expandDirectoryOutputs: true,
+  inferAssemblyListings: true,
+  debug: false,
 };
 
-const SOURCE_SUFFIXES = new Set([
+const SOURCE_EXTENSIONS = new Set([
+  ".asm",
+  ".bc",
   ".c",
+  ".c++",
   ".cc",
   ".cp",
   ".cpp",
-  ".cxx",
-  ".c++",
   ".cu",
-  ".hip",
-  ".m",
-  ".mm",
-  ".s",
-  ".sx",
-  ".asm",
+  ".cxx",
   ".f",
+  ".f03",
+  ".f08",
   ".f77",
   ".f90",
   ".f95",
-  ".f03",
-  ".f08",
   ".for",
   ".ftn",
+  ".gch",
+  ".hip",
   ".i",
   ".ii",
+  ".ll",
+  ".m",
   ".mi",
   ".mii",
-  ".bc",
-  ".ll",
-  ".pcm",
+  ".mm",
   ".pch",
-  ".gch",
+  ".pcm",
+  ".s",
+  ".sx",
 ]);
 
-const LINK_INPUT_SUFFIXES = new Set([
-  ".o",
-  ".obj",
+const LINK_EXTENSIONS = new Set([
   ".a",
+  ".dll",
+  ".dylib",
+  ".exp",
   ".lib",
   ".lo",
-  ".so",
-  ".dylib",
-  ".dll",
-  ".exp",
+  ".o",
+  ".obj",
   ".res",
+  ".so",
 ]);
 
-const GNU_OUTPUT_EXTENSIONS: DriverOutputExtensions = {
+const GNU_EXTENSIONS: DriverExtensions = {
   object: ".o",
   executable: "",
   sharedLibrary: "",
   staticLibrary: ".a",
 };
 
-const MSVC_OUTPUT_EXTENSIONS: DriverOutputExtensions = {
+const MSVC_EXTENSIONS: DriverExtensions = {
   object: ".obj",
   executable: ".exe",
   sharedLibrary: ".dll",
   staticLibrary: ".lib",
 };
 
-const COMPILER_ARTIFACT_METADATA: Record<CompilerArtifact, ArtifactMetadata> = {
-  [CompilerArtifact.None]: {},
-  [CompilerArtifact.PreprocessedSource]: {},
-  [CompilerArtifact.Object]: {
-    defaultExtension: { kind: "driver", key: "object" },
-    perInputDefaultOutput: true,
-    expandDirectoryOutput: true,
-  },
-  [CompilerArtifact.Executable]: {
-    defaultExtension: { kind: "driver", key: "executable" },
-    expandDirectoryOutput: true,
-  },
-  [CompilerArtifact.SharedLibrary]: {
-    defaultExtension: { kind: "driver", key: "sharedLibrary" },
-    expandDirectoryOutput: true,
-  },
-  [CompilerArtifact.StaticLibrary]: {
-    defaultExtension: { kind: "driver", key: "staticLibrary" },
-    expandDirectoryOutput: true,
-  },
-  [CompilerArtifact.Assembly]: {
-    defaultExtension: { kind: "fixed", extension: ".s" },
-    perInputDefaultOutput: true,
-    expandDirectoryOutput: true,
-  },
-  [CompilerArtifact.LlvmIR]: {
-    defaultExtension: { kind: "fixed", extension: ".ll" },
-    perInputDefaultOutput: true,
-    expandDirectoryOutput: true,
-  },
-  [CompilerArtifact.LlvmBitcode]: {
-    defaultExtension: { kind: "fixed", extension: ".bc" },
-    perInputDefaultOutput: true,
-    expandDirectoryOutput: true,
-  },
-  [CompilerArtifact.Pch]: {
-    defaultExtension: { kind: "fixed", extension: ".pch" },
-    perInputDefaultOutput: true,
-    expandDirectoryOutput: true,
-  },
-  [CompilerArtifact.Pcm]: {
-    defaultExtension: { kind: "fixed", extension: ".pcm" },
-    perInputDefaultOutput: true,
-    expandDirectoryOutput: true,
-  },
-  [CompilerArtifact.Ptx]: {
-    defaultExtension: { kind: "fixed", extension: ".ptx" },
-    perInputDefaultOutput: true,
-    expandDirectoryOutput: true,
-  },
-  [CompilerArtifact.Cubin]: {
-    defaultExtension: { kind: "fixed", extension: ".cubin" },
-    perInputDefaultOutput: true,
-    expandDirectoryOutput: true,
-  },
-  [CompilerArtifact.Fatbin]: {
-    defaultExtension: { kind: "fixed", extension: ".fatbin" },
-    perInputDefaultOutput: true,
-    expandDirectoryOutput: true,
-  },
-  [CompilerArtifact.Unknown]: {},
-};
-
-const PHASE_OUTPUT_KINDS: Record<CompilerPhase, CompilerOutputKind[]> = {
-  [CompilerPhase.Preprocess]: ["primary-artifact"],
-  [CompilerPhase.SyntaxOnly]: [],
-  [CompilerPhase.Compile]: ["primary-artifact", "object-file"],
-  [CompilerPhase.Link]: ["primary-artifact", "linked-artifact"],
-  [CompilerPhase.Archive]: [
-    "primary-artifact",
-    "object-file",
-    "linked-artifact",
-  ],
-  [CompilerPhase.RelocatableLink]: [
-    "primary-artifact",
-    "object-file",
-    "linked-artifact",
-  ],
-  [CompilerPhase.DeviceLink]: [
-    "primary-artifact",
-    "object-file",
-    "linked-artifact",
-  ],
-};
-
-function defaultOutputStemOfInput(inputPath: string): string {
-  if (inputPath === "-") {
-    return "stdin";
-  }
-
-  const filename = fs.path.filename(inputPath);
-  const ext = fs.path.extension(filename);
-  if (ext.length === 0 || ext.length >= filename.length) {
-    return filename;
-  }
-  return filename.slice(0, filename.length - ext.length);
-}
-
-function isDirectoryOutputPath(outputPath: string): boolean {
-  return outputPath.endsWith("/") || outputPath.endsWith("\\");
-}
-
-function outputExtensionsForDialect(
-  dialect: CompilerDialect,
-): DriverOutputExtensions {
-  switch (dialect) {
-    case CompilerDialect.Msvc:
-      return MSVC_OUTPUT_EXTENSIONS;
-    case CompilerDialect.Clang:
-    case CompilerDialect.Gcc:
-    case CompilerDialect.Nvcc:
-    case CompilerDialect.Unknown:
-      return GNU_OUTPUT_EXTENSIONS;
-  }
-}
-
-function classifyBySuffix(path: string): ResolvedCompilerInputUsage {
+function extensionRole(path: string): Result<ReadRole, void> {
   if (path === "-") {
-    return "source";
+    return ok("source");
   }
 
-  const ext = fs.path.extension(path);
-  if (ext === ".C" || ext === ".M") {
-    return "source";
+  const ext = fs.path.extension(path).toLowerCase();
+  if (SOURCE_EXTENSIONS.has(ext)) {
+    return ok("source");
   }
-
-  const lowerExt = ext.toLowerCase();
-  if (SOURCE_SUFFIXES.has(lowerExt)) {
-    return "source";
+  if (LINK_EXTENSIONS.has(ext)) {
+    return ok("link");
   }
-  if (LINK_INPUT_SUFFIXES.has(lowerExt)) {
-    return "link";
-  }
-  return "link";
+  return err();
 }
 
-function classifyCompilerInput(
-  input: CompilerInput,
-  explicitLanguage: string | undefined,
-): ResolvedCompilerInputUsage {
+function readRole(input: CompilerInput): ReadRole {
   if (
     input.source.kind === "remainder-argument" ||
     input.source.kind === "remainder-option"
@@ -255,381 +138,557 @@ function classifyCompilerInput(
     return "link";
   }
 
-  if (explicitLanguage === undefined || explicitLanguage.length === 0) {
-    return classifyBySuffix(input.path);
+  const language = input.language?.toLowerCase();
+  if (language === undefined || language.length === 0 || language === "none") {
+    return extensionRole(input.path).unwrapOr("link");
   }
-
-  switch (explicitLanguage.toLowerCase()) {
-    case "none":
-      return classifyBySuffix(input.path);
-    case "object":
-      return "link";
-    default:
-      return "source";
+  if (language === "object") {
+    return "link";
   }
+  return "source";
 }
 
-function resolveInputCandidate(
-  candidate: CompilerInput,
-): ResolvedCompilerInput {
-  return {
-    ...candidate,
-    usage: classifyCompilerInput(candidate, candidate.language),
-  };
+function pathStem(path: string): string {
+  if (path === "-") {
+    return "stdin";
+  }
+  const name = fs.path.filename(path);
+  const ext = fs.path.extension(name);
+
+  return name.slice(0, name.length - ext.length);
 }
 
-function resolveInput(input: CompilerInput): ResolvedCompilerInput {
-  return {
-    ...input,
-    usage: classifyCompilerInput(input, input.language),
-  };
+function isDirectoryLike(path: string): boolean {
+  return path.endsWith("/") || path.endsWith("\\");
 }
 
-function compareInputOrder(
-  left: ResolvedCompilerInput,
-  right: ResolvedCompilerInput,
-): number {
-  return left.index - right.index;
+function dialectExtensions(dialect: CompilerDialect): DriverExtensions {
+  return dialect === CompilerDialect.Msvc ? MSVC_EXTENSIONS : GNU_EXTENSIONS;
 }
 
-function resolveInputs(parsed: CompilerParseResult): ResolvedCompilerInput[] {
-  return [
-    ...parsed.inputs.map(resolveInput),
-    ...parsed.inputCandidates.map(resolveInputCandidate),
-  ].sort(compareInputOrder);
-}
-
-function publicInputs(
-  inputs: readonly ResolvedCompilerInput[],
-): CompilerInput[] {
-  return inputs.map(({ usage, ...input }) => input);
-}
-
-function artifactMetadata(mode: CompilerMode): ArtifactMetadata {
-  return COMPILER_ARTIFACT_METADATA[mode.artifact];
-}
-
-function hasPerInputDefaultOutput(mode: CompilerMode): boolean {
-  return (
-    mode.phase === CompilerPhase.Compile &&
-    artifactMetadata(mode).perInputDefaultOutput === true
-  );
-}
-
-function hasSingleDefaultOutput(mode: CompilerMode): boolean {
-  switch (mode.phase) {
-    case CompilerPhase.Link:
-    case CompilerPhase.Archive:
-    case CompilerPhase.RelocatableLink:
-    case CompilerPhase.DeviceLink:
-      return true;
-    default:
-      return false;
+function artifactExtension(
+  artifact: CompilerArtifact,
+  extensions: DriverExtensions,
+): Result<string, void> {
+  switch (artifact) {
+    case CompilerArtifact.Object:
+      return ok(extensions.object);
+    case CompilerArtifact.Executable:
+      return ok(extensions.executable);
+    case CompilerArtifact.SharedLibrary:
+      return ok(extensions.sharedLibrary);
+    case CompilerArtifact.StaticLibrary:
+      return ok(extensions.staticLibrary);
+    case CompilerArtifact.Assembly:
+      return ok(".s");
+    case CompilerArtifact.LlvmIR:
+      return ok(".ll");
+    case CompilerArtifact.LlvmBitcode:
+      return ok(".bc");
+    case CompilerArtifact.Pch:
+      return ok(".pch");
+    case CompilerArtifact.Pcm:
+      return ok(".pcm");
+    case CompilerArtifact.Ptx:
+      return ok(".ptx");
+    case CompilerArtifact.Cubin:
+      return ok(".cubin");
+    case CompilerArtifact.Fatbin:
+      return ok(".fatbin");
+    case CompilerArtifact.None:
+    case CompilerArtifact.PreprocessedSource:
+    case CompilerArtifact.Unknown:
+      return err();
   }
 }
 
-function hasDefaultOutputExtension(mode: CompilerMode): boolean {
-  return artifactMetadata(mode).defaultExtension !== undefined;
-}
-
-function defaultOutputExtension(
-  mode: CompilerMode,
-  extensions: DriverOutputExtensions,
-): string {
-  const extension = artifactMetadata(mode).defaultExtension;
-  if (extension?.kind === "driver") {
-    return extensions[extension.key];
-  }
-
-  if (extension?.kind === "fixed") {
-    return extension.extension;
-  }
-
-  throw new CompilerModelError(
-    `no default output extension for ${mode.artifact}`,
-  );
-}
-
-function selectOutputContext(
-  mode: CompilerMode,
-  inputs: readonly ResolvedCompilerInput[],
-): OutputContext {
-  const perInputDefaultOutput = hasPerInputDefaultOutput(mode);
-  const sourceInputs = inputs.filter((input) => input.usage === "source");
-
-  return {
-    edgeInputs: perInputDefaultOutput ? sourceInputs : inputs,
-    outputNameInputs: perInputDefaultOutput ? sourceInputs : inputs.slice(0, 1),
-    perInputDefaultOutput,
-  };
-}
-
-function selectExplicitOutput(
-  mode: CompilerMode,
-  outputs: readonly CompilerOutput[],
-): CompilerOutput | undefined {
-  const kinds = PHASE_OUTPUT_KINDS[mode.phase];
-  const explicitOutputs = outputs.filter((output) =>
-    kinds.includes(output.kind),
-  );
-  return explicitOutputs[explicitOutputs.length - 1];
-}
-
-function shouldExpandDirectoryOutput(
-  mode: CompilerMode,
-  outputPath: string,
-  outputInputs: readonly ResolvedCompilerInput[],
-): boolean {
-  return (
-    isDirectoryOutputPath(outputPath) &&
-    outputInputs.length > 0 &&
-    artifactMetadata(mode).expandDirectoryOutput === true &&
-    hasDefaultOutputExtension(mode)
-  );
-}
-
-function materializeDirectoryOutputs(
-  mode: CompilerMode,
-  outputPath: string,
-  outputInputs: readonly ResolvedCompilerInput[],
-  extensions: DriverOutputExtensions,
-): string[] {
-  const extension = defaultOutputExtension(mode, extensions);
-  return outputInputs.map((input) =>
-    fs.path.lexicalNormal(
-      fs.path.joinAll(
-        outputPath,
-        defaultOutputStemOfInput(input.path) + extension,
-      ),
-    ),
-  );
-}
-
-function materializeExplicitOutputPath(
-  mode: CompilerMode,
-  outputPath: string,
-  outputInputs: readonly ResolvedCompilerInput[],
-  extensions: DriverOutputExtensions,
-): string[] {
-  if (!shouldExpandDirectoryOutput(mode, outputPath, outputInputs)) {
-    return [outputPath];
-  }
-
-  return materializeDirectoryOutputs(
-    mode,
-    outputPath,
-    outputInputs,
-    extensions,
-  );
-}
-
-function defaultOutputPaths(
-  mode: CompilerMode,
-  inputs: readonly ResolvedCompilerInput[],
-  extensions: DriverOutputExtensions,
-): string[] {
-  const extension = defaultOutputExtension(mode, extensions);
-  return inputs.map(
-    (input) => defaultOutputStemOfInput(input.path) + extension,
-  );
-}
-
-function defaultSingleOutputPaths(
-  mode: CompilerMode,
-  inputs: readonly ResolvedCompilerInput[],
-  extensions: DriverOutputExtensions,
-): string[] {
-  if (inputs.length === 0) {
-    return [];
-  }
-
-  if (extensions.executable.length === 0) {
-    return ["a.out"];
-  }
-
-  const extension =
-    mode.artifact === CompilerArtifact.SharedLibrary
-      ? extensions.sharedLibrary
-      : mode.artifact === CompilerArtifact.StaticLibrary
-        ? extensions.staticLibrary
-        : extensions.executable;
-  return [defaultOutputStemOfInput(inputs[0]!.path) + extension];
-}
-
-function outputEdges(
-  writes: readonly string[],
-  inputs: readonly ResolvedCompilerInput[],
-): Edge[] {
-  if (writes.length === 0) {
-    return [];
-  }
-
-  if (writes.length === inputs.length) {
-    return writes.map((output, index) => ({
-      output,
-      inputs: [inputs[index]!.path],
-    }));
-  }
-
-  const inputPaths = inputs.map((input) => input.path);
-  return writes.map((output) => ({
-    output,
-    inputs: inputPaths,
-  }));
-}
-
-function assemblyListingDefaultPath(input: ResolvedCompilerInput): string {
-  return defaultOutputStemOfInput(input.path) + ".asm";
-}
-
-function assemblyListingDirectoryPaths(
-  outputPath: string,
-  inputs: readonly ResolvedCompilerInput[],
-): string[] {
-  return inputs.map((input) =>
-    fs.path.lexicalNormal(
-      fs.path.joinAll(outputPath, assemblyListingDefaultPath(input)),
-    ),
-  );
-}
-
-function assemblyListingPaths(
-  outputPath: string | undefined,
-  inputs: readonly ResolvedCompilerInput[],
-): string[] {
-  if (inputs.length === 0) {
-    return [];
-  }
-
-  if (outputPath === undefined || outputPath.length === 0) {
-    return inputs.map(assemblyListingDefaultPath);
-  }
-
-  if (isDirectoryOutputPath(outputPath)) {
-    return assemblyListingDirectoryPaths(outputPath, inputs);
-  }
-
-  return inputs.length === 1 ? [outputPath] : [];
-}
-
-function shouldResolveAssemblyListingOutputs(mode: CompilerMode): boolean {
-  switch (mode.phase) {
-    case CompilerPhase.Compile:
-    case CompilerPhase.Link:
-    case CompilerPhase.Archive:
-    case CompilerPhase.RelocatableLink:
-    case CompilerPhase.DeviceLink:
-      return true;
+function phaseOutputKinds(phase: CompilerPhase): readonly CompilerOutputKind[] {
+  switch (phase) {
     case CompilerPhase.Preprocess:
+      return ["primary-artifact"];
     case CompilerPhase.SyntaxOnly:
-      return false;
+      return [];
+    case CompilerPhase.Compile:
+      return ["primary-artifact", "object-file"];
+    case CompilerPhase.Link:
+      return ["primary-artifact", "linked-artifact"];
+    case CompilerPhase.Archive:
+    case CompilerPhase.RelocatableLink:
+    case CompilerPhase.DeviceLink:
+      return ["primary-artifact", "object-file", "linked-artifact"];
   }
 }
 
-function resolveAssemblyListingOutputs(
-  parsed: CompilerParseResult,
-  inputs: readonly ResolvedCompilerInput[],
-): OutputResolution {
-  if (!shouldResolveAssemblyListingOutputs(parsed.compilerMode)) {
-    return { writes: [], edges: [] };
-  }
-
-  const sourceInputs = inputs.filter((input) => input.usage === "source");
-  let hasAssemblyListingRequest = false;
-  let outputPath: string | undefined;
-
-  for (const action of parsed.compilerActions) {
-    if (action.kind !== "emit-assembly-listing") {
-      continue;
-    }
-
-    hasAssemblyListingRequest = true;
-    if (action.path !== undefined) {
-      outputPath = action.path;
-    }
-  }
-
-  if (!hasAssemblyListingRequest) {
-    return { writes: [], edges: [] };
-  }
-
-  const writes = assemblyListingPaths(outputPath, sourceInputs);
-  return {
-    writes,
-    edges: outputEdges(writes, sourceInputs),
-  };
+function sortByIndex<T extends { readonly index: number }>(
+  values: readonly T[],
+) {
+  return [...values].sort((left, right) => left.index - right.index);
 }
 
-function resolveOutputs(
-  parsed: CompilerParseResult,
-  inputs: readonly ResolvedCompilerInput[],
-): OutputResolution {
-  const mode = parsed.compilerMode;
-  const outputExtensions = outputExtensionsForDialect(parsed.dialect);
-  if (mode.artifact === CompilerArtifact.None) {
-    return { writes: [], edges: [] };
+function firstValue<T>(values: readonly T[]): Result<T, void> {
+  return values.length === 0 ? err() : ok(values[0]!);
+}
+
+/**
+ * Resolves parsed compiler facts into visible file reads, writes, and dependency edges.
+ *
+ * The resolver treats parser `inputs` and `outputs` as facts, applies configurable
+ * inference to `inputCandidates`, and records optional debug diagnostics for
+ * decisions that depend on resolver policy.
+ */
+export class CompilerCommandResolver {
+  private readonly options: Required<CompilerResolverOptions>;
+  private state: ResolverState;
+
+  constructor(options: CompilerResolverOptions = {}) {
+    this.options = { ...DEFAULT_OPTIONS, ...options };
+    this.state = this.createState();
   }
 
-  const context = selectOutputContext(mode, inputs);
-  const explicitOutput = selectExplicitOutput(mode, parsed.outputs);
+  resolve(parsed: CompilerParseResult): CompilerResolveResult {
+    this.state = this.createState();
 
-  if (explicitOutput !== undefined) {
-    const writes = materializeExplicitOutputPath(
-      mode,
-      explicitOutput.path,
-      context.outputNameInputs,
-      outputExtensions,
-    );
+    const reads = this.collectReads(parsed);
+    const writes = [
+      ...this.resolvePrimaryWrites(parsed, reads),
+      ...this.resolveSideWrites(parsed, reads),
+    ];
+
+    const result: CompilerResolveResult = {
+      reads: reads.map((read) => read.input.path),
+      writes: writes.map((write) => write.path),
+      edges: writes.map((write) => ({
+        output: write.path,
+        inputs: write.reads.map((read) => read.input.path),
+      })),
+      sourceFiles: reads
+        .filter((read) => read.role === "source")
+        .map((read) => read.input.path),
+    };
+
+    if (this.options.debug) {
+      result.debug = {
+        options: this.options,
+        acceptedInputCandidates: [...this.state.acceptedInputCandidates],
+        rejectedInputCandidates: [...this.state.rejectedInputCandidates],
+        inferredReads: [...this.state.inferredReads],
+        inferredWrites: [...this.state.inferredWrites],
+        diagnostics: [...this.state.diagnostics],
+      };
+    }
+
+    return result;
+  }
+
+  private createState(): ResolverState {
     return {
-      writes,
-      edges: outputEdges(writes, context.edgeInputs),
+      acceptedInputCandidates: [],
+      rejectedInputCandidates: [],
+      inferredReads: [],
+      inferredWrites: [],
+      diagnostics: [],
     };
   }
 
-  if (hasSingleDefaultOutput(mode)) {
-    const writes = defaultSingleOutputPaths(
-      mode,
-      context.outputNameInputs,
-      outputExtensions,
+  private collectReads(parsed: CompilerParseResult): ResolvedRead[] {
+    const explicitReads = parsed.inputs.map((input): ResolvedRead => {
+      return {
+        input,
+        role: readRole(input),
+        origin: "explicit",
+      };
+    });
+
+    const candidateReads = parsed.inputCandidates.flatMap((candidate) =>
+      this.resolveInputCandidate(candidate),
     );
+
+    return [...explicitReads, ...candidateReads].sort(
+      (left, right) => left.input.index - right.input.index,
+    );
+  }
+
+  private resolveInputCandidate(candidate: CompilerInput): ResolvedRead[] {
+    switch (this.options.inputCandidateInference) {
+      case "none":
+        this.rejectInputCandidate(
+          candidate,
+          "input candidate inference disabled",
+        );
+        return [];
+      case "all":
+        return [this.acceptInputCandidate(candidate)];
+      case "suffix":
+        return this.resolveInputCandidateBySuffix(candidate);
+    }
+  }
+
+  private resolveInputCandidateBySuffix(
+    candidate: CompilerInput,
+  ): ResolvedRead[] {
+    const role = extensionRole(candidate.path);
+    if (role.isOk()) {
+      return [this.acceptInputCandidate(candidate, role.value)];
+    }
+
+    if (this.options.unknownInputCandidate === "read-as-link") {
+      return [this.acceptInputCandidate(candidate, "link")];
+    }
+
+    this.rejectInputCandidate(candidate, "unknown input candidate suffix");
+    return [];
+  }
+
+  private acceptInputCandidate(
+    candidate: CompilerInput,
+    role = readRole(candidate),
+  ): ResolvedRead {
+    this.state.acceptedInputCandidates.push(candidate);
+    this.state.inferredReads.push(candidate);
     return {
-      writes,
-      edges: outputEdges(writes, context.edgeInputs),
+      input: candidate,
+      role,
+      origin: "inferred",
     };
   }
 
-  if (!context.perInputDefaultOutput) {
-    return { writes: [], edges: [] };
+  private rejectInputCandidate(candidate: CompilerInput, reason: string): void {
+    this.state.rejectedInputCandidates.push({
+      input: candidate,
+      reason,
+    });
+    this.addDiagnostic({
+      code: "input-candidate-rejected",
+      message: reason,
+      path: candidate.path,
+      index: candidate.index,
+      source: candidate.source,
+    });
   }
 
-  const writes = defaultOutputPaths(
-    mode,
-    context.outputNameInputs,
-    outputExtensions,
-  );
-  return {
-    writes,
-    edges: outputEdges(writes, context.edgeInputs),
-  };
-}
+  private resolvePrimaryWrites(
+    parsed: CompilerParseResult,
+    reads: readonly ResolvedRead[],
+  ): ResolvedWrite[] {
+    if (parsed.outputCandidates.length > 0) {
+      for (const output of parsed.outputCandidates) {
+        this.addDiagnostic({
+          code: "output-candidate-ignored",
+          message: "output candidates are not resolved in this resolver stage",
+          path: output.path,
+          index: output.index,
+          source: output.source,
+        });
+      }
+    }
 
-export function resolveCompilerCommand(
-  parsed: CompilerParseResult,
-): CompilerResolveResult {
-  const inputs = resolveInputs(parsed);
-  const outputResolution = resolveOutputs(parsed, inputs);
-  const assemblyListingResolution = resolveAssemblyListingOutputs(
-    parsed,
-    inputs,
-  );
+    if (parsed.compilerMode.artifact === CompilerArtifact.None) {
+      return [];
+    }
 
-  return {
-    inputs: publicInputs(inputs),
-    sourceFiles: inputs
-      .filter((input) => input.usage === "source")
-      .map((input) => input.path),
-    reads: inputs.map((input) => input.path),
-    writes: [...outputResolution.writes, ...assemblyListingResolution.writes],
-    edges: [...outputResolution.edges, ...assemblyListingResolution.edges],
-  };
+    const explicitOutput = this.selectExplicitOutput(parsed);
+    if (explicitOutput.isOk()) {
+      return this.resolveExplicitPrimaryOutput(
+        parsed,
+        explicitOutput.value,
+        reads,
+      );
+    }
+
+    if (!this.options.inferDefaultOutputs) {
+      return [];
+    }
+
+    return this.resolveDefaultPrimaryOutput(parsed, reads);
+  }
+
+  private selectExplicitOutput(
+    parsed: CompilerParseResult,
+  ): Result<CompilerOutput, void> {
+    const acceptedKinds = phaseOutputKinds(parsed.compilerMode.phase);
+    let selected: Result<CompilerOutput, void> = err();
+
+    for (const output of sortByIndex(parsed.outputs)) {
+      if (acceptedKinds.includes(output.kind)) {
+        selected = ok(output);
+        continue;
+      }
+
+      this.addDiagnostic({
+        code: "output-kind-ignored",
+        message: `output kind ${output.kind} is not used for ${parsed.compilerMode.phase}`,
+        path: output.path,
+        index: output.index,
+        source: output.source,
+      });
+    }
+
+    return selected;
+  }
+
+  private resolveExplicitPrimaryOutput(
+    parsed: CompilerParseResult,
+    output: CompilerOutput,
+    reads: readonly ResolvedRead[],
+  ): ResolvedWrite[] {
+    const relevantReads = this.primaryOutputReads(parsed, reads);
+    const nameReads = this.primaryOutputNameReads(parsed, relevantReads);
+    const paths = this.materializeOutputPath(parsed, output.path, nameReads);
+    return this.writesForPaths(paths, "explicit", relevantReads);
+  }
+
+  private resolveDefaultPrimaryOutput(
+    parsed: CompilerParseResult,
+    reads: readonly ResolvedRead[],
+  ): ResolvedWrite[] {
+    switch (parsed.compilerMode.phase) {
+      case CompilerPhase.Preprocess:
+      case CompilerPhase.SyntaxOnly:
+        return [];
+      case CompilerPhase.Compile:
+        return this.resolveDefaultCompileOutput(parsed, reads);
+      case CompilerPhase.Link:
+      case CompilerPhase.Archive:
+      case CompilerPhase.RelocatableLink:
+      case CompilerPhase.DeviceLink:
+        return this.resolveDefaultSingleOutput(parsed, reads);
+    }
+  }
+
+  private resolveDefaultCompileOutput(
+    parsed: CompilerParseResult,
+    reads: readonly ResolvedRead[],
+  ): ResolvedWrite[] {
+    const relevantReads = this.primaryOutputReads(parsed, reads);
+    if (relevantReads.length === 0) {
+      this.addDiagnostic({
+        code: "default-output-missing-input",
+        message: "compile output has no source input to name",
+      });
+      return [];
+    }
+
+    const extension = artifactExtension(
+      parsed.compilerMode.artifact,
+      dialectExtensions(parsed.dialect),
+    );
+    if (extension.isErr()) {
+      this.addDiagnostic({
+        code: "default-output-unsupported-artifact",
+        message: `cannot infer default output for ${parsed.compilerMode.artifact}`,
+      });
+      return [];
+    }
+
+    return relevantReads.map((read) =>
+      this.writeForPath(
+        pathStem(read.input.path) + extension.value,
+        "inferred",
+        [read],
+      ),
+    );
+  }
+
+  private resolveDefaultSingleOutput(
+    parsed: CompilerParseResult,
+    reads: readonly ResolvedRead[],
+  ): ResolvedWrite[] {
+    const relevantReads = this.primaryOutputReads(parsed, reads);
+    const firstRead = firstValue(relevantReads);
+    if (firstRead.isErr()) {
+      this.addDiagnostic({
+        code: "default-output-missing-input",
+        message: "single output has no input to name",
+      });
+      return [];
+    }
+
+    const path =
+      parsed.dialect === CompilerDialect.Msvc
+        ? pathStem(firstRead.value.input.path) +
+          this.msvcSingleOutputExtension(parsed.compilerMode.artifact)
+        : "a.out";
+
+    return [this.writeForPath(path, "inferred", relevantReads)];
+  }
+
+  private msvcSingleOutputExtension(artifact: CompilerArtifact): string {
+    const extensions = dialectExtensions(CompilerDialect.Msvc);
+    switch (artifact) {
+      case CompilerArtifact.SharedLibrary:
+        return extensions.sharedLibrary;
+      case CompilerArtifact.StaticLibrary:
+        return extensions.staticLibrary;
+      default:
+        return extensions.executable;
+    }
+  }
+
+  private primaryOutputReads(
+    parsed: CompilerParseResult,
+    reads: readonly ResolvedRead[],
+  ): readonly ResolvedRead[] {
+    switch (parsed.compilerMode.phase) {
+      case CompilerPhase.Compile:
+      case CompilerPhase.Preprocess:
+        return reads.filter((read) => read.role === "source");
+      case CompilerPhase.SyntaxOnly:
+        return [];
+      case CompilerPhase.Link:
+      case CompilerPhase.Archive:
+      case CompilerPhase.RelocatableLink:
+      case CompilerPhase.DeviceLink:
+        return reads;
+    }
+  }
+
+  private primaryOutputNameReads(
+    parsed: CompilerParseResult,
+    reads: readonly ResolvedRead[],
+  ): readonly ResolvedRead[] {
+    if (parsed.compilerMode.phase === CompilerPhase.Compile) {
+      return reads;
+    }
+    return firstValue(reads).match(
+      (read) => [read],
+      () => [],
+    );
+  }
+
+  private materializeOutputPath(
+    parsed: CompilerParseResult,
+    outputPath: string,
+    nameReads: readonly ResolvedRead[],
+  ): string[] {
+    if (
+      !this.options.expandDirectoryOutputs ||
+      !isDirectoryLike(outputPath) ||
+      nameReads.length === 0
+    ) {
+      return [outputPath];
+    }
+
+    const extension = artifactExtension(
+      parsed.compilerMode.artifact,
+      dialectExtensions(parsed.dialect),
+    );
+    if (extension.isErr()) {
+      this.addDiagnostic({
+        code: "directory-output-unsupported-artifact",
+        message: `cannot expand directory output for ${parsed.compilerMode.artifact}`,
+        path: outputPath,
+      });
+      return [outputPath];
+    }
+
+    return nameReads.map((read) =>
+      fs.path.lexicalNormal(
+        fs.path.joinAll(
+          outputPath,
+          pathStem(read.input.path) + extension.value,
+        ),
+      ),
+    );
+  }
+
+  private resolveSideWrites(
+    parsed: CompilerParseResult,
+    reads: readonly ResolvedRead[],
+  ): ResolvedWrite[] {
+    if (!this.options.inferAssemblyListings) {
+      return [];
+    }
+
+    const listingPaths = parsed.compilerActions
+      .filter((action) => action.kind === "emit-assembly-listing")
+      .map((action) => action.path);
+
+    if (listingPaths.length === 0) {
+      return [];
+    }
+
+    const sourceReads = reads.filter((read) => read.role === "source");
+
+    switch (parsed.compilerMode.phase) {
+      case CompilerPhase.Preprocess:
+      case CompilerPhase.SyntaxOnly:
+        return [];
+      case CompilerPhase.Compile:
+      case CompilerPhase.Link:
+      case CompilerPhase.Archive:
+      case CompilerPhase.RelocatableLink:
+      case CompilerPhase.DeviceLink:
+        for (const path of listingPaths.reverse()) {
+          if (path !== undefined) {
+            return this.resolveAssemblyListingWritesByPath(sourceReads, path);
+          }
+        }
+    }
+
+    return sourceReads.map((read) =>
+      this.writeForPath(pathStem(read.input.path) + ".asm", "inferred", [read]),
+    );
+  }
+
+  private resolveAssemblyListingWritesByPath(
+    sourceReads: readonly ResolvedRead[],
+    explicitPath: string,
+  ): ResolvedWrite[] {
+    if (isDirectoryLike(explicitPath)) {
+      return sourceReads.map((read) =>
+        this.writeForPath(
+          fs.path.lexicalNormal(
+            fs.path.joinAll(explicitPath, pathStem(read.input.path) + ".asm"),
+          ),
+          "inferred",
+          [read],
+        ),
+      );
+    }
+
+    if (sourceReads.length === 1) {
+      return [this.writeForPath(explicitPath, "explicit", sourceReads)];
+    }
+
+    this.addDiagnostic({
+      code: "assembly-listing-ambiguous-output",
+      message:
+        "single assembly listing path cannot name multiple source inputs",
+      path: explicitPath,
+    });
+
+    return [];
+  }
+
+  private writesForPaths(
+    paths: readonly string[],
+    origin: WriteOrigin,
+    reads: readonly ResolvedRead[],
+  ): ResolvedWrite[] {
+    if (paths.length === reads.length) {
+      return paths.map((path, index) =>
+        this.writeForPath(path, origin, [reads[index]!]),
+      );
+    }
+    return paths.map((path) => this.writeForPath(path, origin, reads));
+  }
+
+  private writeForPath(
+    path: string,
+    origin: WriteOrigin,
+    reads: readonly ResolvedRead[],
+  ): ResolvedWrite {
+    if (origin === "inferred") {
+      this.state.inferredWrites.push(path);
+    }
+    return {
+      path,
+      origin,
+      reads,
+    };
+  }
+
+  private addDiagnostic(diagnostic: CompilerResolveDiagnostic): void {
+    this.state.diagnostics.push(diagnostic);
+  }
 }

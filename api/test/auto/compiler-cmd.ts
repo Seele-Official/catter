@@ -1,4 +1,5 @@
 import { cmd, debug, fs } from "catter";
+import { neverthrow } from "catter";
 
 type ExpectedAnalysis = {
   label: string;
@@ -86,6 +87,13 @@ const compilerAnalyzer = new cmd.CompilerAnalyzer({
   identifier: compilerIdentifier,
 });
 
+function parseCompilerCommand(argv: string[]): cmd.CompilerParseResult {
+  return cmd.parseCompilerCommand(
+    argv,
+    compilerIdentifier.identifyCompilerCommand(invocation(argv)),
+  );
+}
+
 function expectAnalysis(expected: ExpectedAnalysis) {
   const analysis = expectCompilerAnalysis(
     compilerAnalyzer.analyze(invocation(expected.cmd)),
@@ -159,28 +167,18 @@ expectArrayEq(
   "absolute executable writes",
 );
 
-let capturedParse: cmd.CompilerParseResult | undefined;
-const parserIrAnalyzer = new cmd.CompilerAnalyzer({
-  resolver(parsed) {
-    capturedParse = parsed;
-    return cmd.resolveCompilerCommand(parsed);
-  },
-});
-const parserIrAnalysis = expectCompilerAnalysis(
-  parserIrAnalyzer.analyze(
-    invocation(["clang", "-S", "-emit-llvm", "src/t.c", "-o", "-"]),
-  ),
-  "parser ir compiler analysis",
-);
-debug.assertThrow(capturedParse !== undefined);
-if (capturedParse === undefined) {
-  throw new Error("parser ir did not capture parse result");
-}
-const parserIr = capturedParse;
+const parserIr = parseCompilerCommand([
+  "clang",
+  "-S",
+  "-emit-llvm",
+  "src/t.c",
+  "-o",
+  "-",
+]);
 expectEq(
-  parserIrAnalysis.compilerMode.artifact,
+  parserIr.compilerMode.artifact,
   cmd.CompilerArtifact.LlvmIR,
-  "parser ir resolved artifact",
+  "parser ir artifact",
 );
 expectEq(parserIr.compilerActions.length, 2, "parser ir action count");
 expectEq(
@@ -208,32 +206,15 @@ expectEq(
 );
 expectEq(parserIr.outputs[0]!.path, "-", "parser ir output fact path");
 
-let capturedRemainderParse: cmd.CompilerParseResult | undefined;
-const remainderIrAnalyzer = new cmd.CompilerAnalyzer({
-  resolver(parsed) {
-    capturedRemainderParse = parsed;
-    return cmd.resolveCompilerCommand(parsed);
-  },
-});
-expectCompilerAnalysis(
-  remainderIrAnalyzer.analyze(
-    invocation([
-      "clang",
-      "--driver-mode=cl",
-      "foo.obj",
-      "/link",
-      "/dll",
-      "/out:bin/tool.dll",
-      "bar.res",
-    ]),
-  ),
-  "parser ir linker remainder analysis",
-);
-debug.assertThrow(capturedRemainderParse !== undefined);
-if (capturedRemainderParse === undefined) {
-  throw new Error("parser ir did not capture linker remainder parse result");
-}
-const remainderIr = capturedRemainderParse;
+const remainderIr = parseCompilerCommand([
+  "clang",
+  "--driver-mode=cl",
+  "foo.obj",
+  "/link",
+  "/dll",
+  "/out:bin/tool.dll",
+  "bar.res",
+]);
 expectEq(
   remainderIr.compilerActions[0]!.index,
   3,
@@ -260,24 +241,13 @@ expectEq(
   "parser ir linker remainder input source",
 );
 
-let capturedAssemblyListingParse: cmd.CompilerParseResult | undefined;
-const assemblyListingIrAnalyzer = new cmd.CompilerAnalyzer({
-  resolver(parsed) {
-    capturedAssemblyListingParse = parsed;
-    return cmd.resolveCompilerCommand(parsed);
-  },
-});
-expectCompilerAnalysis(
-  assemblyListingIrAnalyzer.analyze(
-    invocation(["clang", "--driver-mode=cl", "/FA", "/Faasm/", "src/main.cpp"]),
-  ),
-  "parser ir assembly listing analysis",
-);
-debug.assertThrow(capturedAssemblyListingParse !== undefined);
-if (capturedAssemblyListingParse === undefined) {
-  throw new Error("parser ir did not capture assembly listing parse result");
-}
-const assemblyListingIr = capturedAssemblyListingParse;
+const assemblyListingIr = parseCompilerCommand([
+  "clang",
+  "--driver-mode=cl",
+  "/FA",
+  "/Faasm/",
+  "src/main.cpp",
+]);
 expectEq(
   assemblyListingIr.compilerActions.length,
   2,
@@ -308,6 +278,157 @@ expectEq(
   "parser ir assembly listing output fact count",
 );
 
+const unknownOptionIr = parseCompilerCommand([
+  "clang",
+  "-c",
+  "--definitely-not-a-real-clang-flag",
+  "not-a-source",
+  "src/main.c",
+]);
+expectEq(
+  unknownOptionIr.inputs.length,
+  0,
+  "parser ir unknown option definite input count",
+);
+expectEq(
+  unknownOptionIr.inputCandidates.length,
+  2,
+  "parser ir unknown option input candidate count",
+);
+expectEq(
+  unknownOptionIr.inputCandidates[0]!.path,
+  "not-a-source",
+  "parser ir unknown option value candidate path",
+);
+expectEq(
+  unknownOptionIr.inputCandidates[1]!.path,
+  "src/main.c",
+  "parser ir unknown option source candidate path",
+);
+
+const debugResolverCmd = ["clang", "-c", "not-a-source"];
+
+const debugResolverParsed = parseCompilerCommand(debugResolverCmd);
+
+const debugResolverresolved = new cmd.CompilerCommandResolver({
+  debug: true,
+}).resolve(debugResolverParsed);
+
+expectArrayEq(
+  debugResolverresolved.reads,
+  [],
+  "resolver debug rejected unknown candidate reads",
+);
+
+if (debugResolverresolved.debug === undefined) {
+  throw new Error("resolver debug information missing");
+}
+expectEq(
+  debugResolverresolved.debug.rejectedInputCandidates.length,
+  1,
+  "resolver debug rejected candidate count",
+);
+
+expectEq(
+  debugResolverresolved.debug.diagnostics[0]!.code,
+  "input-candidate-rejected",
+  "resolver debug diagnostic code",
+);
+
+const allCandidateAnalyzer = new cmd.CompilerAnalyzer({
+  resolver: new cmd.CompilerCommandResolver({
+    inputCandidateInference: "all",
+  }),
+});
+const allCandidateAnalysis = expectCompilerAnalysis(
+  allCandidateAnalyzer.analyze(invocation(["clang", "-c", "main.c"])),
+  "resolver accepts all candidates",
+);
+expectArrayEq(
+  allCandidateAnalysis.reads,
+  ["main.c"],
+  "resolver accepts all candidates reads",
+);
+expectArrayEq(
+  allCandidateAnalysis.writes,
+  ["main.o"],
+  "resolver accepts all candidates writes",
+);
+
+const noCandidateAnalyzer = new cmd.CompilerAnalyzer({
+  resolver: new cmd.CompilerCommandResolver({
+    inputCandidateInference: "none",
+  }),
+});
+const noCandidateAnalysis = expectCompilerAnalysis(
+  noCandidateAnalyzer.analyze(invocation(["clang", "-c", "main.c"])),
+  "resolver ignores candidates",
+);
+expectArrayEq(
+  noCandidateAnalysis.reads,
+  [],
+  "resolver ignores candidates reads",
+);
+expectArrayEq(
+  noCandidateAnalysis.writes,
+  [],
+  "resolver ignores candidates writes",
+);
+
+const noDefaultOutputAnalyzer = new cmd.CompilerAnalyzer({
+  resolver: new cmd.CompilerCommandResolver({
+    inferDefaultOutputs: false,
+  }),
+});
+const noDefaultOutputAnalysis = expectCompilerAnalysis(
+  noDefaultOutputAnalyzer.analyze(invocation(["clang", "-c", "main.c"])),
+  "resolver disables default outputs",
+);
+expectArrayEq(
+  noDefaultOutputAnalysis.reads,
+  ["main.c"],
+  "resolver disables default outputs reads",
+);
+expectArrayEq(
+  noDefaultOutputAnalysis.writes,
+  [],
+  "resolver disables default outputs writes",
+);
+
+const noDirectoryExpansionAnalyzer = new cmd.CompilerAnalyzer({
+  resolver: new cmd.CompilerCommandResolver({
+    expandDirectoryOutputs: false,
+  }),
+});
+const noDirectoryExpansionAnalysis = expectCompilerAnalysis(
+  noDirectoryExpansionAnalyzer.analyze(
+    invocation(["clang-cl", "/c", "/Tp", "src/noext", "/Fo:build/"]),
+  ),
+  "resolver disables directory output expansion",
+);
+expectArrayEq(
+  noDirectoryExpansionAnalysis.writes,
+  ["build/"],
+  "resolver disables directory output expansion writes",
+);
+
+const noAssemblyListingAnalyzer = new cmd.CompilerAnalyzer({
+  resolver: new cmd.CompilerCommandResolver({
+    inferAssemblyListings: false,
+  }),
+});
+const noAssemblyListingAnalysis = expectCompilerAnalysis(
+  noAssemblyListingAnalyzer.analyze(
+    invocation(["clang-cl", "/c", "/FA", "src/main.cpp"]),
+  ),
+  "resolver disables assembly listings",
+);
+expectArrayEq(
+  noAssemblyListingAnalysis.writes,
+  ["main.obj"],
+  "resolver disables assembly listings writes",
+);
+
 const cases: ExpectedAnalysis[] = [
   {
     label: "clang llvm ir explicit stdout output",
@@ -321,12 +442,12 @@ const cases: ExpectedAnalysis[] = [
   },
   {
     label: "gcc preprocess explicit language without suffix",
-    cmd: ["gcc", "-x", "c", "generated_input", "-E", "-P"],
+    cmd: ["gcc", "-x", "c", "not-a-source", "src/a.c", "-E", "-P"],
     compilerMode: {
       phase: cmd.CompilerPhase.Preprocess,
       artifact: cmd.CompilerArtifact.PreprocessedSource,
     },
-    inputs: ["generated_input"],
+    inputs: ["src/a.c"],
     outputs: [],
   },
   {
@@ -341,12 +462,19 @@ const cases: ExpectedAnalysis[] = [
   },
   {
     label: "gcc syntax-only explicit language",
-    cmd: ["gcc", "-x", "c++", "generated", "-fsyntax-only", "-fno-exceptions"],
+    cmd: [
+      "gcc",
+      "-x",
+      "c++",
+      "not-a-source",
+      "-fsyntax-only",
+      "-fno-exceptions",
+    ],
     compilerMode: {
       phase: cmd.CompilerPhase.SyntaxOnly,
       artifact: cmd.CompilerArtifact.None,
     },
-    inputs: ["generated"],
+    inputs: [],
     outputs: [],
   },
   {
@@ -355,7 +483,7 @@ const cases: ExpectedAnalysis[] = [
       "gcc",
       "-x",
       "c",
-      "generated_input",
+      "not-a-source",
       "-x",
       "none",
       "obj/plain.o",
@@ -366,7 +494,7 @@ const cases: ExpectedAnalysis[] = [
       phase: cmd.CompilerPhase.Link,
       artifact: cmd.CompilerArtifact.Executable,
     },
-    inputs: ["generated_input", "obj/plain.o"],
+    inputs: ["obj/plain.o"],
     outputs: ["bin/app"],
   },
   {
@@ -439,6 +567,93 @@ const cases: ExpectedAnalysis[] = [
     outputs: ["t.o"],
   },
   {
+    label: "clang preprocess unknown option value without suffix is not an input",
+    cmd: [
+      "clang",
+      "-E",
+      "--definitely-not-a-real-clang-flag",
+      "not-a-source",
+      "src/main.c",
+      "-o",
+      "main.i",
+    ],
+    compilerMode: {
+      phase: cmd.CompilerPhase.Preprocess,
+      artifact: cmd.CompilerArtifact.PreprocessedSource,
+    },
+    inputs: ["src/main.c"],
+    outputs: ["main.i"],
+  },
+  {
+    label: "clang unknown option value without suffix is not an input",
+    cmd: [
+      "clang",
+      "-c",
+      "--definitely-not-a-real-clang-flag",
+      "not-a-source",
+      "src/main.c",
+    ],
+    compilerMode: {
+      phase: cmd.CompilerPhase.Compile,
+      artifact: cmd.CompilerArtifact.Object,
+    },
+    inputs: ["src/main.c"],
+    outputs: ["main.o"],
+  },
+  {
+    label: "clang link unknown option value without suffix is not an input",
+    cmd: [
+      "clang",
+      "--definitely-not-a-real-clang-flag",
+      "not-a-source",
+      "obj/main.o",
+      "-o",
+      "bin/app",
+    ],
+    compilerMode: {
+      phase: cmd.CompilerPhase.Link,
+      artifact: cmd.CompilerArtifact.Executable,
+    },
+    inputs: ["obj/main.o"],
+    outputs: ["bin/app"],
+  },
+  {
+    label: "gcc unknown option value without suffix is not an input",
+    cmd: [
+      "gcc",
+      "--definitely-not-a-real-gcc-flag",
+      "not-a-source",
+      "src/main.c",
+      "-o",
+      "bin/app",
+    ],
+    compilerMode: {
+      phase: cmd.CompilerPhase.Link,
+      artifact: cmd.CompilerArtifact.Executable,
+    },
+    inputs: ["src/main.c"],
+    outputs: ["bin/app"],
+  },
+  {
+    label:
+      "gcc explicit language does not promote unknown option value candidate",
+    cmd: [
+      "gcc",
+      "-x",
+      "c",
+      "--definitely-not-a-real-gcc-flag",
+      "not-a-source",
+      "src/main.c",
+      "-c",
+    ],
+    compilerMode: {
+      phase: cmd.CompilerPhase.Compile,
+      artifact: cmd.CompilerArtifact.Object,
+    },
+    inputs: ["src/main.c"],
+    outputs: ["main.o"],
+  },
+  {
     label: "clang default executable output",
     cmd: ["clang", "src/t.c"],
     compilerMode: {
@@ -506,7 +721,7 @@ const cases: ExpectedAnalysis[] = [
       artifact: cmd.CompilerArtifact.PreprocessedSource,
     },
     inputs: ["src/main.cpp"],
-    outputs: [], // TODO: clang-cl /P default output is stdout, but we don't have a way to represent that yet
+    outputs: [],
   },
   {
     label: "clang-cl assembly listing does not stop link",
