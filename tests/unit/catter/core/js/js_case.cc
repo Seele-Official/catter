@@ -101,23 +101,18 @@ void run_async_js_case(std::string source, std::string file_name) {
 }
 
 void run_basic_js_case(std::string_view file_name, bool with_fs_test_env) {
-    try {
-        auto js_path = js_test_root();
-        auto full_path = js_path / file_name;
-        auto source = load_js_file_by_name(js_path, file_name);
+    auto js_path = js_test_root();
+    auto full_path = js_path / file_name;
+    auto source = load_js_file_by_name(js_path, file_name);
 
-        if(with_fs_test_env) {
-            TempFileManager manager(js_test_res_root() / "fs-test-env");
-            prepare_fs_test_env(manager);
-            run_async_js_case(std::move(source), full_path.string());
-            return;
-        }
-
+    if(with_fs_test_env) {
+        TempFileManager manager(js_test_res_root() / "fs-test-env");
+        prepare_fs_test_env(manager);
         run_async_js_case(std::move(source), full_path.string());
-    } catch(qjs::Exception& ex) {
-        output::redln("{}", ex.what());
-        throw;
+        return;
     }
+
+    run_async_js_case(std::move(source), full_path.string());
 }
 
 }  // namespace catter::tests::js

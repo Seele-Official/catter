@@ -1,4 +1,4 @@
-import { cmd, debug, fs } from "catter";
+import { cmd, debug, fs, os } from "catter";
 import { neverthrow } from "catter";
 
 type ExpectedAnalysis = {
@@ -37,6 +37,10 @@ function expectArrayEq(
 
 function normalizedJoin(...parts: string[]) {
   return fs.path.lexicalNormal(fs.path.joinAll(...parts));
+}
+
+function hostDefaultExecutable() {
+  return os.platform() === "windows" ? "a.exe" : "a.out";
 }
 
 function invocation(argv: string[], exe = argv[0]!): cmd.AnalyzedData {
@@ -794,7 +798,7 @@ const cases: ExpectedAnalysis[] = [
       artifact: cmd.CompilerArtifact.Executable,
     },
     inputs: ["src/t.c"],
-    outputs: ["a.out"],
+    outputs: [hostDefaultExecutable()],
   },
   {
     label: "clang default executable output from object input",
@@ -804,7 +808,7 @@ const cases: ExpectedAnalysis[] = [
       artifact: cmd.CompilerArtifact.Executable,
     },
     inputs: ["obj/t.o"],
-    outputs: ["a.out"],
+    outputs: [hostDefaultExecutable()],
   },
   {
     label: "clang archive static lib from object inputs",
