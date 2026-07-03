@@ -5,7 +5,6 @@ import {
 } from "./clang-driver.js";
 import { ClangVisibility } from "../../../option/clang.js";
 import type { CompilerParseResult } from "../types.js";
-import { targetFromExecutable } from "../target.js";
 
 /**
  * Parses a GCC command with the clang driver option table as a temporary model.
@@ -21,6 +20,5 @@ export function parseGccCommand(
   return buildClangGnuDriverModel(
     collectClangDriverOptions(args, ClangVisibility.DefaultVis),
     identity.dialect,
-    targetFromExecutable(cmd[0]!),
   );
 }

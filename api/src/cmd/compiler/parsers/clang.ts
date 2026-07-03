@@ -12,7 +12,7 @@ import {
   type CompilerIdentity,
   type CompilerParseResult,
 } from "../types.js";
-import { clDriverTarget, targetFromExecutable } from "../target.js";
+import { clDriverTarget } from "../target.js";
 
 function findClangDriverMode(
   parsed: readonly ClangDriverParsedOption[],
@@ -36,13 +36,9 @@ export function parseClangCommand(
     return buildClangClDriverModel(
       collectClangDriverOptions(args, CLANG_CL_VISIBILITY),
       CompilerDialect.Msvc,
-      targetFromExecutable(cmd[0]!) ?? clDriverTarget(),
+      clDriverTarget(),
     );
   }
 
-  return buildClangGnuDriverModel(
-    parsed,
-    identity.dialect,
-    targetFromExecutable(cmd[0]!),
-  );
+  return buildClangGnuDriverModel(parsed, identity.dialect);
 }

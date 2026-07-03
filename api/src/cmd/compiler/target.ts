@@ -38,11 +38,6 @@ export const COFF_MSVC_OUTPUT_CONVENTION: CompilerOutputConvention = {
   staticLibrary: ".lib",
 };
 
-function basenameWithoutExe(path: string): string {
-  const name = (path.split(/[\\/]/).pop() ?? path).toLowerCase();
-  return name.endsWith(".exe") ? name.slice(0, -4) : name;
-}
-
 function hasAny(tokens: readonly string[], values: readonly string[]): boolean {
   return values.some((value) => tokens.includes(value));
 }
@@ -86,34 +81,6 @@ export function targetFromTriple(triple: string): CompilerTarget {
   }
 
   return target;
-}
-
-export function targetFromExecutable(exe: string): CompilerTarget | undefined {
-  const name = basenameWithoutExe(exe);
-
-  if (name === "cl" || name === "clang-cl") {
-    return {
-      triple: "unknown-pc-windows-msvc",
-      os: CompilerTargetOS.Windows,
-      env: CompilerTargetEnv.Msvc,
-      objectFormat: CompilerObjectFormat.Coff,
-    };
-  }
-
-  const suffixes = ["clang++", "clang", "g++", "gcc", "c++", "cc", "cpp"];
-  for (const suffix of suffixes) {
-    const marker = `-${suffix}`;
-    if (!name.endsWith(marker)) {
-      continue;
-    }
-
-    const triple = name.slice(0, name.length - marker.length);
-    if (triple.length > 0) {
-      return targetFromTriple(triple);
-    }
-  }
-
-  return undefined;
 }
 
 export function clDriverTarget(): CompilerTarget {
