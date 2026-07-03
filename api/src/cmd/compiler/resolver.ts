@@ -49,6 +49,14 @@ import {
  * per-source compile outputs. Suffix rules classify candidates into these
  * consumption roles; they are not a substitute for parser evidence.
  *
+ * The intended precedence is semantic evidence first, suffix evidence last.
+ * Parser facts such as linker remainder operands should directly determine the
+ * read role. The resolved compiler mode can constrain how accepted reads are
+ * used and which writes can exist, but a link-like mode flag such as shared
+ * library output does not by itself prove that every positional token is a
+ * source or link input. Suffix policy is for the remaining ambiguous positional
+ * candidates after parser facts and mode semantics have been considered.
+ *
  * Once reads are known, writes are inferred from the resolved compiler mode and
  * target output conventions. Target facts, not parser dialect, define platform
  * naming and link-input suffixes. Commands are assumed to be valid compiler

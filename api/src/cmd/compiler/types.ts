@@ -148,19 +148,23 @@ export type CompilerOutputConvention = {
 
 export type CompilerFactSource =
   | {
+      /** Ordinary command-line argument. Usually ambiguous until the resolver applies policy. */
       kind: "argument";
     }
   | {
+      /** Value attached to a recognized option. The option spelling provides parser semantics. */
       kind: "option";
       option: string;
       optionIndex: number;
     }
   | {
+      /** Argument captured after a parser-recognized remainder boundary, such as a linker tail. */
       kind: "remainder-argument";
       boundary: string;
       boundaryIndex: number;
     }
   | {
+      /** Option captured after a parser-recognized remainder boundary, such as a linker tail option. */
       kind: "remainder-option";
       boundary: string;
       boundaryIndex: number;
@@ -258,7 +262,7 @@ export type CompilerResolverSourceLanguage = "c" | "c++";
 /** Policy used when no suffix rule matches an input candidate. */
 export type CompilerInputUnknownPolicy = "reject" | CompilerInputRole;
 
-/** One suffix-to-consumption-role rule for resolving parser input candidates. */
+/** One suffix-to-consumption-role rule used after parser and mode semantics do not fully classify a candidate. */
 export type CompilerInputSuffixRule = {
   /** File suffix or suffixes, matched case-insensitively. */
   suffix: string | readonly string[];
