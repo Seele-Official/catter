@@ -93,6 +93,59 @@ export const CompilerDialect = {
 export type CompilerDialect =
   (typeof CompilerDialect)[keyof typeof CompilerDialect];
 
+/** Coarse target operating system used for output naming conventions. */
+export const CompilerTargetOS = {
+  Linux: "linux",
+  Darwin: "darwin",
+  Windows: "windows",
+  Unknown: "unknown",
+} as const;
+
+/** Union of target operating system identifiers. */
+export type CompilerTargetOS =
+  (typeof CompilerTargetOS)[keyof typeof CompilerTargetOS];
+
+/** Coarse target environment or ABI family used for output naming conventions. */
+export const CompilerTargetEnv = {
+  Gnu: "gnu",
+  Mingw: "mingw",
+  Msvc: "msvc",
+  Unknown: "unknown",
+} as const;
+
+/** Union of target environment identifiers. */
+export type CompilerTargetEnv =
+  (typeof CompilerTargetEnv)[keyof typeof CompilerTargetEnv];
+
+/** Coarse object format used for output naming conventions. */
+export const CompilerObjectFormat = {
+  Elf: "elf",
+  MachO: "macho",
+  Coff: "coff",
+  Unknown: "unknown",
+} as const;
+
+/** Union of object format identifiers. */
+export type CompilerObjectFormat =
+  (typeof CompilerObjectFormat)[keyof typeof CompilerObjectFormat];
+
+/** Target facts that affect compiler output naming. */
+export type CompilerTarget = {
+  triple?: string;
+  os?: CompilerTargetOS;
+  env?: CompilerTargetEnv;
+  objectFormat?: CompilerObjectFormat;
+};
+
+/** Output suffix convention used by the resolver when default outputs are inferred. */
+export type CompilerOutputConvention = {
+  object: string;
+  executable: string;
+  defaultExecutable?: string;
+  sharedLibrary: string;
+  staticLibrary: string;
+};
+
 export type CompilerFactSource =
   | {
       kind: "argument";
@@ -150,7 +203,7 @@ export type CompilerInput = {
   index: number;
   /** Parser evidence for this input fact. */
   source: CompilerFactSource;
-  /** Explicit source language in effect when this input was parsed. */
+  /** Explicit language state in effect when this token was parsed; this is not proof that the token is a source input. */
   language?: string;
 };
 
@@ -171,28 +224,86 @@ export type CompilerOutput = {
 };
 
 export type CompilerParseResult = {
+  /** Parser dialect selected for this command line. This describes parser syntax only, not the target platform. */
   dialect: CompilerDialect;
+  /** Target facts parsed from the command or inferred from the driver name when available. */
+  target?: CompilerTarget;
+  /** High-level action and primary artifact selected from parsed driver options. */
   compilerMode: CompilerMode;
+  /** Semantic action facts collected from options before mode resolution. */
   compilerActions: CompilerAction[];
+  /** Path-like tokens that may be real inputs, but still require resolver policy to classify or reject. */
   inputCandidates: CompilerInput[];
+  /** Output-like tokens that were parsed but are not yet accepted for the resolved compiler mode. */
   outputCandidates: CompilerOutput[];
+  /** Inputs proven by parser syntax, such as option-bound source operands or linker remainder operands. */
   inputs: CompilerInput[];
+  /** Outputs proven by parser syntax, such as explicit primary/object/linked output options. */
   outputs: CompilerOutput[];
 };
 
-/** Strategy used by the resolver when deciding whether parser input candidates are real file reads. */
-export type CompilerInputCandidateInference = "none" | "suffix" | "all";
+/**
+ * Resolver-side read consumption role.
+ *
+ * This is not parser evidence and does not describe where the token came from.
+ * `source` means a read belongs to the compiler frontend/preprocess/compile
+ * side of the command, while `link` means it is consumed by link-like phases
+ * and should not produce per-source compile outputs.
+ */
+export type CompilerInputRole = "source" | "link";
+
+/** Source languages currently understood by resolver suffix policies. */
+export type CompilerResolverSourceLanguage = "c" | "c++";
+
+/** Policy used when no suffix rule matches an input candidate. */
+export type CompilerInputUnknownPolicy = "reject" | CompilerInputRole;
+
+/** One suffix-to-consumption-role rule for resolving parser input candidates. */
+export type CompilerInputSuffixRule = {
+  /** File suffix or suffixes, matched case-insensitively. */
+  suffix: string | readonly string[];
+  /** Read consumption role assigned when the suffix matches. */
+  role: CompilerInputRole;
+};
+
+/** Rules used for one input suffix group while resolving input candidates. */
+export type CompilerInputSuffixRules = {
+  /** Suffix rules. When omitted, the resolver uses its built-in rules for this group. */
+  suffixRules?: readonly CompilerInputSuffixRule[];
+  /** Role for unknown suffixes, or reject. */
+  unknown?: CompilerInputUnknownPolicy;
+};
+
+/** Input-candidate resolver configuration split by parser language state. */
+export type CompilerResolverInputOptions = {
+  /** Rules used when the parser candidate has an explicit supported source language. */
+  languages?: Partial<
+    Record<CompilerResolverSourceLanguage, CompilerInputSuffixRules>
+  >;
+  /** Rules used when the parser candidate has no language or language `none`. */
+  unspecified?: CompilerInputSuffixRules;
+};
+
+/** Output resolver configuration for inferred writes and side effects. */
+export type CompilerResolverOutputOptions = {
+  /** Whether to infer driver default outputs when no matching explicit output fact exists. */
+  inferDefaults?: boolean;
+  /** Whether directory-like explicit output paths are expanded into per-input file paths. */
+  expandDirectories?: boolean;
+  /** Whether CL-style assembly listing actions should add side-effect writes. */
+  inferAssemblyListings?: boolean;
+};
 
 /** Configures how compiler parser facts are resolved into visible file reads, writes, and edges. */
 export type CompilerResolverOptions = {
-  /** Controls whether and how `inputCandidates` are promoted to inferred reads. */
-  inputCandidateInference?: CompilerInputCandidateInference;
-  /** Whether to infer driver default outputs when no matching explicit output fact exists. */
-  inferDefaultOutputs?: boolean;
-  /** Whether directory-like explicit output paths are expanded into per-input file paths. */
-  expandDirectoryOutputs?: boolean;
-  /** Whether CL-style assembly listing actions should add side-effect writes. */
-  inferAssemblyListings?: boolean;
+  /** Explicit target facts used before parser-inferred target facts. */
+  target?: CompilerTarget;
+  /** Explicit output suffix convention used before target-derived conventions. */
+  outputConvention?: Partial<CompilerOutputConvention>;
+  /** Rules for promoting parser input candidates into reads. */
+  inputs?: CompilerResolverInputOptions;
+  /** Rules for resolving writes from explicit outputs, compiler mode, and reads. */
+  outputs?: CompilerResolverOutputOptions;
   /** Whether to attach detailed resolver decisions and diagnostics to the result. */
   debug?: boolean;
 };
@@ -222,7 +333,7 @@ export type CompilerRejectedInputCandidate = {
 /** Optional detailed trace of resolver decisions. */
 export type CompilerResolveDebug = {
   /** Fully resolved options used for this resolution pass. */
-  options: Required<CompilerResolverOptions>;
+  options: CompilerResolvedResolverOptions;
   /** Input candidates promoted to inferred reads. */
   acceptedInputCandidates: CompilerInput[];
   /** Input candidates rejected by the configured policy. */
@@ -234,6 +345,20 @@ export type CompilerResolveDebug = {
   /** Diagnostics emitted while resolving parser facts. */
   diagnostics: CompilerResolveDiagnostic[];
 };
+
+export type CompilerResolvedResolverOptions = Required<
+  Pick<CompilerResolverOptions, "debug">
+> &
+  Pick<CompilerResolverOptions, "target" | "outputConvention"> & {
+    inputs: {
+      languages: Record<
+        CompilerResolverSourceLanguage,
+        Required<CompilerInputSuffixRules>
+      >;
+      unspecified: Required<CompilerInputSuffixRules>;
+    };
+    outputs: Required<CompilerResolverOutputOptions>;
+  };
 
 export type CompilerResolveResult = {
   reads: string[];

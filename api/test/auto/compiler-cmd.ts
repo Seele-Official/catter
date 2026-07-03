@@ -337,27 +337,46 @@ expectEq(
 
 const allCandidateAnalyzer = new cmd.CompilerAnalyzer({
   resolver: new cmd.CompilerCommandResolver({
-    inputCandidateInference: "all",
+    inputs: {
+      unspecified: {
+        unknown: "source",
+      },
+    },
   }),
 });
 const allCandidateAnalysis = expectCompilerAnalysis(
-  allCandidateAnalyzer.analyze(invocation(["clang", "-c", "main.c"])),
-  "resolver accepts all candidates",
+  allCandidateAnalyzer.analyze(invocation(["clang", "-c", "not-a-source"])),
+  "resolver accepts unknown candidates as source",
 );
 expectArrayEq(
   allCandidateAnalysis.reads,
-  ["main.c"],
-  "resolver accepts all candidates reads",
+  ["not-a-source"],
+  "resolver accepts unknown candidates reads",
 );
 expectArrayEq(
   allCandidateAnalysis.writes,
-  ["main.o"],
-  "resolver accepts all candidates writes",
+  ["not-a-source.o"],
+  "resolver accepts unknown candidates writes",
 );
 
 const noCandidateAnalyzer = new cmd.CompilerAnalyzer({
   resolver: new cmd.CompilerCommandResolver({
-    inputCandidateInference: "none",
+    inputs: {
+      languages: {
+        c: {
+          suffixRules: [],
+          unknown: "reject",
+        },
+        "c++": {
+          suffixRules: [],
+          unknown: "reject",
+        },
+      },
+      unspecified: {
+        suffixRules: [],
+        unknown: "reject",
+      },
+    },
   }),
 });
 const noCandidateAnalysis = expectCompilerAnalysis(
@@ -377,7 +396,9 @@ expectArrayEq(
 
 const noDefaultOutputAnalyzer = new cmd.CompilerAnalyzer({
   resolver: new cmd.CompilerCommandResolver({
-    inferDefaultOutputs: false,
+    outputs: {
+      inferDefaults: false,
+    },
   }),
 });
 const noDefaultOutputAnalysis = expectCompilerAnalysis(
@@ -397,7 +418,9 @@ expectArrayEq(
 
 const noDirectoryExpansionAnalyzer = new cmd.CompilerAnalyzer({
   resolver: new cmd.CompilerCommandResolver({
-    expandDirectoryOutputs: false,
+    outputs: {
+      expandDirectories: false,
+    },
   }),
 });
 const noDirectoryExpansionAnalysis = expectCompilerAnalysis(
@@ -414,7 +437,9 @@ expectArrayEq(
 
 const noAssemblyListingAnalyzer = new cmd.CompilerAnalyzer({
   resolver: new cmd.CompilerCommandResolver({
-    inferAssemblyListings: false,
+    outputs: {
+      inferAssemblyListings: false,
+    },
   }),
 });
 const noAssemblyListingAnalysis = expectCompilerAnalysis(
@@ -429,6 +454,94 @@ expectArrayEq(
   "resolver disables assembly listings writes",
 );
 
+const unknownTargetResolverParsed = parseCompilerCommand([
+  "clang",
+  "-c",
+  "main.c",
+]);
+const unknownTargetResolverResolved = new cmd.CompilerCommandResolver({
+  debug: true,
+  target: {
+    os: cmd.CompilerTargetOS.Unknown,
+    env: cmd.CompilerTargetEnv.Unknown,
+    objectFormat: cmd.CompilerObjectFormat.Unknown,
+  },
+}).resolve(unknownTargetResolverParsed);
+expectArrayEq(
+  unknownTargetResolverResolved.reads,
+  ["main.c"],
+  "resolver unknown target reads",
+);
+expectArrayEq(
+  unknownTargetResolverResolved.writes,
+  [],
+  "resolver unknown target does not infer writes",
+);
+if (unknownTargetResolverResolved.debug === undefined) {
+  throw new Error("resolver unknown target debug information missing");
+}
+expectEq(
+  unknownTargetResolverResolved.debug.diagnostics[0]!.code,
+  "default-output-missing-convention",
+  "resolver unknown target diagnostic code",
+);
+
+const customUnspecifiedSuffixAnalyzer = new cmd.CompilerAnalyzer({
+  resolver: new cmd.CompilerCommandResolver({
+    inputs: {
+      unspecified: {
+        suffixRules: [{ suffix: ".foo", role: "source" }],
+        unknown: "reject",
+      },
+    },
+  }),
+});
+const customUnspecifiedSuffixAnalysis = expectCompilerAnalysis(
+  customUnspecifiedSuffixAnalyzer.analyze(
+    invocation(["clang", "-c", "main.foo"]),
+  ),
+  "resolver custom unspecified suffix source",
+);
+expectArrayEq(
+  customUnspecifiedSuffixAnalysis.reads,
+  ["main.foo"],
+  "resolver custom unspecified suffix reads",
+);
+expectArrayEq(
+  customUnspecifiedSuffixAnalysis.writes,
+  ["main.o"],
+  "resolver custom unspecified suffix writes",
+);
+
+const customExplicitSuffixAnalyzer = new cmd.CompilerAnalyzer({
+  resolver: new cmd.CompilerCommandResolver({
+    inputs: {
+      languages: {
+        c: {
+          suffixRules: [{ suffix: ".src", role: "source" }],
+          unknown: "reject",
+        },
+      },
+    },
+  }),
+});
+const customExplicitSuffixAnalysis = expectCompilerAnalysis(
+  customExplicitSuffixAnalyzer.analyze(
+    invocation(["clang", "-x", "c", "-c", "main.src", "ignored-noext"]),
+  ),
+  "resolver custom explicit suffix source",
+);
+expectArrayEq(
+  customExplicitSuffixAnalysis.reads,
+  ["main.src"],
+  "resolver custom explicit suffix reads",
+);
+expectArrayEq(
+  customExplicitSuffixAnalysis.writes,
+  ["main.o"],
+  "resolver custom explicit suffix writes",
+);
+
 const cases: ExpectedAnalysis[] = [
   {
     label: "clang llvm ir explicit stdout output",
@@ -441,7 +554,7 @@ const cases: ExpectedAnalysis[] = [
     outputs: ["-"],
   },
   {
-    label: "gcc preprocess explicit language without suffix",
+    label: "gcc preprocess explicit language rejects no-suffix candidate",
     cmd: ["gcc", "-x", "c", "not-a-source", "src/a.c", "-E", "-P"],
     compilerMode: {
       phase: cmd.CompilerPhase.Preprocess,
@@ -636,8 +749,7 @@ const cases: ExpectedAnalysis[] = [
     outputs: ["bin/app"],
   },
   {
-    label:
-      "gcc explicit language does not promote unknown option value candidate",
+    label: "gcc explicit language rejects unknown option value candidate",
     cmd: [
       "gcc",
       "-x",
@@ -695,6 +807,78 @@ const cases: ExpectedAnalysis[] = [
     outputs: ["a.o", "b.o"],
   },
   {
+    label: "clang explicit windows msvc target object output",
+    cmd: ["clang", "--target=x86_64-pc-windows-msvc", "-c", "main.c"],
+    compilerMode: {
+      phase: cmd.CompilerPhase.Compile,
+      artifact: cmd.CompilerArtifact.Object,
+    },
+    inputs: ["main.c"],
+    outputs: ["main.obj"],
+  },
+  {
+    label: "clang explicit windows gnu target executable output",
+    cmd: ["clang", "--target=x86_64-w64-windows-gnu", "src/tool.c"],
+    compilerMode: {
+      phase: cmd.CompilerPhase.Link,
+      artifact: cmd.CompilerArtifact.Executable,
+    },
+    inputs: ["src/tool.c"],
+    outputs: ["a.exe"],
+  },
+  {
+    label: "clang windows msvc target accepts coff link inputs",
+    cmd: [
+      "clang",
+      "--target=x86_64-pc-windows-msvc",
+      "obj/main.obj",
+      "-o",
+      "bin/app.exe",
+    ],
+    compilerMode: {
+      phase: cmd.CompilerPhase.Link,
+      artifact: cmd.CompilerArtifact.Executable,
+    },
+    inputs: ["obj/main.obj"],
+    outputs: ["bin/app.exe"],
+  },
+  {
+    label: "clang linux target rejects coff link input suffix",
+    cmd: [
+      "clang",
+      "--target=x86_64-unknown-linux-gnu",
+      "obj/main.obj",
+      "-o",
+      "bin/app",
+    ],
+    compilerMode: {
+      phase: cmd.CompilerPhase.Link,
+      artifact: cmd.CompilerArtifact.Executable,
+    },
+    inputs: [],
+    outputs: ["bin/app"],
+  },
+  {
+    label: "clang explicit linux target executable output",
+    cmd: ["clang", "--target=x86_64-unknown-linux-gnu", "src/tool.c"],
+    compilerMode: {
+      phase: cmd.CompilerPhase.Link,
+      artifact: cmd.CompilerArtifact.Executable,
+    },
+    inputs: ["src/tool.c"],
+    outputs: ["a.out"],
+  },
+  {
+    label: "prefixed mingw gnu driver object output",
+    cmd: ["x86_64-w64-mingw32-g++", "-c", "main.cpp"],
+    compilerMode: {
+      phase: cmd.CompilerPhase.Compile,
+      artifact: cmd.CompilerArtifact.Object,
+    },
+    inputs: ["main.cpp"],
+    outputs: ["main.o"],
+  },
+  {
     label: "clang-cl cl-style compile no suffix into object dir",
     cmd: ["clang-cl", "/c", "/Tp", "src/noext", "/Fo:build/"],
     compilerMode: {
@@ -703,6 +887,16 @@ const cases: ExpectedAnalysis[] = [
     },
     inputs: ["src/noext"],
     outputs: [normalizedJoin("build", "noext.obj")],
+  },
+  {
+    label: "clang-cl explicit linux target object output",
+    cmd: ["clang-cl", "--target=x86_64-linux-gnu", "/c", "main.c"],
+    compilerMode: {
+      phase: cmd.CompilerPhase.Compile,
+      artifact: cmd.CompilerArtifact.Object,
+    },
+    inputs: ["main.c"],
+    outputs: ["main.o"],
   },
   {
     label: "clang-cl cl-style default executable output",

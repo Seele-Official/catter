@@ -7,9 +7,11 @@ import type {
   CompilerInput,
   CompilerOutput,
   CompilerParseResult,
+  CompilerTarget,
 } from "../types.js";
 import { CompilerParseError } from "../errors.js";
 import { resolveCompilerMode } from "./compiler-mode.js";
+import { targetFromTriple } from "../target.js";
 
 export type ClangDriverParsedOption = {
   raw: OptionItem;
@@ -19,6 +21,7 @@ export type ClangDriverParsedOption = {
 
 type ClangDriverParserState = {
   dialect: CompilerDialect;
+  target: CompilerTarget | undefined;
   explicitLanguage: string | undefined;
   compilerActions: CompilerAction[];
   inputCandidates: CompilerInput[];
@@ -146,6 +149,10 @@ function applyParsedGnuClangDriverOption(
         },
       });
       break;
+    case ClangID.ID_target:
+    case ClangID.ID_target_legacy_spelling:
+      state.target = targetFromTriple(clangDriverOptionValue(parsedItem));
+      break;
     case ClangID.ID_x:
       state.explicitLanguage = clangDriverOptionValue(parsedItem);
       break;
@@ -218,6 +225,10 @@ function applyParsedClangClDriverOption(
         },
       });
       break;
+    case ClangID.ID_target:
+    case ClangID.ID_target_legacy_spelling:
+      state.target = targetFromTriple(clangDriverOptionValue(parsedItem));
+      break;
     case ClangID.ID_x:
       state.explicitLanguage = clangDriverOptionValue(parsedItem);
       break;
@@ -282,6 +293,7 @@ function applyParsedClangClDriverOption(
         },
         language: "c",
       });
+      break;
     case ClangID.ID__SLASH_Tp: {
       state.inputs.push({
         path: clangDriverOptionValue(parsedItem),
@@ -392,9 +404,11 @@ function applyTemporaryClangClLinkerRemainder(
 export function buildClangGnuDriverModel(
   parsed: ClangDriverParsedOption[],
   dialect: CompilerDialect,
+  target?: CompilerTarget,
 ): CompilerParseResult {
   const state: ClangDriverParserState = {
     dialect,
+    target,
     explicitLanguage: undefined,
     compilerActions: [],
     inputCandidates: [],
@@ -409,6 +423,7 @@ export function buildClangGnuDriverModel(
 
   return {
     dialect: state.dialect,
+    target: state.target,
     compilerMode: resolveCompilerMode(state.dialect, state.compilerActions),
     compilerActions: state.compilerActions,
     inputCandidates: state.inputCandidates,
@@ -421,9 +436,11 @@ export function buildClangGnuDriverModel(
 export function buildClangClDriverModel(
   parsed: ClangDriverParsedOption[],
   dialect: CompilerDialect,
+  target?: CompilerTarget,
 ): CompilerParseResult {
   const state: ClangDriverParserState = {
     dialect,
+    target,
     explicitLanguage: undefined,
     compilerActions: [],
     inputCandidates: [],
@@ -438,6 +455,7 @@ export function buildClangClDriverModel(
 
   return {
     dialect: state.dialect,
+    target: state.target,
     compilerMode: resolveCompilerMode(state.dialect, state.compilerActions),
     compilerActions: state.compilerActions,
     inputCandidates: state.inputCandidates,

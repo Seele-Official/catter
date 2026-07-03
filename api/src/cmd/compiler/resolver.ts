@@ -3,20 +3,60 @@ import { err, ok, type Result } from "../../neverthrow/index.js";
 import type { Edge } from "../model.js";
 import {
   CompilerArtifact,
-  CompilerDialect,
+  CompilerObjectFormat,
   CompilerPhase,
   type CompilerAction,
   type CompilerInput,
+  type CompilerInputRole,
+  type CompilerInputSuffixRules,
+  type CompilerInputSuffixRule,
   type CompilerOutput,
   type CompilerOutputKind,
+  type CompilerOutputConvention,
+  type CompilerResolverInputOptions,
+  type CompilerResolverOutputOptions,
   type CompilerParseResult,
   type CompilerResolveDebug,
   type CompilerResolveDiagnostic,
   type CompilerResolveResult,
+  type CompilerResolverSourceLanguage,
+  type CompilerResolvedResolverOptions,
   type CompilerResolverOptions,
+  type CompilerTarget,
 } from "./types.js";
+import {
+  completeOutputConvention,
+  hostTarget,
+  outputConventionFromTarget,
+} from "./target.js";
 
-type ReadRole = "source" | "link";
+/**
+ * Resolver strategy:
+ *
+ * Parser results are treated as command-line facts, not as the final dependency
+ * graph. The resolver first decides which uncertain path-like tokens are real
+ * reads. Explicit language state only selects the suffix rule group for those
+ * uncertain tokens; it does not by itself prove that a token is a source file.
+ * Tokens already proven by parser syntax remain reads, with their role derived
+ * from the kind of parser evidence rather than from suffix guessing.
+ *
+ * Read classification has two separate axes. Parser evidence says whether a
+ * token is proven input syntax or only a candidate. Resolver role says which
+ * part of the compiler pipeline consumes the accepted read. Frontend/source
+ * reads participate in preprocessing and compilation, feed source-file reports,
+ * and may name per-input compile outputs. Link-like reads participate in
+ * linking, archiving, relocation, or device-link steps, but do not generate
+ * per-source compile outputs. Suffix rules classify candidates into these
+ * consumption roles; they are not a substitute for parser evidence.
+ *
+ * Once reads are known, writes are inferred from the resolved compiler mode and
+ * target output conventions. Target facts, not parser dialect, define platform
+ * naming and link-input suffixes. Commands are assumed to be valid compiler
+ * invocations; a token rejected by resolver policy means it is not visible as a
+ * file dependency here, not that the original command is invalid.
+ */
+
+type ReadRole = CompilerInputRole;
 type ReadOrigin = "explicit" | "inferred";
 type WriteOrigin = "explicit" | "inferred";
 type ResolvedRead = {
@@ -31,12 +71,8 @@ type ResolvedWrite = {
   readonly reads: readonly ResolvedRead[];
 };
 
-type DriverExtensions = {
-  readonly object: string;
-  readonly executable: string;
-  readonly sharedLibrary: string;
-  readonly staticLibrary: string;
-};
+type ResolvedInputOptions = CompilerResolvedResolverOptions["inputs"];
+type ResolvedOptions = CompilerResolvedResolverOptions;
 
 type ResolverState = {
   acceptedInputCandidates: CompilerInput[];
@@ -44,92 +80,44 @@ type ResolverState = {
   inferredReads: CompilerInput[];
   inferredWrites: string[];
   diagnostics: CompilerResolveDiagnostic[];
+  options?: ResolvedOptions;
 };
 
-const DEFAULT_OPTIONS: Required<CompilerResolverOptions> = {
-  inputCandidateInference: "suffix",
-  inferDefaultOutputs: true,
-  expandDirectoryOutputs: true,
-  inferAssemblyListings: true,
-  debug: false,
-};
+const C_SOURCE_SUFFIXES = [".c", ".i"] as const;
 
-const SOURCE_EXTENSIONS = new Set([
-  ".asm",
-  ".bc",
-  ".c",
+const CXX_SOURCE_SUFFIXES = [
   ".c++",
   ".cc",
   ".cp",
   ".cpp",
-  ".cu",
   ".cxx",
-  ".f",
-  ".f03",
-  ".f08",
-  ".f77",
-  ".f90",
-  ".f95",
-  ".for",
-  ".ftn",
-  ".gch",
-  ".hip",
-  ".i",
   ".ii",
-  ".ll",
-  ".m",
-  ".mi",
-  ".mii",
-  ".mm",
-  ".pch",
-  ".pcm",
-  ".s",
-  ".sx",
-]);
+] as const;
 
-const LINK_EXTENSIONS = new Set([
-  ".a",
-  ".dll",
-  ".dylib",
-  ".exp",
-  ".lib",
-  ".lo",
-  ".o",
-  ".obj",
-  ".res",
-  ".so",
-]);
-
-const GNU_EXTENSIONS: DriverExtensions = {
-  object: ".o",
-  executable: "",
-  sharedLibrary: "",
-  staticLibrary: ".a",
-};
-
-const MSVC_EXTENSIONS: DriverExtensions = {
-  object: ".obj",
-  executable: ".exe",
-  sharedLibrary: ".dll",
-  staticLibrary: ".lib",
-};
-
-function extensionRole(path: string): Result<ReadRole, void> {
-  if (path === "-") {
-    return ok("source");
-  }
-
-  const ext = fs.path.extension(path).toLowerCase();
-  if (SOURCE_EXTENSIONS.has(ext)) {
-    return ok("source");
-  }
-  if (LINK_EXTENSIONS.has(ext)) {
-    return ok("link");
-  }
-  return err();
+function suffixRulesFor(
+  suffixes: Iterable<string>,
+  role: CompilerInputRole,
+): CompilerInputSuffixRule[] {
+  return Array.from(suffixes, (suffix) => ({ suffix, role }));
 }
 
-function readRole(input: CompilerInput): ReadRole {
+const DEFAULT_C_INPUT_RULES: Required<CompilerInputSuffixRules> = {
+  suffixRules: suffixRulesFor(C_SOURCE_SUFFIXES, "source"),
+  unknown: "reject",
+};
+
+const DEFAULT_CXX_INPUT_RULES: Required<CompilerInputSuffixRules> = {
+  suffixRules: suffixRulesFor(CXX_SOURCE_SUFFIXES, "source"),
+  unknown: "reject",
+};
+
+const DEFAULT_OUTPUT_OPTIONS: Required<CompilerResolverOutputOptions> = {
+  inferDefaults: true,
+  expandDirectories: true,
+  inferAssemblyListings: true,
+};
+
+function explicitInputRole(input: CompilerInput): ReadRole {
   if (
     input.source.kind === "remainder-argument" ||
     input.source.kind === "remainder-option"
@@ -137,13 +125,6 @@ function readRole(input: CompilerInput): ReadRole {
     return "link";
   }
 
-  const language = input.language?.toLowerCase();
-  if (language === undefined || language.length === 0 || language === "none") {
-    return extensionRole(input.path).unwrapOr("link");
-  }
-  if (language === "object") {
-    return "link";
-  }
   return "source";
 }
 
@@ -161,23 +142,19 @@ function isDirectoryLike(path: string): boolean {
   return path.endsWith("/") || path.endsWith("\\");
 }
 
-function dialectExtensions(dialect: CompilerDialect): DriverExtensions {
-  return dialect === CompilerDialect.Msvc ? MSVC_EXTENSIONS : GNU_EXTENSIONS;
-}
-
 function artifactExtension(
   artifact: CompilerArtifact,
-  extensions: DriverExtensions,
+  convention: CompilerOutputConvention,
 ): Result<string, void> {
   switch (artifact) {
     case CompilerArtifact.Object:
-      return ok(extensions.object);
+      return ok(convention.object);
     case CompilerArtifact.Executable:
-      return ok(extensions.executable);
+      return ok(convention.executable);
     case CompilerArtifact.SharedLibrary:
-      return ok(extensions.sharedLibrary);
+      return ok(convention.sharedLibrary);
     case CompilerArtifact.StaticLibrary:
-      return ok(extensions.staticLibrary);
+      return ok(convention.staticLibrary);
     case CompilerArtifact.Assembly:
       return ok(".s");
     case CompilerArtifact.LlvmIR:
@@ -222,6 +199,87 @@ function firstValue<T>(values: readonly T[]): Result<T, void> {
   return values.length === 0 ? err() : ok(values[0]!);
 }
 
+function normalizeSuffixes(rule: CompilerInputSuffixRule): readonly string[] {
+  const suffixes = Array.isArray(rule.suffix) ? rule.suffix : [rule.suffix];
+  return suffixes.map((suffix) => suffix.toLowerCase());
+}
+
+function mergeLanguageRules(
+  defaults: Required<CompilerInputSuffixRules>,
+  override: CompilerInputSuffixRules | undefined,
+): Required<CompilerInputSuffixRules> {
+  return {
+    suffixRules: override?.suffixRules ?? defaults.suffixRules,
+    unknown: override?.unknown ?? defaults.unknown,
+  };
+}
+
+function linkSuffixRulesForTarget(
+  target: CompilerTarget,
+  convention: CompilerOutputConvention | undefined,
+): CompilerInputSuffixRule[] {
+  const suffixes = new Set<string>();
+
+  if (convention !== undefined) {
+    suffixes.add(convention.object);
+    suffixes.add(convention.sharedLibrary);
+    suffixes.add(convention.staticLibrary);
+  }
+
+  if (target.objectFormat === CompilerObjectFormat.Coff) {
+    suffixes.add(".obj");
+    suffixes.add(".lib");
+    suffixes.add(".dll");
+    suffixes.add(".res");
+    suffixes.add(".exp");
+  } else if (target.objectFormat === CompilerObjectFormat.MachO) {
+    suffixes.add(".o");
+    suffixes.add(".a");
+    suffixes.add(".dylib");
+  } else if (target.objectFormat === CompilerObjectFormat.Elf) {
+    suffixes.add(".o");
+    suffixes.add(".a");
+    suffixes.add(".so");
+  }
+
+  suffixes.delete("");
+  return suffixRulesFor(suffixes, "link");
+}
+
+function mergeInputOptions(
+  options: CompilerResolverInputOptions | undefined,
+  target: CompilerTarget,
+  convention: CompilerOutputConvention | undefined,
+): ResolvedInputOptions {
+  const languages: Record<
+    CompilerResolverSourceLanguage,
+    Required<CompilerInputSuffixRules>
+  > = {
+    c: mergeLanguageRules(DEFAULT_C_INPUT_RULES, options?.languages?.c),
+    "c++": mergeLanguageRules(
+      DEFAULT_CXX_INPUT_RULES,
+      options?.languages?.["c++"],
+    ),
+  };
+
+  const defaultUnspecifiedRules: Required<CompilerInputSuffixRules> = {
+    suffixRules: [
+      ...languages.c.suffixRules,
+      ...languages["c++"].suffixRules,
+      ...linkSuffixRulesForTarget(target, convention),
+    ],
+    unknown: "reject",
+  };
+
+  return {
+    languages,
+    unspecified: mergeLanguageRules(
+      defaultUnspecifiedRules,
+      options?.unspecified,
+    ),
+  };
+}
+
 /**
  * Resolves parsed compiler facts into visible file reads, writes, and dependency edges.
  *
@@ -230,16 +288,29 @@ function firstValue<T>(values: readonly T[]): Result<T, void> {
  * decisions that depend on resolver policy.
  */
 export class CompilerCommandResolver {
-  private readonly options: Required<CompilerResolverOptions>;
+  private readonly options: CompilerResolverOptions &
+    Required<Pick<CompilerResolverOptions, "debug">> & {
+      outputs: Required<CompilerResolverOutputOptions>;
+    };
   private state: ResolverState;
 
   constructor(options: CompilerResolverOptions = {}) {
-    this.options = { ...DEFAULT_OPTIONS, ...options };
+    this.options = {
+      target: options.target,
+      outputConvention: options.outputConvention,
+      inputs: options.inputs,
+      outputs: {
+        ...DEFAULT_OUTPUT_OPTIONS,
+        ...options.outputs,
+      },
+      debug: options.debug ?? false,
+    };
     this.state = this.createState();
   }
 
   resolve(parsed: CompilerParseResult): CompilerResolveResult {
     this.state = this.createState();
+    this.state.options = this.resolveOptions(parsed);
 
     const reads = this.collectReads(parsed);
     const writes = [
@@ -261,7 +332,7 @@ export class CompilerCommandResolver {
 
     if (this.options.debug) {
       result.debug = {
-        options: this.options,
+        options: this.state.options,
         acceptedInputCandidates: [...this.state.acceptedInputCandidates],
         rejectedInputCandidates: [...this.state.rejectedInputCandidates],
         inferredReads: [...this.state.inferredReads],
@@ -280,14 +351,52 @@ export class CompilerCommandResolver {
       inferredReads: [],
       inferredWrites: [],
       diagnostics: [],
+      options: undefined,
     };
+  }
+
+  private resolvedOptions(): ResolvedOptions {
+    if (this.state.options === undefined) {
+      throw new Error("resolver options are not initialized");
+    }
+    return this.state.options;
+  }
+
+  private resolveTarget(parsed: CompilerParseResult): CompilerTarget {
+    return this.options.target ?? parsed.target ?? hostTarget();
+  }
+
+  private resolveOptions(parsed: CompilerParseResult): ResolvedOptions {
+    const target = this.resolveTarget(parsed);
+    const convention = this.resolveOutputConvention(parsed).unwrapOr(undefined);
+
+    return {
+      target,
+      outputConvention: convention ?? this.options.outputConvention,
+      inputs: mergeInputOptions(this.options.inputs, target, convention),
+      outputs: this.options.outputs,
+      debug: this.options.debug,
+    };
+  }
+
+  private resolveOutputConvention(
+    parsed: CompilerParseResult,
+  ): Result<CompilerOutputConvention, void> {
+    const target = this.resolveTarget(parsed);
+    const targetConvention = outputConventionFromTarget(target);
+    const convention = completeOutputConvention({
+      ...targetConvention,
+      ...this.options.outputConvention,
+    });
+
+    return convention === undefined ? err() : ok(convention);
   }
 
   private collectReads(parsed: CompilerParseResult): ResolvedRead[] {
     const explicitReads = parsed.inputs.map((input): ResolvedRead => {
       return {
         input,
-        role: readRole(input),
+        role: explicitInputRole(input),
         origin: "explicit",
       };
     });
@@ -302,35 +411,71 @@ export class CompilerCommandResolver {
   }
 
   private resolveInputCandidate(candidate: CompilerInput): ResolvedRead[] {
-    switch (this.options.inputCandidateInference) {
-      case "none":
-        this.rejectInputCandidate(
-          candidate,
-          "input candidate inference disabled",
-        );
-        return [];
-      case "all":
-        return [this.acceptInputCandidate(candidate)];
-      case "suffix":
-        return this.resolveInputCandidateBySuffix(candidate);
+    const rules = this.inputCandidateRules(candidate);
+    if (rules.isErr()) {
+      this.rejectInputCandidate(
+        candidate,
+        "input candidate has unsupported explicit language",
+      );
+      return [];
     }
+
+    return this.resolveInputCandidateByRules(candidate, rules.value);
   }
 
-  private resolveInputCandidateBySuffix(
+  private inputCandidateRules(
     candidate: CompilerInput,
-  ): ResolvedRead[] {
-    const role = extensionRole(candidate.path);
-    if (role.isOk()) {
-      return [this.acceptInputCandidate(candidate, role.value)];
+  ): Result<Required<CompilerInputSuffixRules>, void> {
+    const language = candidate.language?.toLowerCase();
+    const inputs = this.resolvedOptions().inputs;
+
+    if (
+      language === undefined ||
+      language.length === 0 ||
+      language === "none"
+    ) {
+      return ok(inputs.unspecified);
     }
 
-    this.rejectInputCandidate(candidate, "unknown input candidate suffix");
+    if (language === "c" || language === "c++") {
+      return ok(inputs.languages[language]);
+    }
+
+    return err();
+  }
+
+  private resolveInputCandidateByRules(
+    candidate: CompilerInput,
+    rules: Required<CompilerInputSuffixRules>,
+  ): ResolvedRead[] {
+    if (candidate.path === "-") {
+      return [this.acceptInputCandidate(candidate, "source")];
+    }
+
+    const lowerPath = candidate.path.toLowerCase();
+    for (const rule of rules.suffixRules) {
+      if (
+        normalizeSuffixes(rule).some((suffix) => lowerPath.endsWith(suffix))
+      ) {
+        return [this.acceptInputCandidate(candidate, rule.role)];
+      }
+    }
+
+    const unknown = rules.unknown;
+    if (unknown !== "reject") {
+      return [this.acceptInputCandidate(candidate, unknown)];
+    }
+
+    this.rejectInputCandidate(
+      candidate,
+      "input candidate did not match suffix rules",
+    );
     return [];
   }
 
   private acceptInputCandidate(
     candidate: CompilerInput,
-    role = readRole(candidate),
+    role: ReadRole,
   ): ResolvedRead {
     this.state.acceptedInputCandidates.push(candidate);
     this.state.inferredReads.push(candidate);
@@ -384,7 +529,7 @@ export class CompilerCommandResolver {
       );
     }
 
-    if (!this.options.inferDefaultOutputs) {
+    if (!this.options.outputs.inferDefaults) {
       return [];
     }
 
@@ -459,9 +604,18 @@ export class CompilerCommandResolver {
       return [];
     }
 
+    const convention = this.resolveOutputConvention(parsed);
+    if (convention.isErr()) {
+      this.addDiagnostic({
+        code: "default-output-missing-convention",
+        message: "cannot infer default output without output convention",
+      });
+      return [];
+    }
+
     const extension = artifactExtension(
       parsed.compilerMode.artifact,
-      dialectExtensions(parsed.dialect),
+      convention.value,
     );
     if (extension.isErr()) {
       this.addDiagnostic({
@@ -494,24 +648,41 @@ export class CompilerCommandResolver {
       return [];
     }
 
-    const path =
-      parsed.dialect === CompilerDialect.Msvc
-        ? pathStem(firstRead.value.input.path) +
-          this.msvcSingleOutputExtension(parsed.compilerMode.artifact)
-        : "a.out";
+    const convention = this.resolveOutputConvention(parsed);
+    if (convention.isErr()) {
+      this.addDiagnostic({
+        code: "default-output-missing-convention",
+        message: "cannot infer default output without output convention",
+      });
+      return [];
+    }
+
+    const path = this.defaultSingleOutputPath(
+      parsed.compilerMode.artifact,
+      firstRead.value.input.path,
+      convention.value,
+    );
 
     return [this.writeForPath(path, "inferred", relevantReads)];
   }
 
-  private msvcSingleOutputExtension(artifact: CompilerArtifact): string {
-    const extensions = dialectExtensions(CompilerDialect.Msvc);
+  private defaultSingleOutputPath(
+    artifact: CompilerArtifact,
+    inputPath: string,
+    convention: CompilerOutputConvention,
+  ): string {
     switch (artifact) {
+      case CompilerArtifact.Executable:
+        return (
+          convention.defaultExecutable ??
+          pathStem(inputPath) + convention.executable
+        );
       case CompilerArtifact.SharedLibrary:
-        return extensions.sharedLibrary;
+        return pathStem(inputPath) + convention.sharedLibrary;
       case CompilerArtifact.StaticLibrary:
-        return extensions.staticLibrary;
+        return pathStem(inputPath) + convention.staticLibrary;
       default:
-        return extensions.executable;
+        return pathStem(inputPath) + convention.object;
     }
   }
 
@@ -552,16 +723,26 @@ export class CompilerCommandResolver {
     nameReads: readonly ResolvedRead[],
   ): string[] {
     if (
-      !this.options.expandDirectoryOutputs ||
+      !this.options.outputs.expandDirectories ||
       !isDirectoryLike(outputPath) ||
       nameReads.length === 0
     ) {
       return [outputPath];
     }
 
+    const convention = this.resolveOutputConvention(parsed);
+    if (convention.isErr()) {
+      this.addDiagnostic({
+        code: "directory-output-missing-convention",
+        message: "cannot expand directory output without output convention",
+        path: outputPath,
+      });
+      return [outputPath];
+    }
+
     const extension = artifactExtension(
       parsed.compilerMode.artifact,
-      dialectExtensions(parsed.dialect),
+      convention.value,
     );
     if (extension.isErr()) {
       this.addDiagnostic({
@@ -586,7 +767,7 @@ export class CompilerCommandResolver {
     parsed: CompilerParseResult,
     reads: readonly ResolvedRead[],
   ): ResolvedWrite[] {
-    if (!this.options.inferAssemblyListings) {
+    if (!this.options.outputs.inferAssemblyListings) {
       return [];
     }
 
