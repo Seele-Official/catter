@@ -4,7 +4,7 @@ import type { AnalyzedData } from "../model.js";
 import { CompilerAnalysisError, toCompilerAnalysisError } from "./errors.js";
 import { CompilerIdentifier } from "./identify.js";
 import { parseCompilerCommand } from "./parsers/index.js";
-import { CompilerCommandResolver } from "./resolver.js";
+import { CompilerCommandResolver } from "./resolver/index.js";
 import type {
   CompilerAnalyzerOptions,
   CompilerParseResult,
