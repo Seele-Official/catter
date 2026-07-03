@@ -14,6 +14,7 @@ import {
   type CompilerOutputConvention,
   type CompilerOutputKind,
   type CompilerParseResult,
+  type CompilerResolveDebug,
   type CompilerResolveDiagnostic,
   type CompilerResolveResult,
   type CompilerResolverEffectiveOptions,
@@ -74,12 +75,6 @@ type ResolvedWrite = {
   readonly reads: readonly ParsedRead[];
 };
 
-type ResolverTrace = {
-  readonly inputCandidates: CompilerInputCandidateDecision[];
-  readonly inferredWrites: CompilerInferredWrite[];
-  readonly diagnostics: CompilerResolveDiagnostic[];
-};
-
 type NormalizedResolverOptions = Omit<
   CompilerResolverOptions,
   "debug" | "writes"
@@ -136,32 +131,23 @@ function linkSuffixRulesForTarget(
   target: CompilerTarget,
   convention: CompilerOutputConvention | undefined,
 ): CompilerInputSuffixRule[] {
-  const suffixes = new Set<string>();
-
   if (convention !== undefined) {
-    suffixes.add(convention.object);
-    suffixes.add(convention.sharedLibrary);
-    suffixes.add(convention.staticLibrary);
+    return suffixRulesFor(
+      [convention.object, convention.sharedLibrary, convention.staticLibrary],
+      "link",
+    );
   }
 
-  if (target.objectFormat === CompilerObjectFormat.Coff) {
-    suffixes.add(".obj");
-    suffixes.add(".lib");
-    suffixes.add(".dll");
-    suffixes.add(".res");
-    suffixes.add(".exp");
-  } else if (target.objectFormat === CompilerObjectFormat.MachO) {
-    suffixes.add(".o");
-    suffixes.add(".a");
-    suffixes.add(".dylib");
-  } else if (target.objectFormat === CompilerObjectFormat.Elf) {
-    suffixes.add(".o");
-    suffixes.add(".a");
-    suffixes.add(".so");
+  switch (target.objectFormat) {
+    case CompilerObjectFormat.Coff:
+      return suffixRulesFor([".obj", ".lib", ".dll", ".res", ".exp"], "link");
+    case CompilerObjectFormat.MachO:
+      return suffixRulesFor([".o", ".a", ".dylib"], "link");
+    case CompilerObjectFormat.Elf:
+      return suffixRulesFor([".o", ".a", ".so"], "link");
   }
 
-  suffixes.delete("");
-  return suffixRulesFor(suffixes, "link");
+  return [];
 }
 
 function buildInputCandidateOptions(
@@ -224,12 +210,51 @@ function buildEffectiveOptions(
   };
 }
 
-function createTrace(): ResolverTrace {
-  return {
-    inputCandidates: [],
-    inferredWrites: [],
-    diagnostics: [],
-  };
+class ResolverTrace {
+  readonly inputCandidateDecisions: CompilerInputCandidateDecision[] = [];
+  readonly inferredWriteRecords: CompilerInferredWrite[] = [];
+  readonly diagnosticRecords: CompilerResolveDiagnostic[] = [];
+
+  acceptInputCandidate(input: CompilerInput, role: CompilerInputRole): void {
+    this.inputCandidateDecisions.push({
+      input,
+      decision: "accepted",
+      role,
+    });
+  }
+
+  rejectInputCandidate(input: CompilerInput, reason: string): void {
+    this.inputCandidateDecisions.push({
+      input,
+      decision: "rejected",
+      reason,
+    });
+    this.addDiagnostic({
+      code: "input-candidate-rejected",
+      message: reason,
+      path: input.path,
+      index: input.index,
+      source: input.source,
+    });
+  }
+
+  ignoreStreamInput(input: CompilerInput): void {
+    this.addDiagnostic({
+      code: "stream-input-ignored",
+      message: "stream input is not a filesystem dependency",
+      path: input.path,
+      index: input.index,
+      source: input.source,
+    });
+  }
+
+  addDiagnostic(diagnostic: CompilerResolveDiagnostic): void {
+    this.diagnosticRecords.push(diagnostic);
+  }
+
+  inferredWrite(path: string, reason: CompilerInferredWrite["reason"]): void {
+    this.inferredWriteRecords.push({ path, reason });
+  }
 }
 
 function parserInputRole(input: CompilerInput): CompilerInputRole {
@@ -250,13 +275,7 @@ function collectReads(
 ): ParsedRead[] {
   const parserReads = parsed.inputs.flatMap((input): ParsedRead[] => {
     if (isStreamPath(input.path)) {
-      addDiagnostic(trace, {
-        code: "stream-input-ignored",
-        message: "stream input is not a filesystem dependency",
-        path: input.path,
-        index: input.index,
-        source: input.source,
-      });
+      trace.ignoreStreamInput(input);
       return [];
     }
 
@@ -283,20 +302,18 @@ function resolveInputCandidate(
   trace: ResolverTrace,
 ): ParsedRead[] {
   if (isStreamPath(candidate.path)) {
-    rejectInputCandidate(
+    trace.rejectInputCandidate(
       candidate,
       "stream input is not a filesystem dependency",
-      trace,
     );
     return [];
   }
 
   const rules = inputCandidateRulesForLanguage(candidate, options);
   if (rules === undefined) {
-    rejectInputCandidate(
+    trace.rejectInputCandidate(
       candidate,
       "input candidate has unsupported explicit language",
-      trace,
     );
     return [];
   }
@@ -307,17 +324,28 @@ function resolveInputCandidate(
   );
 
   if (suffixRule !== undefined) {
-    return [acceptInputCandidate(candidate, suffixRule.role, trace)];
+    trace.acceptInputCandidate(candidate, suffixRule.role);
+    return [
+      {
+        input: candidate,
+        role: suffixRule.role,
+      },
+    ];
   }
 
   if (rules.unknownSuffix !== "reject") {
-    return [acceptInputCandidate(candidate, rules.unknownSuffix, trace)];
+    trace.acceptInputCandidate(candidate, rules.unknownSuffix);
+    return [
+      {
+        input: candidate,
+        role: rules.unknownSuffix,
+      },
+    ];
   }
 
-  rejectInputCandidate(
+  trace.rejectInputCandidate(
     candidate,
     "input candidate did not match suffix rules",
-    trace,
   );
   return [];
 }
@@ -343,41 +371,6 @@ function normalizedSuffixes(rule: CompilerInputSuffixRule): readonly string[] {
   return suffixes.map((suffix) => suffix.toLowerCase());
 }
 
-function acceptInputCandidate(
-  input: CompilerInput,
-  role: CompilerInputRole,
-  trace: ResolverTrace,
-): ParsedRead {
-  trace.inputCandidates.push({
-    input,
-    decision: "accepted",
-    role,
-  });
-  return {
-    input,
-    role,
-  };
-}
-
-function rejectInputCandidate(
-  input: CompilerInput,
-  reason: string,
-  trace: ResolverTrace,
-): void {
-  trace.inputCandidates.push({
-    input,
-    decision: "rejected",
-    reason,
-  });
-  addDiagnostic(trace, {
-    code: "input-candidate-rejected",
-    message: reason,
-    path: input.path,
-    index: input.index,
-    source: input.source,
-  });
-}
-
 function resolveWrites(
   parsed: CompilerParseResult,
   reads: readonly ParsedRead[],
@@ -397,7 +390,7 @@ function resolvePrimaryWrites(
   trace: ResolverTrace,
 ): ResolvedWrite[] {
   for (const output of parsed.outputCandidates) {
-    addDiagnostic(trace, {
+    trace.addDiagnostic({
       code: "output-candidate-ignored",
       message: "output candidates are not resolved in this resolver stage",
       path: output.path,
@@ -443,7 +436,7 @@ function selectExplicitOutput(
       continue;
     }
 
-    addDiagnostic(trace, {
+    trace.addDiagnostic({
       code: "output-kind-ignored",
       message: `output kind ${output.kind} is not used for ${parsed.compilerMode.phase}`,
       path: output.path,
@@ -519,7 +512,7 @@ function resolveDefaultCompileOutputs(
 ): ResolvedWrite[] {
   const relevantReads = primaryOutputReads(parsed, reads);
   if (relevantReads.length === 0) {
-    addDiagnostic(trace, {
+    trace.addDiagnostic({
       code: "default-output-missing-input",
       message: "compile output has no source input to name",
     });
@@ -535,14 +528,14 @@ function resolveDefaultCompileOutputs(
     return [];
   }
 
-  return relevantReads.map((read) =>
-    inferredWrite(
-      pathStem(read.input.path) + extension,
-      "default-output",
-      [read],
-      trace,
-    ),
-  );
+  return relevantReads.map((read) => {
+    const path = pathStem(read.input.path) + extension;
+    trace.inferredWrite(path, "default-output");
+    return {
+      path,
+      reads: [read],
+    };
+  });
 }
 
 function resolveDefaultSingleOutput(
@@ -554,7 +547,7 @@ function resolveDefaultSingleOutput(
   const relevantReads = primaryOutputReads(parsed, reads);
   const firstRead = relevantReads[0];
   if (firstRead === undefined) {
-    addDiagnostic(trace, {
+    trace.addDiagnostic({
       code: "default-output-missing-input",
       message: "single output has no input to name",
     });
@@ -562,7 +555,7 @@ function resolveDefaultSingleOutput(
   }
 
   if (options.outputConvention === undefined) {
-    addDiagnostic(trace, {
+    trace.addDiagnostic({
       code: "default-output-missing-convention",
       message: "cannot infer default output without output convention",
     });
@@ -575,7 +568,14 @@ function resolveDefaultSingleOutput(
     options.outputConvention,
   );
 
-  return [inferredWrite(path, "default-output", relevantReads, trace)];
+  trace.inferredWrite(path, "default-output");
+
+  return [
+    {
+      path,
+      reads: relevantReads,
+    },
+  ];
 }
 
 function defaultArtifactExtension(
@@ -584,7 +584,7 @@ function defaultArtifactExtension(
   trace: ResolverTrace,
 ): string | undefined {
   if (convention === undefined) {
-    addDiagnostic(trace, {
+    trace.addDiagnostic({
       code: "default-output-missing-convention",
       message: "cannot infer default output without output convention",
     });
@@ -593,7 +593,7 @@ function defaultArtifactExtension(
 
   const extension = artifactExtension(artifact, convention);
   if (extension === undefined) {
-    addDiagnostic(trace, {
+    trace.addDiagnostic({
       code: "default-output-unsupported-artifact",
       message: `cannot infer default output for ${artifact}`,
     });
@@ -702,7 +702,7 @@ function materializeOutputPaths(
   }
 
   if (options.outputConvention === undefined) {
-    addDiagnostic(trace, {
+    trace.addDiagnostic({
       code: "directory-output-missing-convention",
       message: "cannot expand directory output without output convention",
       path: outputPath,
@@ -712,7 +712,7 @@ function materializeOutputPaths(
 
   const extension = artifactExtension(artifact, options.outputConvention);
   if (extension === undefined) {
-    addDiagnostic(trace, {
+    trace.addDiagnostic({
       code: "directory-output-unsupported-artifact",
       message: `cannot expand directory output for ${artifact}`,
       path: outputPath,
@@ -746,20 +746,20 @@ function resolveAssemblyListingWrites(
   }
 
   const sourceReads = reads.filter((read) => read.role === "source");
-  for (const path of [...listingPaths].reverse()) {
+  for (const path of listingPaths.reverse()) {
     if (path !== undefined) {
       return resolveAssemblyListingWritesByPath(path, sourceReads, trace);
     }
   }
 
-  return sourceReads.map((read) =>
-    inferredWrite(
-      pathStem(read.input.path) + ".asm",
-      "assembly-listing",
-      [read],
-      trace,
-    ),
-  );
+  return sourceReads.map((read) => {
+    const path = pathStem(read.input.path) + ".asm";
+    trace.inferredWrite(path, "assembly-listing");
+    return {
+      path,
+      reads: [read],
+    };
+  });
 }
 
 function phaseCanEmitAssemblyListing(parsed: CompilerParseResult): boolean {
@@ -782,23 +782,23 @@ function resolveAssemblyListingWritesByPath(
   trace: ResolverTrace,
 ): ResolvedWrite[] {
   if (isDirectoryLike(explicitPath)) {
-    return sourceReads.map((read) =>
-      inferredWrite(
-        fs.path.lexicalNormal(
-          fs.path.joinAll(explicitPath, pathStem(read.input.path) + ".asm"),
-        ),
-        "assembly-listing",
-        [read],
-        trace,
-      ),
-    );
+    return sourceReads.map((read) => {
+      const path = fs.path.lexicalNormal(
+        fs.path.joinAll(explicitPath, pathStem(read.input.path) + ".asm"),
+      );
+      trace.inferredWrite(path, "assembly-listing");
+      return {
+        path,
+        reads: [read],
+      };
+    });
   }
 
   if (sourceReads.length === 1) {
     return [explicitWrite(explicitPath, sourceReads)];
   }
 
-  addDiagnostic(trace, {
+  trace.addDiagnostic({
     code: "assembly-listing-ambiguous-output",
     message: "single assembly listing path cannot name multiple source inputs",
     path: explicitPath,
@@ -815,19 +815,6 @@ function writesForPaths(
     return paths.map((path, index) => explicitWrite(path, [reads[index]!]));
   }
   return paths.map((path) => explicitWrite(path, reads));
-}
-
-function inferredWrite(
-  path: string,
-  reason: CompilerInferredWrite["reason"],
-  reads: readonly ParsedRead[],
-  trace: ResolverTrace,
-): ResolvedWrite {
-  trace.inferredWrites.push({ path, reason });
-  return {
-    path,
-    reads,
-  };
 }
 
 function explicitWrite(
@@ -855,13 +842,6 @@ function isDirectoryLike(path: string): boolean {
   return path.endsWith("/") || path.endsWith("\\");
 }
 
-function addDiagnostic(
-  trace: ResolverTrace,
-  diagnostic: CompilerResolveDiagnostic,
-): void {
-  trace.diagnostics.push(diagnostic);
-}
-
 /**
  * Resolves parsed compiler facts into visible file reads, writes, and dependency edges.
  */
@@ -883,7 +863,7 @@ export class CompilerCommandResolver {
 
   resolve(parsed: CompilerParseResult): CompilerResolveResult {
     const effectiveOptions = buildEffectiveOptions(this.options, parsed);
-    const trace = createTrace();
+    const trace = new ResolverTrace();
     const reads = collectReads(parsed, effectiveOptions, trace);
     const writes = resolveWrites(parsed, reads, effectiveOptions, trace);
 
@@ -902,9 +882,9 @@ export class CompilerCommandResolver {
     if (this.options.debug) {
       result.debug = {
         effectiveOptions,
-        inputCandidates: trace.inputCandidates,
-        inferredWrites: trace.inferredWrites,
-        diagnostics: trace.diagnostics,
+        inputCandidates: trace.inputCandidateDecisions,
+        inferredWrites: trace.inferredWriteRecords,
+        diagnostics: trace.diagnosticRecords,
       };
     }
 
