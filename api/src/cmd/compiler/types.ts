@@ -259,9 +259,6 @@ export type CompilerInputRole = "source" | "link";
 /** Source languages currently understood by resolver suffix policies. */
 export type CompilerResolverSourceLanguage = "c" | "c++";
 
-/** Policy used when no suffix rule matches an input candidate. */
-export type CompilerInputUnknownPolicy = "reject" | CompilerInputRole;
-
 /** One suffix-to-consumption-role rule used after parser and mode semantics do not fully classify a candidate. */
 export type CompilerInputSuffixRule = {
   /** File suffix or suffixes, matched case-insensitively. */
@@ -271,29 +268,29 @@ export type CompilerInputSuffixRule = {
 };
 
 /** Rules used for one input suffix group while resolving input candidates. */
-export type CompilerInputSuffixRules = {
+export type CompilerInputCandidateRules = {
   /** Suffix rules. When omitted, the resolver uses its built-in rules for this group. */
   suffixRules?: readonly CompilerInputSuffixRule[];
   /** Role for unknown suffixes, or reject. */
-  unknown?: CompilerInputUnknownPolicy;
+  unknownSuffix?: "reject" | CompilerInputRole;
 };
 
 /** Input-candidate resolver configuration split by parser language state. */
-export type CompilerResolverInputOptions = {
+export type CompilerInputCandidateOptions = {
   /** Rules used when the parser candidate has an explicit supported source language. */
-  languages?: Partial<
-    Record<CompilerResolverSourceLanguage, CompilerInputSuffixRules>
+  byLanguage?: Partial<
+    Record<CompilerResolverSourceLanguage, CompilerInputCandidateRules>
   >;
   /** Rules used when the parser candidate has no language or language `none`. */
-  unspecified?: CompilerInputSuffixRules;
+  withoutLanguage?: CompilerInputCandidateRules;
 };
 
 /** Output resolver configuration for inferred writes and side effects. */
-export type CompilerResolverOutputOptions = {
+export type CompilerResolverWriteOptions = {
   /** Whether to infer driver default outputs when no matching explicit output fact exists. */
-  inferDefaults?: boolean;
+  inferDefaultOutputs?: boolean;
   /** Whether directory-like explicit output paths are expanded into per-input file paths. */
-  expandDirectories?: boolean;
+  expandDirectoryOutputs?: boolean;
   /** Whether CL-style assembly listing actions should add side-effect writes. */
   inferAssemblyListings?: boolean;
 };
@@ -305,9 +302,9 @@ export type CompilerResolverOptions = {
   /** Explicit output suffix convention used before target-derived conventions. */
   outputConvention?: Partial<CompilerOutputConvention>;
   /** Rules for promoting parser input candidates into reads. */
-  inputs?: CompilerResolverInputOptions;
+  inputCandidates?: CompilerInputCandidateOptions;
   /** Rules for resolving writes from explicit outputs, compiler mode, and reads. */
-  outputs?: CompilerResolverOutputOptions;
+  writes?: CompilerResolverWriteOptions;
   /** Whether to attach detailed resolver decisions and diagnostics to the result. */
   debug?: boolean;
 };
@@ -326,43 +323,59 @@ export type CompilerResolveDiagnostic = {
   source?: CompilerFactSource;
 };
 
-/** Input candidate rejected by the resolver, with the policy reason that rejected it. */
-export type CompilerRejectedInputCandidate = {
-  /** Candidate fact supplied by the parser. */
-  input: CompilerInput;
-  /** Short policy reason for rejection. */
-  reason: string;
+/** Resolver decision for one parser input candidate. */
+export type CompilerInputCandidateDecision =
+  | {
+      /** Candidate fact supplied by the parser. */
+      input: CompilerInput;
+      /** Candidate was promoted to a read. */
+      decision: "accepted";
+      /** Read consumption role assigned by resolver policy. */
+      role: CompilerInputRole;
+    }
+  | {
+      /** Candidate fact supplied by the parser. */
+      input: CompilerInput;
+      /** Candidate was not visible as a dependency. */
+      decision: "rejected";
+      /** Short policy reason for rejection. */
+      reason: string;
+    };
+
+/** Fully resolved resolver settings used for one parse result. */
+export type CompilerResolverEffectiveOptions = {
+  target: CompilerTarget;
+  outputConvention?: CompilerOutputConvention;
+  inputCandidates: {
+    byLanguage: Record<
+      CompilerResolverSourceLanguage,
+      Required<CompilerInputCandidateRules>
+    >;
+    withoutLanguage: Required<CompilerInputCandidateRules>;
+  };
+  writes: Required<CompilerResolverWriteOptions>;
+  debug: boolean;
+};
+
+/** Inferred write recorded for resolver debugging. */
+export type CompilerInferredWrite = {
+  /** Output path inferred by the resolver. */
+  path: string;
+  /** Why this write was inferred. */
+  reason: "default-output" | "assembly-listing";
 };
 
 /** Optional detailed trace of resolver decisions. */
 export type CompilerResolveDebug = {
   /** Fully resolved options used for this resolution pass. */
-  options: CompilerResolvedResolverOptions;
-  /** Input candidates promoted to inferred reads. */
-  acceptedInputCandidates: CompilerInput[];
-  /** Input candidates rejected by the configured policy. */
-  rejectedInputCandidates: CompilerRejectedInputCandidate[];
-  /** Reads inferred from parser candidates rather than explicit input facts. */
-  inferredReads: CompilerInput[];
+  effectiveOptions: CompilerResolverEffectiveOptions;
+  /** Resolver decisions for ambiguous parser input candidates, in argv order. */
+  inputCandidates: CompilerInputCandidateDecision[];
   /** Writes inferred from compiler defaults or side-output conventions. */
-  inferredWrites: string[];
+  inferredWrites: CompilerInferredWrite[];
   /** Diagnostics emitted while resolving parser facts. */
   diagnostics: CompilerResolveDiagnostic[];
 };
-
-export type CompilerResolvedResolverOptions = Required<
-  Pick<CompilerResolverOptions, "debug">
-> &
-  Pick<CompilerResolverOptions, "target" | "outputConvention"> & {
-    inputs: {
-      languages: Record<
-        CompilerResolverSourceLanguage,
-        Required<CompilerInputSuffixRules>
-      >;
-      unspecified: Required<CompilerInputSuffixRules>;
-    };
-    outputs: Required<CompilerResolverOutputOptions>;
-  };
 
 export type CompilerResolveResult = {
   reads: string[];

@@ -324,22 +324,22 @@ if (debugResolverresolved.debug === undefined) {
   throw new Error("resolver debug information missing");
 }
 expectEq(
-  debugResolverresolved.debug.rejectedInputCandidates.length,
+  debugResolverresolved.debug.inputCandidates.length,
   1,
   "resolver debug rejected candidate count",
 );
 
 expectEq(
-  debugResolverresolved.debug.diagnostics[0]!.code,
-  "input-candidate-rejected",
-  "resolver debug diagnostic code",
+  debugResolverresolved.debug.inputCandidates[0]!.decision,
+  "rejected",
+  "resolver debug candidate decision",
 );
 
 const allCandidateAnalyzer = new cmd.CompilerAnalyzer({
   resolver: new cmd.CompilerCommandResolver({
-    inputs: {
-      unspecified: {
-        unknown: "source",
+    inputCandidates: {
+      withoutLanguage: {
+        unknownSuffix: "source",
       },
     },
   }),
@@ -361,20 +361,20 @@ expectArrayEq(
 
 const noCandidateAnalyzer = new cmd.CompilerAnalyzer({
   resolver: new cmd.CompilerCommandResolver({
-    inputs: {
-      languages: {
+    inputCandidates: {
+      byLanguage: {
         c: {
           suffixRules: [],
-          unknown: "reject",
+          unknownSuffix: "reject",
         },
         "c++": {
           suffixRules: [],
-          unknown: "reject",
+          unknownSuffix: "reject",
         },
       },
-      unspecified: {
+      withoutLanguage: {
         suffixRules: [],
-        unknown: "reject",
+        unknownSuffix: "reject",
       },
     },
   }),
@@ -396,8 +396,8 @@ expectArrayEq(
 
 const noDefaultOutputAnalyzer = new cmd.CompilerAnalyzer({
   resolver: new cmd.CompilerCommandResolver({
-    outputs: {
-      inferDefaults: false,
+    writes: {
+      inferDefaultOutputs: false,
     },
   }),
 });
@@ -418,8 +418,8 @@ expectArrayEq(
 
 const noDirectoryExpansionAnalyzer = new cmd.CompilerAnalyzer({
   resolver: new cmd.CompilerCommandResolver({
-    outputs: {
-      expandDirectories: false,
+    writes: {
+      expandDirectoryOutputs: false,
     },
   }),
 });
@@ -437,7 +437,7 @@ expectArrayEq(
 
 const noAssemblyListingAnalyzer = new cmd.CompilerAnalyzer({
   resolver: new cmd.CompilerCommandResolver({
-    outputs: {
+    writes: {
       inferAssemblyListings: false,
     },
   }),
@@ -488,10 +488,10 @@ expectEq(
 
 const customUnspecifiedSuffixAnalyzer = new cmd.CompilerAnalyzer({
   resolver: new cmd.CompilerCommandResolver({
-    inputs: {
-      unspecified: {
+    inputCandidates: {
+      withoutLanguage: {
         suffixRules: [{ suffix: ".foo", role: "source" }],
-        unknown: "reject",
+        unknownSuffix: "reject",
       },
     },
   }),
@@ -515,11 +515,11 @@ expectArrayEq(
 
 const customExplicitSuffixAnalyzer = new cmd.CompilerAnalyzer({
   resolver: new cmd.CompilerCommandResolver({
-    inputs: {
-      languages: {
+    inputCandidates: {
+      byLanguage: {
         c: {
           suffixRules: [{ suffix: ".src", role: "source" }],
-          unknown: "reject",
+          unknownSuffix: "reject",
         },
       },
     },
@@ -552,6 +552,26 @@ const cases: ExpectedAnalysis[] = [
     },
     inputs: ["src/t.c"],
     outputs: ["-"],
+  },
+  {
+    label: "clang stdin input is not a filesystem read",
+    cmd: ["clang", "-x", "c", "-c", "-", "-o", "stdin.o"],
+    compilerMode: {
+      phase: cmd.CompilerPhase.Compile,
+      artifact: cmd.CompilerArtifact.Object,
+    },
+    inputs: [],
+    outputs: ["stdin.o"],
+  },
+  {
+    label: "clang stdin input has no default filesystem output",
+    cmd: ["clang", "-x", "c", "-c", "-"],
+    compilerMode: {
+      phase: cmd.CompilerPhase.Compile,
+      artifact: cmd.CompilerArtifact.Object,
+    },
+    inputs: [],
+    outputs: [],
   },
   {
     label: "gcc preprocess explicit language rejects no-suffix candidate",
