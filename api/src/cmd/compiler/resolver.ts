@@ -48,7 +48,6 @@ type ResolverState = {
 
 const DEFAULT_OPTIONS: Required<CompilerResolverOptions> = {
   inputCandidateInference: "suffix",
-  unknownInputCandidate: "ignore",
   inferDefaultOutputs: true,
   expandDirectoryOutputs: true,
   inferAssemblyListings: true,
@@ -219,12 +218,6 @@ function phaseOutputKinds(phase: CompilerPhase): readonly CompilerOutputKind[] {
   }
 }
 
-function sortByIndex<T extends { readonly index: number }>(
-  values: readonly T[],
-) {
-  return [...values].sort((left, right) => left.index - right.index);
-}
-
 function firstValue<T>(values: readonly T[]): Result<T, void> {
   return values.length === 0 ? err() : ok(values[0]!);
 }
@@ -331,10 +324,6 @@ export class CompilerCommandResolver {
       return [this.acceptInputCandidate(candidate, role.value)];
     }
 
-    if (this.options.unknownInputCandidate === "read-as-link") {
-      return [this.acceptInputCandidate(candidate, "link")];
-    }
-
     this.rejectInputCandidate(candidate, "unknown input candidate suffix");
     return [];
   }
@@ -408,7 +397,9 @@ export class CompilerCommandResolver {
     const acceptedKinds = phaseOutputKinds(parsed.compilerMode.phase);
     let selected: Result<CompilerOutput, void> = err();
 
-    for (const output of sortByIndex(parsed.outputs)) {
+    for (const output of parsed.outputs.sort(
+      (left, right) => left.index - right.index,
+    )) {
       if (acceptedKinds.includes(output.kind)) {
         selected = ok(output);
         continue;

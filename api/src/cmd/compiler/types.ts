@@ -183,15 +183,10 @@ export type CompilerParseResult = {
 /** Strategy used by the resolver when deciding whether parser input candidates are real file reads. */
 export type CompilerInputCandidateInference = "none" | "suffix" | "all";
 
-/** Fallback behavior for input candidates that cannot be classified by language or suffix. */
-export type CompilerUnknownInputCandidatePolicy = "ignore" | "read-as-link";
-
 /** Configures how compiler parser facts are resolved into visible file reads, writes, and edges. */
 export type CompilerResolverOptions = {
   /** Controls whether and how `inputCandidates` are promoted to inferred reads. */
   inputCandidateInference?: CompilerInputCandidateInference;
-  /** Controls unknown candidate handling when `inputCandidateInference` is `suffix`. */
-  unknownInputCandidate?: CompilerUnknownInputCandidatePolicy;
   /** Whether to infer driver default outputs when no matching explicit output fact exists. */
   inferDefaultOutputs?: boolean;
   /** Whether directory-like explicit output paths are expanded into per-input file paths. */

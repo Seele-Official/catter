@@ -567,7 +567,8 @@ const cases: ExpectedAnalysis[] = [
     outputs: ["t.o"],
   },
   {
-    label: "clang preprocess unknown option value without suffix is not an input",
+    label:
+      "clang preprocess unknown option value without suffix is not an input",
     cmd: [
       "clang",
       "-E",

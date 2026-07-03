@@ -5,6 +5,7 @@ import tseslint from "typescript-eslint";
 
 export default defineConfig(tseslint.configs.recommended, {
   rules: {
+    "@typescript-eslint/no-namespace": ["off"],
     "@typescript-eslint/no-unused-vars": ["off"],
   },
 });
