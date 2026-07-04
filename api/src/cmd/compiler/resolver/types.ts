@@ -30,8 +30,7 @@ export type NormalizedResolverOptions = Omit<
   readonly writes: Required<CompilerResolverWriteOptions>;
 };
 
-export type CompleteInputCandidateRules =
-  Required<CompilerInputCandidateRules>;
+export type CompleteInputCandidateRules = Required<CompilerInputCandidateRules>;
 
 export type CompleteInputCandidateOptions =
   CompilerResolverEffectiveOptions["inputCandidates"];

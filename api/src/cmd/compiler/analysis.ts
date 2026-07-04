@@ -11,6 +11,7 @@ import type {
   CompilerResolveResult,
   CompilerMode,
   UnwrappedCompilerCommand,
+  CompilerResolveDebug,
 } from "./types.js";
 import { unwrapCompilerCommand } from "./unwrap.js";
 
@@ -35,6 +36,8 @@ export class CompilerAnalysis extends Analysis {
   readonly compilerMode: CompilerMode;
   /** Source input paths resolved from parser facts and candidates. */
   readonly sourceFiles: readonly string[];
+  /** Optional debug information for resolver decisions and diagnostics. */
+  readonly debug?: CompilerResolveDebug;
 
   constructor(
     parsed: CompilerParseResult,
@@ -54,6 +57,7 @@ export class CompilerAnalysis extends Analysis {
     this.unwrappedArgv = [...unwrapped.argv];
     this.compilerMode = { ...parsed.compilerMode };
     this.sourceFiles = [...resolved.sourceFiles];
+    this.debug = resolved.debug;
   }
 }
 
