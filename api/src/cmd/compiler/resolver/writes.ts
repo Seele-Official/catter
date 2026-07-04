@@ -6,8 +6,8 @@ import {
   type CompilerOutputConvention,
   type CompilerOutputKind,
   type CompilerParseResult,
-  type CompilerResolverEffectiveOptions,
 } from "../types.js";
+import type { CompilerResolverEffectiveOptions } from "./types.js";
 import { ResolverTrace } from "./resolver.js";
 import { ParsedRead } from "./reads.js";
 
@@ -210,14 +210,6 @@ function resolveDefaultSingleOutput(
     return [];
   }
 
-  if (options.outputConvention === undefined) {
-    trace.addDiagnostic({
-      code: "default-output-missing-convention",
-      message: "cannot infer default output without output convention",
-    });
-    return [];
-  }
-
   const path = defaultSingleOutputPath(
     parsed.compilerMode.artifact,
     firstRead.input.path,
@@ -236,17 +228,9 @@ function resolveDefaultSingleOutput(
 
 function defaultArtifactExtension(
   artifact: CompilerArtifact,
-  convention: CompilerOutputConvention | undefined,
+  convention: CompilerOutputConvention,
   trace: ResolverTrace,
 ): string | undefined {
-  if (convention === undefined) {
-    trace.addDiagnostic({
-      code: "default-output-missing-convention",
-      message: "cannot infer default output without output convention",
-    });
-    return undefined;
-  }
-
   const extension = artifactExtension(artifact, convention);
   if (extension === undefined) {
     trace.addDiagnostic({
@@ -354,15 +338,6 @@ function materializeOutputPaths(
     !isDirectoryLike(outputPath) ||
     nameReads.length === 0
   ) {
-    return [outputPath];
-  }
-
-  if (options.outputConvention === undefined) {
-    trace.addDiagnostic({
-      code: "directory-output-missing-convention",
-      message: "cannot expand directory output without output convention",
-      path: outputPath,
-    });
     return [outputPath];
   }
 

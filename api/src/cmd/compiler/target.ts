@@ -143,24 +143,3 @@ export function outputConventionFromTarget(
 
   return undefined;
 }
-
-export function completeOutputConvention(
-  convention: Partial<CompilerOutputConvention>,
-): CompilerOutputConvention | undefined {
-  if (
-    convention.object === undefined ||
-    convention.executable === undefined ||
-    convention.sharedLibrary === undefined ||
-    convention.staticLibrary === undefined
-  ) {
-    return undefined;
-  }
-
-  return {
-    object: convention.object,
-    executable: convention.executable,
-    defaultExecutable: convention.defaultExecutable,
-    sharedLibrary: convention.sharedLibrary,
-    staticLibrary: convention.staticLibrary,
-  };
-}

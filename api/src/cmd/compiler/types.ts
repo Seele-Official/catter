@@ -342,21 +342,6 @@ export type CompilerInputCandidateDecision =
       reason: string;
     };
 
-/** Fully resolved resolver settings used for one parse result. */
-export type CompilerResolverEffectiveOptions = {
-  target: CompilerTarget;
-  outputConvention?: CompilerOutputConvention;
-  inputCandidates: {
-    byLanguage: Record<
-      CompilerResolverSourceLanguage,
-      Required<CompilerInputCandidateRules>
-    >;
-    withoutLanguage: Required<CompilerInputCandidateRules>;
-  };
-  writes: Required<CompilerResolverWriteOptions>;
-  debug: boolean;
-};
-
 /** Inferred write recorded for resolver debugging. */
 export type CompilerInferredWrite = {
   /** Output path inferred by the resolver. */
@@ -367,8 +352,6 @@ export type CompilerInferredWrite = {
 
 /** Optional detailed trace of resolver decisions. */
 export type CompilerResolveDebug = {
-  /** Fully resolved options used for this resolution pass. */
-  effectiveOptions: CompilerResolverEffectiveOptions;
   /** Resolver decisions for ambiguous parser input candidates, in argv order. */
   inputCandidates: CompilerInputCandidateDecision[];
   /** Writes inferred from compiler defaults or side-output conventions. */

@@ -458,36 +458,45 @@ expectArrayEq(
   "resolver disables assembly listings writes",
 );
 
-const unknownTargetResolverParsed = parseCompilerCommand([
-  "clang",
-  "-c",
-  "main.c",
-]);
-const unknownTargetResolverResolved = new cmd.CompilerCommandResolver({
+let incompleteConventionRejected = false;
+try {
+  new cmd.CompilerCommandResolver({
+    debug: true,
+    target: {
+      os: cmd.CompilerTargetOS.Unknown,
+      env: cmd.CompilerTargetEnv.Unknown,
+      objectFormat: cmd.CompilerObjectFormat.Unknown,
+    },
+  }).resolve(parseCompilerCommand(["clang", "-c", "main.c"]));
+} catch (error) {
+  incompleteConventionRejected =
+    error instanceof cmd.CompilerResolverOptionsError;
+}
+debug.assertThrow(incompleteConventionRejected);
+
+const unknownTargetWithConventionResolved = new cmd.CompilerCommandResolver({
   debug: true,
   target: {
     os: cmd.CompilerTargetOS.Unknown,
     env: cmd.CompilerTargetEnv.Unknown,
     objectFormat: cmd.CompilerObjectFormat.Unknown,
   },
-}).resolve(unknownTargetResolverParsed);
+  outputConvention: {
+    object: ".objx",
+    executable: ".binx",
+    sharedLibrary: ".sox",
+    staticLibrary: ".libx",
+  },
+}).resolve(parseCompilerCommand(["clang", "-c", "main.c"]));
 expectArrayEq(
-  unknownTargetResolverResolved.reads,
+  unknownTargetWithConventionResolved.reads,
   ["main.c"],
-  "resolver unknown target reads",
+  "resolver unknown target with convention reads",
 );
 expectArrayEq(
-  unknownTargetResolverResolved.writes,
-  [],
-  "resolver unknown target does not infer writes",
-);
-if (unknownTargetResolverResolved.debug === undefined) {
-  throw new Error("resolver unknown target debug information missing");
-}
-expectEq(
-  unknownTargetResolverResolved.debug.diagnostics[0]!.code,
-  "default-output-missing-convention",
-  "resolver unknown target diagnostic code",
+  unknownTargetWithConventionResolved.writes,
+  ["main.objx"],
+  "resolver unknown target with convention writes",
 );
 
 const customUnspecifiedSuffixAnalyzer = new cmd.CompilerAnalyzer({

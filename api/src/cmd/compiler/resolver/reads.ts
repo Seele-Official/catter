@@ -3,8 +3,8 @@ import {
   type CompilerInputRole,
   type CompilerInputSuffixRule,
   type CompilerParseResult,
-  type CompilerResolverEffectiveOptions,
 } from "../types.js";
+import type { CompilerResolverEffectiveOptions } from "./types.js";
 
 import { ResolverTrace } from "./resolver.js";
 

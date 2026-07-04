@@ -12,10 +12,15 @@ export class CompilerModelError extends AnalysisError {
   readonly kind = "compiler-model" as const;
 }
 
+export class CompilerResolverOptionsError extends AnalysisError {
+  readonly kind = "compiler-resolver-options" as const;
+}
+
 export type CompilerAnalysisError =
   | CompilerUnsupportedError
   | CompilerParseError
-  | CompilerModelError;
+  | CompilerModelError
+  | CompilerResolverOptionsError;
 
 export function toCompilerAnalysisError(
   value: unknown,
@@ -24,7 +29,8 @@ export function toCompilerAnalysisError(
   if (
     value instanceof CompilerUnsupportedError ||
     value instanceof CompilerParseError ||
-    value instanceof CompilerModelError
+    value instanceof CompilerModelError ||
+    value instanceof CompilerResolverOptionsError
   ) {
     return value;
   }

@@ -1,8 +1,6 @@
 import {
-  CompilerObjectFormat,
   type CompilerInput,
   type CompilerInputCandidateDecision,
-  type CompilerInputCandidateOptions,
   type CompilerInputCandidateRules,
   type CompilerInputRole,
   type CompilerInputSuffixRule,
@@ -11,18 +9,21 @@ import {
   type CompilerParseResult,
   type CompilerResolveDiagnostic,
   type CompilerResolveResult,
-  type CompilerResolverEffectiveOptions,
   type CompilerResolverOptions,
   type CompilerResolverSourceLanguage,
   type CompilerResolverWriteOptions,
-  type CompilerTarget,
 } from "../types.js";
-import {
-  completeOutputConvention,
-  hostTarget,
-  outputConventionFromTarget,
-} from "../target.js";
+import { CompilerResolverOptionsError } from "../errors.js";
+import { hostTarget, outputConventionFromTarget } from "../target.js";
 import { collectReads } from "./reads.js";
+import type {
+  CompleteInputCandidateOptions,
+  CompleteInputCandidateRules,
+  CompilerResolverEffectiveOptions,
+  NormalizedResolverOptions,
+  PartialOutputConvention,
+  ResolverInputCandidateOptions,
+} from "./types.js";
 import { resolveWrites } from "./writes.js";
 
 /**
@@ -58,16 +59,6 @@ import { resolveWrites } from "./writes.js";
  * invocations; a token rejected by resolver policy means it is not visible as a
  * file dependency here, not that the original command is invalid.
  */
-
-type CompleteInputCandidateRules = Required<CompilerInputCandidateRules>;
-
-type NormalizedResolverOptions = Omit<
-  CompilerResolverOptions,
-  "debug" | "writes"
-> & {
-  readonly debug: boolean;
-  readonly writes: Required<CompilerResolverWriteOptions>;
-};
 
 const C_SOURCE_SUFFIXES = [".c", ".i"] as const;
 
@@ -113,34 +104,10 @@ function completeInputCandidateRules(
   };
 }
 
-function linkSuffixRulesForTarget(
-  target: CompilerTarget,
-  convention: CompilerOutputConvention | undefined,
-): CompilerInputSuffixRule[] {
-  if (convention !== undefined) {
-    return suffixRulesFor(
-      [convention.object, convention.sharedLibrary, convention.staticLibrary],
-      "link",
-    );
-  }
-
-  switch (target.objectFormat) {
-    case CompilerObjectFormat.Coff:
-      return suffixRulesFor([".obj", ".lib", ".dll", ".res", ".exp"], "link");
-    case CompilerObjectFormat.MachO:
-      return suffixRulesFor([".o", ".a", ".dylib"], "link");
-    case CompilerObjectFormat.Elf:
-      return suffixRulesFor([".o", ".a", ".so"], "link");
-  }
-
-  return [];
-}
-
 function buildInputCandidateOptions(
-  options: CompilerInputCandidateOptions | undefined,
-  target: CompilerTarget,
-  convention: CompilerOutputConvention | undefined,
-): CompilerResolverEffectiveOptions["inputCandidates"] {
+  options: ResolverInputCandidateOptions,
+  convention: CompilerOutputConvention,
+): CompleteInputCandidateOptions {
   const byLanguage: Record<
     CompilerResolverSourceLanguage,
     CompleteInputCandidateRules
@@ -159,7 +126,10 @@ function buildInputCandidateOptions(
     suffixRules: [
       ...byLanguage.c.suffixRules,
       ...byLanguage["c++"].suffixRules,
-      ...linkSuffixRulesForTarget(target, convention),
+      ...suffixRulesFor(
+        [convention.object, convention.sharedLibrary, convention.staticLibrary],
+        "link",
+      ),
     ],
     unknownSuffix: "reject",
   };
@@ -178,18 +148,28 @@ function buildEffectiveOptions(
   parsed: CompilerParseResult,
 ): CompilerResolverEffectiveOptions {
   const target = options.target ?? parsed.target ?? hostTarget();
-  const outputConvention = completeOutputConvention({
+
+  const convention = {
     ...outputConventionFromTarget(target),
     ...options.outputConvention,
-  });
+  };
 
+  if (
+    convention.object === undefined ||
+    convention.executable === undefined ||
+    convention.sharedLibrary === undefined ||
+    convention.staticLibrary === undefined
+  ) {
+    throw new CompilerResolverOptionsError(
+      "compiler resolver output convention is incomplete",
+    );
+  }
   return {
     target,
-    outputConvention,
+    outputConvention: convention as CompilerOutputConvention,
     inputCandidates: buildInputCandidateOptions(
       options.inputCandidates,
-      target,
-      outputConvention,
+      convention as CompilerOutputConvention,
     ),
     writes: options.writes,
     debug: options.debug,
@@ -282,7 +262,6 @@ export class CompilerCommandResolver {
 
     if (this.options.debug) {
       result.debug = {
-        effectiveOptions,
         inputCandidates: trace.inputCandidateDecisions,
         inferredWrites: trace.inferredWriteRecords,
         diagnostics: trace.diagnosticRecords,
