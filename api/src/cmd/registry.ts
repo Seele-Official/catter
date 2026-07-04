@@ -1,34 +1,41 @@
-import type { Analysis, Analyzer } from "./model.js";
+import { err, ok, type Result } from "../neverthrow/index.js";
+import {
+  AnalysisError,
+  type Analysis,
+  type AnalyzedData,
+  type IAnalyzer,
+} from "./model.js";
 
 /**
  * Ordered registry of command analyzers.
  *
- * The registry asks each analyzer in registration order whether it supports a
- * command, then returns the first successful analysis.
+ * The registry asks each analyzer in registration order to analyze a command,
+ * then returns the first successful analysis.
  *
  * @example
  * ```ts
- * const registry = new cmd.Registry().register(cmd.CompilerAnalysis);
- * const analysis = registry.analyze(["clang", "-c", "main.c"]);
+ * const registry = new cmd.Registry().register("compiler", new cmd.CompilerAnalyzer());
+ * const analysis = registry.analyze({ exe: "clang", argv: ["clang", "-c", "main.c"] });
  * ```
  */
-export class Registry {
-  private readonly analyzerList: Analyzer[] = [];
+export class Registry<
+  T extends Analysis = Analysis,
+  R extends AnalysisError = AnalysisError,
+> {
+  private readonly analyzerMap = new Map<string, IAnalyzer<T, R>>();
 
   /**
-   * Registers an analyzer class or object under its `key`.
-   *
-   * If another analyzer with the same key already exists, it is replaced.
+   * Registers an analyzer instance.
    *
    * @example
    * ```ts
    * const registry = new cmd.Registry();
-   * registry.register(cmd.CompilerAnalysis);
+   * registry.register("compiler", new cmd.CompilerAnalyzer());
    * ```
    */
-  register<A extends Analysis>(analyzer: Analyzer<A>): this {
-    this.unregister(analyzer.key);
-    this.analyzerList.push(analyzer as Analyzer);
+  register(key: string, analyzer: IAnalyzer<T, R>): this {
+    this.analyzerMap.delete(key);
+    this.analyzerMap.set(key, analyzer);
     return this;
   }
 
@@ -37,15 +44,13 @@ export class Registry {
    *
    * @example
    * ```ts
-   * const registry = new cmd.Registry().register(cmd.CompilerAnalysis);
-   * registry.unregister(cmd.CompilerAnalysis.key);
+   * const analyzer = new cmd.CompilerAnalyzer();
+   * const registry = new cmd.Registry().register("compiler", analyzer);
+   * registry.unregister("compiler");
    * ```
    */
   unregister(key: string): this {
-    const index = this.analyzerList.findIndex((item) => item.key === key);
-    if (index !== -1) {
-      this.analyzerList.splice(index, 1);
-    }
+    this.analyzerMap.delete(key);
     return this;
   }
 
@@ -55,50 +60,26 @@ export class Registry {
    * @example
    * ```ts
    * const analyzers = new cmd.Registry()
-   *   .register(cmd.CompilerAnalysis)
+   *   .register("compiler", new cmd.CompilerAnalyzer())
    *   .analyzers();
    * ```
    */
-  analyzers(): readonly Analyzer[] {
-    return this.analyzerList;
+  analyzers(): readonly IAnalyzer<T, R>[] {
+    return [...this.analyzerMap.values()];
   }
 
-  /**
-   * Checks whether any registered analyzer claims the command.
-   *
-   * @example
-   * ```ts
-   * const ok = new cmd.Registry()
-   *   .register(cmd.CompilerAnalysis)
-   *   .canHandle(["gcc", "-c", "main.c"]);
-   * ```
-   */
-  canHandle(cmd: readonly string[]): boolean {
-    return this.analyzerList.some((analyzer) => analyzer.supports(cmd));
-  }
+  /** Runs analyzers in order and returns the first successful analysis. */
+  analyze(command: AnalyzedData): Result<T, R[]> {
+    const errors: R[] = [];
 
-  /**
-   * Runs the first matching analyzer and returns its result.
-   *
-   * @example
-   * ```ts
-   * const analysis = new cmd.Registry()
-   *   .register(cmd.CompilerAnalysis)
-   *   .analyze(["clang", "-c", "main.c"]);
-   * ```
-   */
-  analyze(cmd: readonly string[]): Analysis | undefined {
-    for (const analyzer of this.analyzerList) {
-      if (!analyzer.supports(cmd)) {
-        continue;
+    for (const analyzer of this.analyzerMap.values()) {
+      const result = analyzer.analyze(command);
+      if (result.isOk()) {
+        return ok(result.value);
       }
-
-      const result = analyzer.analyze(cmd);
-      if (result !== undefined) {
-        return result;
-      }
+      errors.push(result.error);
     }
 
-    return undefined;
+    return err(errors);
   }
 }

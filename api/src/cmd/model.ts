@@ -1,3 +1,12 @@
+import type { CompilerAnalysis, CompilerAnalyzer } from "./compiler-cmd.js";
+import type {
+  ArchiverAnalysis,
+  ArchiverAnalysisError,
+  ArchiverAnalyzer,
+} from "./archiver-cmd.js";
+import type { CompilerAnalysisError } from "./compiler-cmd.js";
+import type { Result } from "../neverthrow/index.js";
+
 /**
  * Describes one concrete dependency edge produced by a command.
  *
@@ -9,92 +18,143 @@
  * };
  * ```
  */
-export interface Edge {
+export type Edge = {
   output: string;
-  inputs: string[];
+  inputs: readonly string[];
+};
+
+/**
+ * Minimal process data needed by command analyzers.
+ *
+ * `exe` is the captured executable path or name. `argv` is the full argument
+ * vector as captured for the process, including the executable argument.
+ */
+export type AnalyzedData = {
+  readonly exe: string;
+  readonly argv: readonly string[];
+};
+
+export abstract class AnalysisError extends Error {
+  abstract readonly kind: string;
+  constructor(message: string) {
+    super(message);
+    this.name = new.target.name;
+  }
 }
 
 /**
- * Base class for one analyzed command invocation.
+ * Shared process invocation data and file effects for one analyzed command.
  *
- * `consume` records the files the command reads, `produce` records the files it
- * writes, and `edges()` can refine that into explicit
- * output-to-input mappings when a subclass knows more.
+ * `exe` and `argv` preserve the command invocation facts used for analysis.
+ * `reads` records the files the command reads, `writes` records the files it
+ * writes, and `edges` refines that into explicit output-to-input mappings when
+ * an analyzer knows more.
  *
  * @example
  * ```ts
- * class ToyAnalysis extends cmd.Analysis<"toy"> {
+ * class ToyAnalysis extends cmd.Analysis {
+ *   readonly kind = "toy" as const;
+ *
  *   constructor() {
- *     super("toy", ["in.dat"], ["out.pkg"]);
+ *     super({
+ *       exe: "toy",
+ *       argv: ["toy", "in.dat", "out.pkg"],
+ *       reads: ["in.dat"],
+ *       writes: ["out.pkg"],
+ *       edges: [
+ *         {
+ *           output: "out.pkg",
+ *           inputs: ["in.dat"],
+ *         },
+ *       ],
+ *     });
  *   }
  * }
  * ```
  */
-export abstract class Analysis<Exe extends string = string> {
-  /** Normalized executable identifier for the analyzed command. */
-  readonly exe: Exe;
-  /** Files consumed by the command. */
-  readonly consume: string[];
-  /** Files produced by the command. */
-  readonly produce: string[];
+export abstract class Analysis {
+  /** Discriminator used to narrow concrete analysis variants. */
+  abstract readonly kind: string;
+  /** Executable path or name used for analysis. */
+  readonly exe: string;
+  /** Full argument vector used for analysis. */
+  readonly argv: readonly string[];
+  /** Files read by the command. */
+  readonly reads: readonly string[];
+  /** Files written by the command. */
+  readonly writes: readonly string[];
+  /** Explicit output-to-input dependency edges for this analysis. */
+  readonly edges: readonly Edge[];
 
-  protected constructor(
-    exe: Exe,
-    consume: readonly string[],
-    produce: readonly string[],
-  ) {
-    this.exe = exe;
-    this.consume = [...consume];
-    this.produce = [...produce];
-  }
-
-  /**
-   * Returns explicit output-to-input dependency edges for this analysis.
-   *
-   * The default implementation connects every produced file to the full
-   * `consume` list. Subclasses can override it with more precise pairings.
-   *
-   * @example
-   * ```ts
-   * const analysis = cmd.CompilerAnalysis.analyze(["clang", "-c", "main.c"]);
-   * const edges = analysis?.edges();
-   * ```
-   */
-  edges(): Edge[] {
-    return this.produce.map((output) => ({
-      output,
-      inputs: [...this.consume],
-    }));
+  protected constructor(data: {
+    exe: string;
+    argv: readonly string[];
+    reads: readonly string[];
+    writes: readonly string[];
+    edges: readonly Edge[];
+  }) {
+    this.exe = data.exe;
+    this.argv = [...data.argv];
+    this.reads = [...data.reads];
+    this.writes = [...data.writes];
+    this.edges = [...data.edges];
   }
 }
 
 /**
  * Pluggable analyzer contract used by `Registry`.
  *
- * A concrete analysis type usually implements this interface through static
- * `key`, `supports()` and `analyze()` members.
+ * Concrete analyzers are stateful objects registered into a `Registry`.
  *
  * @example
  * ```ts
- * class ToyAnalysis extends cmd.Analysis<"toy"> {
- *   static readonly key = "toy";
- *   static supports(argv: readonly string[]) {
- *     return argv[0] === "toy";
+ * class ToyAnalysisError extends cmd.AnalysisError {
+ *   readonly kind = "toy" as const;
+ * }
+ *
+ * class ToyAnalyzer extends cmd.Analyzer {
+ *   readonly kind = "toy" as const;
+ *
+ *   analyze(command: cmd.AnalyzedData) {
+ *     if (command.exe === "toy") {
+ *       return neverthrow.ok(new ToyAnalysis(command, "in.dat", "out.pkg"));
+ *     }
+ *     return neverthrow.err(new ToyAnalysisError("not a toy command"));
  *   }
- *   static analyze(argv: readonly string[]) {
- *     return ToyAnalysis.supports(argv) ? new ToyAnalysis() : undefined;
- *   }
- *   constructor() {
- *     super("toy", [], []);
+ * }
+ *
+ * class ToyAnalysis extends cmd.Analysis {
+ *   constructor(command: cmd.AnalyzedData, input: string, output: string) {
+ *     super({
+ *       exe: command.exe,
+ *       argv: command.argv,
+ *       reads: [input],
+ *       writes: [output],
+ *       edges: [{ output, inputs: [input] }],
+ *     });
  *   }
  * }
  * ```
  */
-export interface Analyzer<A extends Analysis = Analysis> {
-  /** Stable registry key used for replacement and removal. */
-  readonly key: string;
-  /** Returns whether this analyzer recognizes the given argv. */
-  supports(cmd: readonly string[]): boolean;
+export abstract class Analyzer {
+  abstract readonly kind: string;
   /** Performs analysis and returns a typed result when successful. */
-  analyze(cmd: readonly string[]): A | undefined;
+  abstract analyze(command: AnalyzedData): Result<Analysis, AnalysisError>;
 }
+
+export interface IAnalyzer<
+  T extends Analysis = Analysis,
+  R extends AnalysisError = AnalysisError,
+> {
+  analyze(command: AnalyzedData): Result<T, R>;
+}
+
+/** Built-in command analysis result variants. */
+export type CommandAnalysis = CompilerAnalysis | ArchiverAnalysis;
+
+/** Built-in command analyzer error variants. */
+export type CommandAnalyzerError =
+  | CompilerAnalysisError
+  | ArchiverAnalysisError;
+
+export type CommandAnalyzer = CompilerAnalyzer | ArchiverAnalyzer;

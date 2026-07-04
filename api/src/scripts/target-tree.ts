@@ -39,7 +39,7 @@ const targetTreeCLI = cli.command({
  * forest.
  *
  * Each recognized command contributes dependency edges through
- * `analysis.edges()`, and the final output is rendered with `FlatTree`.
+ * `analysis.edges`, and the final output is rendered with `FlatTree`.
  *
  * @example
  * ```ts
@@ -106,8 +106,16 @@ export function targetTree(): service.CatterContextService {
         return;
       }
 
-      const analysis = analyzeCmd(data.data.argv);
-      const targetEntries = analysis?.edges() ?? [];
+      const analysisResult = analyzeCmd({
+        exe: data.data.exe,
+        argv: data.data.argv,
+      });
+      if (analysisResult.isErr()) {
+        return;
+      }
+
+      const analysis = analysisResult.value;
+      const targetEntries = analysis.edges;
       const entries = targetEntries
         .map((entry) => {
           const output = normalizePath(data.data.cwd, entry.output);
@@ -138,9 +146,7 @@ export function targetTree(): service.CatterContextService {
         }
       }
 
-      if (analysis !== undefined) {
-        ctx.ignoreDescendants();
-      }
+      ctx.ignoreDescendants();
     },
   });
 }

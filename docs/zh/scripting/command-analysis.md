@@ -40,7 +40,7 @@ service.onCommand((ctx) => {
 | `compiler` | `"clang" \| "gcc"` | 识别到的编译器 |
 | `phase` | `CompilerPhase` | 编译阶段（见下文） |
 | `artifact` | `CompilerArtifact` | 输出产物类型（见下文） |
-| `style` | `"gnu" \| "cl"` | 驱动选项的语法风格 |
+| `style` | `"gcc" \| "cl"` | 驱动选项的语法风格 |
 | `type` | `CompilerType \| undefined` | 旧版兼容分类 |
 
 ### 实例方法

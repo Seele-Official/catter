@@ -1,5 +1,41 @@
-import type { Analysis as AnyAnalysis, Analyzer } from "./model.js";
-import { Analysis } from "./model.js";
+import { fromThrowable, type Result } from "../neverthrow/index.js";
+import { Analysis, AnalysisError, Analyzer, AnalyzedData } from "./model.js";
+
+export class ArchiverNotRecognizedError extends AnalysisError {
+  readonly kind = "archiver-not-recognized" as const;
+}
+
+export class ArchiverUnsupportedError extends AnalysisError {
+  readonly kind = "archiver-unsupported" as const;
+}
+
+export class ArchiverParseError extends AnalysisError {
+  readonly kind = "archiver-parse" as const;
+}
+
+export type ArchiverAnalysisError =
+  | ArchiverNotRecognizedError
+  | ArchiverUnsupportedError
+  | ArchiverParseError;
+
+function toArchiverAnalysisError(
+  value: unknown,
+  context: string,
+): ArchiverAnalysisError {
+  if (
+    value instanceof ArchiverNotRecognizedError ||
+    value instanceof ArchiverUnsupportedError ||
+    value instanceof ArchiverParseError
+  ) {
+    return value;
+  }
+
+  if (value instanceof Error) {
+    return new ArchiverParseError(`${context}: ${value.message}`);
+  }
+
+  return new ArchiverParseError(`${context}: ${String(value)}`);
+}
 
 /**
  * Supported single-letter archive operations.
@@ -41,16 +77,15 @@ export type ArchiverOperation =
  */
 export type ArchiverExe = "ar" | "llvm-ar" | "gcc-ar";
 
-type ArchiverModel = {
-  exe: ArchiverExe;
+export type ArchiverModel = {
   operation: ArchiverOperation;
   modifiers: string[];
   thin: boolean;
   archive?: string;
   members: string[];
   scriptMode: boolean;
-  consume: string[];
-  produce: string[];
+  reads: string[];
+  writes: string[];
 };
 
 const ARCHIVER_EXE_NAMES = new Set<ArchiverExe>(["ar", "llvm-ar", "gcc-ar"]);
@@ -139,25 +174,28 @@ function parseOperationToken(
   };
 }
 
-function analyzeArchiverModel(
-  cmd: readonly string[],
-): ArchiverModel | undefined {
-  if (cmd.length === 0) {
-    return undefined;
+function analyzeArchiverModel(command: AnalyzedData): ArchiverModel {
+  if (command.argv.length === 0) {
+    throw new ArchiverNotRecognizedError("empty argv");
   }
 
-  const exe = exeStem(cmd[0]);
+  const exe = exeStem(command.exe);
   if (!isArchiverExe(exe)) {
-    return undefined;
+    throw new ArchiverNotRecognizedError(
+      `not a recognized archiver executable: ${command.exe}`,
+    );
   }
 
+  const cmd = command.argv;
   let index = 1;
   let thin = false;
 
   while (index < cmd.length) {
     const token = cmd[index];
     if (token === "-M") {
-      return undefined;
+      throw new ArchiverUnsupportedError(
+        "archiver MRI script mode is not supported",
+      );
     }
     if (token === "--thin" || token === "-T") {
       thin = true;
@@ -192,145 +230,108 @@ function analyzeArchiverModel(
       continue;
     }
     if (isOptionToken(token)) {
-      return undefined;
+      throw new ArchiverUnsupportedError(
+        `unsupported archiver option: ${token}`,
+      );
     }
     break;
   }
 
   if (index >= cmd.length) {
-    return undefined;
+    throw new ArchiverUnsupportedError(
+      "archiver command has no operation token",
+    );
   }
 
   const parsedOperation = parseOperationToken(cmd[index]);
   if (parsedOperation === undefined) {
-    return undefined;
+    throw new ArchiverUnsupportedError(
+      `unsupported archiver operation token: ${cmd[index]}`,
+    );
   }
   ++index;
 
   const archive = cmd[index];
   if (archive === undefined) {
-    return undefined;
+    throw new ArchiverUnsupportedError("archiver command has no archive path");
   }
   ++index;
 
   if (!MODELED_ARCHIVER_OPERATIONS.has(parsedOperation.operation)) {
-    return undefined;
+    throw new ArchiverUnsupportedError(
+      `archiver operation is not modeled: ${parsedOperation.operation}`,
+    );
   }
 
   const members = cmd.slice(index);
-  const produce =
+  const writes =
     parsedOperation.operation === ArchiverOperation.QuickAppend ||
     parsedOperation.operation === ArchiverOperation.ReplaceOrInsert
       ? [archive]
       : [];
-  const consume =
+  const reads =
     parsedOperation.operation === ArchiverOperation.Print ||
     parsedOperation.operation === ArchiverOperation.Table
       ? [archive]
       : [...members];
 
   return {
-    exe,
     operation: parsedOperation.operation,
     modifiers: parsedOperation.modifiers,
     thin,
     archive,
     members: [...members],
     scriptMode: false,
-    consume,
-    produce,
+    reads,
+    writes,
   };
 }
 
-export class ArchiverAnalysis extends Analysis<ArchiverExe> {
-  /**
-   * Stable registry key for the archiver analyzer.
-   *
-   * @example
-   * ```ts
-   * cmd.defaultRegistry.unregister(cmd.ArchiverAnalysis.key);
-   * ```
-   */
-  static readonly key = "archiver";
-
-  /**
-   * Checks whether a command looks like a supported archiver invocation.
-   *
-   * @example
-   * ```ts
-   * const ok = cmd.ArchiverAnalysis.supports(["llvm-ar", "rcs", "liba.a", "a.o"]);
-   * ```
-   */
-  static supports(cmd: readonly string[]): boolean {
-    return analyzeArchiverModel(cmd) !== undefined;
-  }
-
-  /**
-   * Analyzes an archiver command.
-   *
-   * @example
-   * ```ts
-   * const analysis = cmd.ArchiverAnalysis.analyze([
-   *   "llvm-ar",
-   *   "rcs",
-   *   "liba.a",
-   *   "a.o",
-   * ]);
-   * ```
-   */
-  static analyze(cmd: readonly string[]): ArchiverAnalysis | undefined {
-    return ArchiverAnalysis.supports(cmd)
-      ? new ArchiverAnalysis(cmd)
-      : undefined;
-  }
-
-  /**
-   * Narrows a generic analysis back to an archiver analysis.
-   *
-   * @example
-   * ```ts
-   * const analysis = cmd.ArchiverAnalysis.from(cmd.analyze(["ar", "rcs", "liba.a", "a.o"]));
-   * ```
-   */
-  static from(analysis: AnyAnalysis | undefined): ArchiverAnalysis | undefined {
-    return analysis instanceof ArchiverAnalysis ? analysis : undefined;
-  }
-
+export class ArchiverAnalysis extends Analysis {
+  /** Discriminator for command analysis unions. */
+  readonly kind = "archiver" as const;
   /** The parsed archive operation. */
   readonly operation: ArchiverOperation;
   /** Extra modifier letters attached to the operation token. */
-  readonly modifiers: string[];
+  readonly modifiers: readonly string[];
   /** Whether thin-archive mode was requested. */
   readonly thin: boolean;
   /** Archive file path when the command syntax provides one. */
   readonly archive?: string;
   /** Member file paths listed after the archive path. */
-  readonly members: string[];
+  readonly members: readonly string[];
   /** Whether GNU MRI script mode was requested. */
   readonly scriptMode: boolean;
 
-  /**
-   * Creates an archiver analysis from raw argv.
-   *
-   * @example
-   * ```ts
-   * const analysis = new cmd.ArchiverAnalysis(["ar", "rcs", "liba.a", "a.o"]);
-   * ```
-   */
-  constructor(cmd: readonly string[]) {
-    const resolved = analyzeArchiverModel(cmd);
-    if (resolved === undefined) {
-      throw new Error("archiver command analysis required");
-    }
-
-    super(resolved.exe, resolved.consume, resolved.produce);
-    this.operation = resolved.operation;
-    this.modifiers = [...resolved.modifiers];
-    this.thin = resolved.thin;
-    this.archive = resolved.archive;
-    this.members = [...resolved.members];
-    this.scriptMode = resolved.scriptMode;
+  constructor(model: ArchiverModel, command: AnalyzedData) {
+    super({
+      exe: command.exe,
+      argv: command.argv,
+      reads: model.reads,
+      writes: model.writes,
+      edges: model.writes.map((output) => ({
+        output,
+        inputs: [...model.reads],
+      })),
+    });
+    this.operation = model.operation;
+    this.modifiers = [...model.modifiers];
+    this.thin = model.thin;
+    this.archive = model.archive;
+    this.members = [...model.members];
+    this.scriptMode = model.scriptMode;
   }
 }
 
-const _archiverAnalyzerCheck: Analyzer<ArchiverAnalysis> = ArchiverAnalysis;
+export class ArchiverAnalyzer extends Analyzer {
+  readonly kind = "archiver" as const;
+
+  analyze(
+    command: AnalyzedData,
+  ): Result<ArchiverAnalysis, ArchiverAnalysisError> {
+    return fromThrowable(
+      () => new ArchiverAnalysis(analyzeArchiverModel(command), command),
+      (error) => toArchiverAnalysisError(error, "archiver analysis failed"),
+    )();
+  }
+}

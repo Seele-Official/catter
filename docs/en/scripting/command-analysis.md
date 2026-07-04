@@ -40,7 +40,7 @@ service.onCommand((ctx) => {
 | `compiler` | `"clang" \| "gcc"` | Recognized compiler executable |
 | `phase` | `CompilerPhase` | Pipeline phase (see below) |
 | `artifact` | `CompilerArtifact` | Output artifact type (see below) |
-| `style` | `"gnu" \| "cl"` | Driver option syntax style |
+| `style` | `"gcc" \| "cl"` | Driver option syntax style |
 | `type` | `CompilerType \| undefined` | Legacy classification (for compatibility) |
 
 ### Instance Methods

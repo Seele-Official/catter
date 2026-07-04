@@ -1,7 +1,19 @@
-import type { Analysis, Analyzer } from "./model.js";
-import { ArchiverAnalysis } from "./archiver-cmd.js";
-import { CompilerAnalysis } from "./compiler-cmd.js";
+import type {
+  CommandAnalysis,
+  CommandAnalyzerError,
+  AnalyzedData,
+  IAnalyzer,
+} from "./model.js";
+import type { Result } from "../neverthrow/index.js";
+import { ArchiverAnalyzer } from "./archiver-cmd.js";
+import { CompilerAnalyzer } from "./compiler-cmd.js";
 import { Registry } from "./registry.js";
+
+/** Default compiler analyzer instance used by `defaultRegistry`. */
+export const compilerAnalyzer = new CompilerAnalyzer();
+
+/** Default archiver analyzer instance used by `defaultRegistry`. */
+export const archiverAnalyzer = new ArchiverAnalyzer();
 
 /**
  * Shared registry populated with the built-in analyzers.
@@ -10,35 +22,31 @@ import { Registry } from "./registry.js";
  *
  * @example
  * ```ts
- * const analysis = cmd.defaultRegistry.analyze(["clang", "-c", "main.c"]);
+ * const result  = cmd.defaultRegistry.analyze({ exe: "clang", argv: ["clang", "-c", "main.c"] });
+ * if (result.isOk()) {
+ *  const analysis = result.value;
+ * }
  * ```
  */
-export const defaultRegistry = new Registry()
-  .register(CompilerAnalysis)
-  .register(ArchiverAnalysis);
+export const defaultRegistry = new Registry<
+  CommandAnalysis,
+  CommandAnalyzerError
+>()
+  .register("compiler", compilerAnalyzer)
+  .register("archiver", archiverAnalyzer);
 
 /**
  * Analyzes a command with the built-in registry.
  *
  * @example
  * ```ts
- * const analysis = cmd.analyze(["llvm-ar", "rcs", "liba.a", "a.o"]);
+ * const analysis = cmd.analyze({ exe: "llvm-ar", argv: ["llvm-ar", "rcs", "liba.a", "a.o"] });
  * ```
  */
-export function analyze(cmd: readonly string[]): Analysis | undefined {
-  return defaultRegistry.analyze(cmd);
-}
-
-/**
- * Checks whether the built-in registry recognizes a command.
- *
- * @example
- * ```ts
- * const ok = cmd.canHandle(["clang", "-c", "main.c"]);
- * ```
- */
-export function canHandle(cmd: readonly string[]): boolean {
-  return defaultRegistry.canHandle(cmd);
+export function analyze(
+  command: AnalyzedData,
+): Result<CommandAnalysis, CommandAnalyzerError[]> {
+  return defaultRegistry.analyze(command);
 }
 
 /**
@@ -46,21 +54,26 @@ export function canHandle(cmd: readonly string[]): boolean {
  *
  * @example
  * ```ts
- * cmd.register(cmd.CompilerAnalysis);
+ * cmd.register("compiler", new cmd.CompilerAnalyzer());
  * ```
  */
-export function register<A extends Analysis>(analyzer: Analyzer<A>): Registry {
-  return defaultRegistry.register(analyzer);
+export function register(
+  key: string,
+  analyzer: IAnalyzer<CommandAnalysis, CommandAnalyzerError>,
+): Registry<CommandAnalysis, CommandAnalyzerError> {
+  return defaultRegistry.register(key, analyzer);
 }
 
 /**
- * Unregisters an analyzer from the shared built-in registry.
+ * Unregisters an analyzer from the shared built-in registry by key.
  *
  * @example
  * ```ts
- * cmd.unregister(cmd.CompilerAnalysis.key);
+ * cmd.unregister("compiler");
  * ```
  */
-export function unregister(key: string): Registry {
+export function unregister(
+  key: string,
+): Registry<CommandAnalysis, CommandAnalyzerError> {
   return defaultRegistry.unregister(key);
 }

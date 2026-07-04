@@ -238,95 +238,105 @@ export function rename(oldPath: string, newPath: string): boolean {
   return fs_rename_if_exists(oldPath, newPath);
 }
 
-const asyncFs = {
+export namespace async {
   /**
    * Asynchronously checks whether a path exists.
    */
-  exists(pathStr: string): Promise<boolean> {
+  export function exists(pathStr: string): Promise<boolean> {
     return fs_async_exists(pathStr);
-  },
+  }
 
   /**
    * Asynchronously checks whether a path points to a regular file.
    */
-  isFile(pathStr: string): Promise<boolean> {
+  export function isFile(pathStr: string): Promise<boolean> {
     return fs_async_is_file(pathStr);
-  },
+  }
 
   /**
    * Asynchronously checks whether a path points to a directory.
    */
-  isDir(pathStr: string): Promise<boolean> {
+  export function isDir(pathStr: string): Promise<boolean> {
     return fs_async_is_dir(pathStr);
-  },
+  }
 
   /**
    * Asynchronously lists all entries in a directory.
    */
-  readDirs(pathStr: string): Promise<string[]> {
+  export function readDirs(pathStr: string): Promise<string[]> {
     return fs_async_list_dir(pathStr);
-  },
+  }
 
   /**
    * Asynchronously creates a directory.
    */
-  async mkdir(pathStr: string, recursively = true): Promise<boolean> {
+  export async function mkdir(
+    pathStr: string,
+    recursively = true,
+  ): Promise<boolean> {
     if (recursively) {
       await fs_async_create_dir_recursively(pathStr);
       return true;
     }
-    if (await asyncFs.isDir(path.toAncestor(pathStr))) {
+    if (await async.isDir(path.toAncestor(pathStr))) {
       await fs_async_create_dir_recursively(pathStr);
       return true;
     }
     return false;
-  },
+  }
 
   /**
    * Asynchronously creates an empty file.
    */
-  async createFile(pathStr: string, recursively = true): Promise<boolean> {
+  export async function createFile(
+    pathStr: string,
+    recursively = true,
+  ): Promise<boolean> {
     if (recursively) {
       await fs_async_create_empty_file_recursively(pathStr);
       return true;
     }
-    if (await asyncFs.isDir(path.toAncestor(pathStr))) {
+    if (await async.isDir(path.toAncestor(pathStr))) {
       await fs_async_create_empty_file_recursively(pathStr);
       return true;
     }
     return false;
-  },
+  }
 
   /**
    * Asynchronously removes a file or directory tree.
    */
-  removeAll(pathStr: string): Promise<void> {
+  export async function removeAll(pathStr: string): Promise<void> {
     return fs_async_remove_recursively(pathStr);
-  },
+  }
 
   /**
    * Asynchronously renames or moves a file or directory.
    */
-  rename(oldPath: string, newPath: string): Promise<boolean> {
+  export async function rename(
+    oldPath: string,
+    newPath: string,
+  ): Promise<boolean> {
     return fs_async_rename_if_exists(oldPath, newPath);
-  },
+  }
 
   /**
    * Asynchronously reads a text file as a string.
    */
-  readText(pathStr: string): Promise<string> {
+  export async function readText(pathStr: string): Promise<string> {
     return fs_async_read_text(pathStr);
-  },
+  }
 
   /**
    * Asynchronously writes a string to a text file.
    */
-  writeText(pathStr: string, content: string): Promise<void> {
+  export async function writeText(
+    pathStr: string,
+    content: string,
+  ): Promise<void> {
     return fs_async_write_text(pathStr, content);
-  },
-};
-
-export { asyncFs as async };
+  }
+}
 
 /**
  * Utilities for filesystem path manipulation.
@@ -339,7 +349,7 @@ export { asyncFs as async };
  * const cacheFile = path.joinAll(pwd(), ".cache", "result.json");
  * ```
  */
-export const path = {
+export namespace path {
   /**
    * Checks whether a path string is absolute.
    *
@@ -356,13 +366,13 @@ export const path = {
    * }
    * ```
    */
-  isAbsolute(pathStr: string): boolean {
+  export function isAbsolute(pathStr: string): boolean {
     return (
       pathStr.startsWith("/") ||
       pathStr.startsWith("\\\\") ||
       /^[A-Za-z]:[\\/]/.test(pathStr)
     );
-  },
+  }
   /**
    * Joins multiple path segments into a single path string.
    *
@@ -378,9 +388,9 @@ export const path = {
    * // Returns: '/home/user/documents/file.txt'
    * ```
    */
-  joinAll(...paths: string[]): string {
+  export function joinAll(...paths: string[]): string {
     return fs_path_join_all(paths);
-  },
+  }
 
   /**
    * Converts a path to its absolute form.
@@ -397,9 +407,9 @@ export const path = {
    * // Returns: '/home/user/current-dir/relative/path'
    * ```
    */
-  absolute(path: string): string {
+  export function absolute(path: string): string {
     return fs_path_absolute(path);
-  },
+  }
 
   /**
    * Gets the ancestor directory (parent, grandparent, etc.) of a path.
@@ -420,9 +430,9 @@ export const path = {
    * // Returns: '/home/user'
    * ```
    */
-  toAncestor(path: string, n: number = 1) {
+  export function toAncestor(path: string, n: number = 1) {
     return fs_path_ancestor_n(path, n);
-  },
+  }
 
   /**
    * Gets the file extension of a path, including the leading dot.
@@ -442,9 +452,9 @@ export const path = {
    * // Returns: ''
    * ```
    */
-  extension(path: string): string {
+  export function extension(path: string): string {
     return fs_path_extension(path);
-  },
+  }
 
   /**
    * Computes the relative path from a base directory to a target path.
@@ -462,9 +472,9 @@ export const path = {
    * // Returns: 'docs/file.txt'
    * ```
    */
-  relativeTo(base: string, path: string): string {
+  export function relativeTo(base: string, path: string): string {
     return fs_path_relative_to(base, path);
-  },
+  }
 
   /**
    * Gets the filename component (the last segment) of a path.
@@ -484,9 +494,9 @@ export const path = {
    * // Returns: 'user'
    * ```
    */
-  filename(path: string): string {
+  export function filename(path: string): string {
     return fs_path_filename(path);
-  },
+  }
 
   /**
    * Converts a path to its lexically normalized form.
@@ -503,7 +513,7 @@ export const path = {
    * // "src/main.cc"
    * ```
    */
-  lexicalNormal(path: string): string {
+  export function lexicalNormal(path: string): string {
     return fs_path_lexical_normal(path);
-  },
-};
+  }
+}

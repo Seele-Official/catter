@@ -24,6 +24,7 @@ import * as scripts from "./scripts/index.js";
 import * as cmd from "./cmd/index.js";
 import * as data from "./data/index.js";
 import * as cli from "./cli/index.js";
+import * as neverthrow from "./neverthrow/index.js";
 
 export {
   debug,
@@ -38,7 +39,9 @@ export {
   cmd,
   data,
   cli,
+  neverthrow,
 };
+
 export * from "./service.js";
 export * from "./option/types.js";
 export type * from "./cli/index.js";

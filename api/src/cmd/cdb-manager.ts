@@ -1,6 +1,17 @@
 import * as fs from "../fs.js";
 import * as io from "../io.js";
 
+export class CDBError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = new.target.name;
+  }
+}
+
+export class CDBValidationError extends CDBError {}
+
+export class CDBFileError extends CDBError {}
+
 /**
  * A single compile_commands.json entry.
  *
@@ -54,36 +65,44 @@ function readEntireText(path: string): string {
 
 function asItem(value: unknown, context: string): CDBItem {
   if (!isRecord(value)) {
-    throw new Error(`${context}: expected object item`);
+    throw new CDBValidationError(`${context}: expected object item`);
   }
 
   const directory = value.directory;
   if (typeof directory !== "string" || directory.length === 0) {
-    throw new Error(`${context}: "directory" must be a non-empty string`);
+    throw new CDBValidationError(
+      `${context}: "directory" must be a non-empty string`,
+    );
   }
 
   const file = value.file;
   if (typeof file !== "string" || file.length === 0) {
-    throw new Error(`${context}: "file" must be a non-empty string`);
+    throw new CDBValidationError(
+      `${context}: "file" must be a non-empty string`,
+    );
   }
 
   const command = value.command;
   if (command !== undefined && typeof command !== "string") {
-    throw new Error(`${context}: "command" must be a string`);
+    throw new CDBValidationError(`${context}: "command" must be a string`);
   }
 
   const argumentsValue = value.arguments;
   if (argumentsValue !== undefined && !isStringList(argumentsValue)) {
-    throw new Error(`${context}: "arguments" must be a string array`);
+    throw new CDBValidationError(
+      `${context}: "arguments" must be a string array`,
+    );
   }
 
   if (command === undefined && argumentsValue === undefined) {
-    throw new Error(`${context}: expected "command" or "arguments"`);
+    throw new CDBValidationError(
+      `${context}: expected "command" or "arguments"`,
+    );
   }
 
   const output = value.output;
   if (output !== undefined && typeof output !== "string") {
-    throw new Error(`${context}: "output" must be a string`);
+    throw new CDBValidationError(`${context}: "output" must be a string`);
   }
 
   const item: CDBItem = {
@@ -134,7 +153,7 @@ function readItemsFromPath(path: string): CDBItem[] {
     return [];
   }
   if (!fs.isFile(path)) {
-    throw new Error(`CDB path is not a file: ${path}`);
+    throw new CDBFileError(`CDB path is not a file: ${path}`);
   }
 
   const raw = readEntireText(path).trim();
@@ -144,7 +163,7 @@ function readItemsFromPath(path: string): CDBItem[] {
 
   const parsed: unknown = JSON.parse(raw);
   if (!Array.isArray(parsed)) {
-    throw new Error(`CDB file must contain a JSON array: ${path}`);
+    throw new CDBValidationError(`CDB file must contain a JSON array: ${path}`);
   }
 
   return parsed.map((item, index) => asItem(item, `${path}[${index}]`));
