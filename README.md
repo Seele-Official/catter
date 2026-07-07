@@ -30,3 +30,46 @@ Although its initial motivation was to record compilation commands to generate a
 *   **Profile the Build Process**: Due to issues in the build system's design or poorly written build scripts, the actual degree of build parallelism can be very low. We can capture process information (start times, durations, parent-child relationships) and render it visually, allowing users to inspect the build's parallelism and performance bottlenecks in real-time in a browser.
 
 *   **Patch the Build Process with Custom Scripts**: Thanks to the embedded QuickJS engine, users can write their own scripts to patch any command during the build process. This gives you the power to dynamically modify arguments, redirect commands, or inject custom logic into your build without altering the original build files.
+
+## Quick Start
+
+Download a prebuilt package for your platform from the
+[GitHub Releases](https://github.com/clice-io/catter/releases) page, extract it,
+and make sure the `catter` executable is available on your `PATH`.
+
+Generate a compilation database by running your normal build command through
+`catter`:
+
+```bash
+catter -m inject script::cdb -o compile_commands.json -- make
+```
+
+For CMake projects, wrap the build step in the same way:
+
+```bash
+catter -m inject script::cdb -o compile_commands.json -- cmake --build build
+```
+
+The general command format is:
+
+```bash
+catter [options] <script> [script-args] -- <build-command>
+```
+
+Here, `script::cdb` selects the built-in compilation database script, `-o`
+sets the output path, and everything after `--` is the build command to
+intercept.
+
+## Building
+
+To build `catter` from source, install [pixi](https://pixi.prefix.dev/),
+[XMake](https://xmake.io/), and Git. XMake drives the native C++ build, while
+pixi provides the development environment and task entrypoints.
+
+```bash
+git clone https://github.com/clice-io/catter.git
+cd catter
+pixi run -e dev npm-install    # Install Node.js dependencies
+pixi run -e dev cfg debug      # Configure debug build
+pixi run -e dev build          # Build the project
+```

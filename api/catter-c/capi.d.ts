@@ -151,6 +151,10 @@ export type CatterErr = {
    * Error message describing the failure reason.
    */
   msg: string;
+  /**
+   * Parent command identifier when the runtime supports parent tracking.
+   */
+  parent?: number;
 };
 
 /**

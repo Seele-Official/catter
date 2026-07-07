@@ -66,7 +66,10 @@ public:
                             }
                 };
             }
-            default: throw cpptrace::runtime_error("Unhandled action type");
+            // TODO: handle js::ActionType::abort
+            default: {
+                throw cpptrace::runtime_error("Unhandled action type");
+            }
         }
     }
 
@@ -76,8 +79,9 @@ public:
     }
 
     kota::task<> report_error(data::ipcid_t parent_id, std::string error_msg) override {
-        (void)parent_id;
-        co_await js::on_command(id, std::unexpected(js::CatterErr{.msg = std::move(error_msg)}));
+        co_await js::on_command(
+            id,
+            std::unexpected(js::CatterErr{.msg = std::move(error_msg), .parent = parent_id}));
         co_return;
     }
 
