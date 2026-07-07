@@ -41,13 +41,13 @@ Generate a compilation database by running your normal build command through
 `catter`:
 
 ```bash
-catter script::cdb -o compile_commands.json -- make
+catter -m inject script::cdb -o compile_commands.json -- make
 ```
 
 For CMake projects, wrap the build step in the same way:
 
 ```bash
-catter script::cdb -o compile_commands.json -- cmake --build build
+catter -m inject script::cdb -o compile_commands.json -- cmake --build build
 ```
 
 The general command format is:
