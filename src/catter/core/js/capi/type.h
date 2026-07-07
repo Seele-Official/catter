@@ -410,6 +410,7 @@ struct CatterErr {
 
 public:
     std::string msg;
+    std::optional<int64_t> parent;
 };
 
 struct OptionItem {
