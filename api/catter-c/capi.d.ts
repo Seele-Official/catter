@@ -255,7 +255,7 @@ export type RawHttpResponse = {
   ok: boolean;
   url: string;
   body: string;
-  rawHeaders: string[];
+  headers: Record<string, string>;
 };
 
 export function http_client_create(): number;

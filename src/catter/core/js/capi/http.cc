@@ -5,8 +5,8 @@
 #include <vector>
 #include <kota/http/http.h>
 
+#include "bridge.h"
 #include "../apitool.h"
-#include "../qjs.h"
 
 namespace qjs = catter::qjs;
 
@@ -14,6 +14,14 @@ namespace {
 
 template <typename T>
 using JsTask = kota::task<T, qjs::Error>;
+
+struct HttpResponse {
+    int32_t status;
+    bool ok;
+    std::string url;
+    std::string body;
+    qjs::Object headers;
+};
 
 int64_t http_client_id_cnt = 1;
 std::unordered_map<int64_t, kota::http::client> http_clients;
@@ -48,21 +56,38 @@ std::vector<kota::http::header> read_headers(const qjs::Object& flat_headers) {
     return headers;
 }
 
-qjs::Object response_to_object(JSContext* ctx, const kota::http::response& response) {
-    auto result = qjs::Object::empty_one(ctx);
-    result.set_property("status", response.status);
-    result.set_property("ok", response.ok());
-    result.set_property("url", response.url);
-    result.set_property("body", response.text_copy());
+qjs::Object normalize_headers(JSContext* ctx, const std::vector<kota::http::header>& headers) {
+    std::unordered_map<std::string, std::string> normalized;
+    normalized.reserve(headers.size());
 
-    auto raw_headers = qjs::Array<std::string>::empty_one(ctx);
-    for(const auto& header: response.headers) {
-        raw_headers.push(header.name);
-        raw_headers.push(header.value);
+    for(const auto& header: headers) {
+        auto name = header.name;
+        std::transform(name.begin(), name.end(), name.begin(), [](unsigned char c) {
+            return std::tolower(c);
+        });
+
+        if(auto [entry, inserted] = normalized.try_emplace(std::move(name), header.value);
+           !inserted) {
+            entry->second.append(", ").append(header.value);
+        }
     }
-    result.set_property("rawHeaders", qjs::Object::from(std::move(raw_headers)));
 
+    qjs::Object result = qjs::Object::empty_one(ctx);
+    for(const auto& [name, value]: normalized) {
+        result.set_property(name, value);
+    }
     return result;
+}
+
+qjs::Object response_to_object(JSContext* ctx, const kota::http::response& response) {
+    return catter::js::to_reflected_object(ctx,
+                                           HttpResponse{
+                                               .status = response.status,
+                                               .ok = response.ok(),
+                                               .url = response.url,
+                                               .body = response.text_copy(),
+                                               .headers = normalize_headers(ctx, response.headers),
+                                           });
 }
 
 JsTask<qjs::Object> send_request(JSContext* ctx,
