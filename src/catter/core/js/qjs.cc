@@ -188,16 +188,15 @@ std::string Atom::to_string() const noexcept {
     return result;
 }
 
-Value Object::get_property(const std::string& prop_name) const {
-    auto ret = Value{this->context(),
-                     JS_GetPropertyStr(this->context(), this->value(), prop_name.c_str())};
+Value Object::get_property(const char* prop_name) const {
+    auto ret = Value{this->context(), JS_GetPropertyStr(this->context(), this->value(), prop_name)};
     if(JS_HasException(this->context())) {
         throw qjs::JSException::dump(this->context());
     }
     return ret;
 }
 
-std::optional<Value> Object::get_optional_property(const std::string& prop_name) const noexcept {
+std::optional<Value> Object::get_optional_property(const char* prop_name) const noexcept {
     try {
         if(auto ret = get_property(prop_name); ret.is_undefined()) {
             return std::nullopt;

@@ -133,6 +133,7 @@ private:
             "HTTP/1.1 {} {}\r\n"
             "Content-Type: {}\r\n"
             "X-Catter-Test: yes\r\n"
+            "x-catter-test: again\r\n"
             "Connection: close\r\n"
             "Content-Length: {}\r\n"
             "\r\n"
@@ -267,7 +268,8 @@ TEST_CASE(run_http_client_js_file_through_async_loop) {
             debug.assertThrow(res.ok);
             debug.assertThrow(res.status === 200);
             debug.assertThrow(res.header("content-type") === "application/json");
-            debug.assertThrow(res.header("x-catter-test") === "yes");
+            debug.assertThrow(res.header("x-catter-test") === "yes, again");
+            debug.assertThrow(!("rawHeaders" in res));
             debug.assertThrow(res.json().ok === true);
             debug.assertThrow(res.json().path === "/payload");
 

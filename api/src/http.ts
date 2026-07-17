@@ -24,7 +24,6 @@ export class Response {
   readonly ok: boolean;
   readonly url: string;
   readonly body: string;
-  readonly rawHeaders: Array<[string, string]>;
   readonly headers: Record<string, string>;
 
   constructor(raw: {
@@ -32,14 +31,13 @@ export class Response {
     ok: boolean;
     url: string;
     body: string;
-    rawHeaders: string[];
+    headers: Record<string, string>;
   }) {
     this.status = raw.status;
     this.ok = raw.ok;
     this.url = raw.url;
     this.body = raw.body;
-    this.rawHeaders = pairs(raw.rawHeaders);
-    this.headers = normalizeHeaders(this.rawHeaders);
+    this.headers = raw.headers;
   }
 
   text(): string {
@@ -231,23 +229,4 @@ function flattenHeaders(headers: HeaderInit | undefined): string[] {
   }
 
   return Object.entries(headers).flatMap(([name, value]) => [name, value]);
-}
-
-function pairs(flatHeaders: string[]): Array<[string, string]> {
-  const result: Array<[string, string]> = [];
-  for (let i = 0; i + 1 < flatHeaders.length; i += 2) {
-    result.push([flatHeaders[i], flatHeaders[i + 1]]);
-  }
-  return result;
-}
-
-function normalizeHeaders(
-  headers: Array<[string, string]>,
-): Record<string, string> {
-  const result: Record<string, string> = {};
-  for (const [name, value] of headers) {
-    const key = name.toLowerCase();
-    result[key] = key in result ? `${result[key]}, ${value}` : value;
-  }
-  return result;
 }

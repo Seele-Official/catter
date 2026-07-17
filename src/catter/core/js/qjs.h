@@ -226,15 +226,18 @@ public:
     Object& operator= (Object&& other) = default;
     ~Object() = default;
 
-    Value get_property(const std::string& prop_name) const;
+    Value get_property(const char* prop_name) const;
+
+    Value get_property(const std::string& prop_name) const {
+        return get_property(prop_name.c_str());
+    }
 
     /**
      * @brief Get the property object, noticed that property maybe undefined.
      */
     template <typename T>
-        requires std::is_convertible_v<T, std::string>
-    Value operator[] (const T& prop_name) const {
-        return get_property(prop_name);
+    Value operator[] (T&& prop_name) const {
+        return get_property(std::forward<T>(prop_name));
     }
 
     /**
@@ -244,7 +247,11 @@ public:
      * @param prop_name
      * @return std::optional<Value>
      */
-    std::optional<Value> get_optional_property(const std::string& prop_name) const noexcept;
+    std::optional<Value> get_optional_property(const char* prop_name) const noexcept;
+
+    std::optional<Value> get_optional_property(const std::string& prop_name) const noexcept {
+        return get_optional_property(prop_name.c_str());
+    }
 
     /**
      * @brief Set a property on the JavaScript object, it is noexcept due to using in `C`.
@@ -256,10 +263,10 @@ public:
      * exception in `C` if needed.
      */
     template <typename T>
-    void set_property(const std::string& prop_name, T&& val) {
+    void set_property(const char* prop_name, T&& val) {
         if constexpr(std::is_same_v<JSValue, std::remove_cvref_t<T>>) {
             JSValue js_val = JS_DupValue(this->context(), val);
-            int ret = JS_SetPropertyStr(this->context(), this->value(), prop_name.c_str(), js_val);
+            int ret = JS_SetPropertyStr(this->context(), this->value(), prop_name, js_val);
             if(ret < 0) {
                 throw qjs::JSException::dump(this->context());
             }
@@ -267,20 +274,23 @@ public:
                                 { val.value() } -> std::convertible_to<JSValue>;
                             }) {
             JSValue js_val = JS_DupValue(this->context(), val.value());
-            int ret = JS_SetPropertyStr(this->context(), this->value(), prop_name.c_str(), js_val);
+            int ret = JS_SetPropertyStr(this->context(), this->value(), prop_name, js_val);
             if(ret < 0) {
                 throw qjs::JSException::dump(this->context());
             }
         } else {
             auto js_val = Value::from<std::remove_cv_t<T>>(this->context(), std::forward<T>(val));
-            int ret = JS_SetPropertyStr(this->context(),
-                                        this->value(),
-                                        prop_name.c_str(),
-                                        js_val.release());
+            int ret =
+                JS_SetPropertyStr(this->context(), this->value(), prop_name, js_val.release());
             if(ret < 0) {
                 throw qjs::JSException::dump(this->context());
             }
         }
+    }
+
+    template <typename T>
+    void set_property(const std::string& prop_name, T&& val) {
+        set_property(prop_name.c_str(), std::forward<T>(val));
     }
 
     template <typename T>
