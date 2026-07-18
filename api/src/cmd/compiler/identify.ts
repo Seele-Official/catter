@@ -17,7 +17,7 @@ function createCompilerRegex(
   basePattern: string,
   withVersion: boolean,
 ): RegExp {
-  const optionalPathPrefix = String.raw`(?:(?:.*[\\/]))?`;
+  const optionalPathPrefix = String.raw`(?:.*[\\/])?`;
   const versionPattern = withVersion ? VERSION_PATTERN : "";
   const executableSuffix = String.raw`(?:\.exe)?`;
   return new RegExp(
@@ -38,7 +38,7 @@ const BUILTIN_COMPILER_RULES: readonly BuiltinCompilerRule[] = [
     kind: "gcc",
     dialect: "gcc",
     executable: createCompilerRegex(
-      String.raw`(?:([^/]*)-)?(?:cc|c\+\+)`,
+      String.raw`(?:([^\\/]+)-)?(?:cc|c\+\+)`,
       false,
     ),
     targetPrefix: true,
@@ -47,24 +47,16 @@ const BUILTIN_COMPILER_RULES: readonly BuiltinCompilerRule[] = [
     kind: "gcc",
     dialect: "gcc",
     executable: createCompilerRegex(
-      String.raw`(?:([^/]*)-)?(?:gcc|g\+\+|gfortran|egfortran|f95)`,
+      String.raw`(?:([^\\/]+)-)?(?:gcc|g\+\+)`,
       true,
     ),
     targetPrefix: true,
   },
   {
-    kind: "gcc",
-    dialect: "gcc",
-    executable: createCompilerRegex(
-      String.raw`(?:cc1(?:plus|obj|objplus)?|f951|collect2|lto1)`,
-      false,
-    ),
-  },
-  {
     kind: "clang",
     dialect: "clang",
     executable: createCompilerRegex(
-      String.raw`(?:([^/]*)-)?clang(?:\+\+)?`,
+      String.raw`(?:([^\\/]+)-)?clang(?:\+\+)?`,
       true,
     ),
     targetPrefix: true,
@@ -72,7 +64,7 @@ const BUILTIN_COMPILER_RULES: readonly BuiltinCompilerRule[] = [
   {
     kind: "clang-cl",
     dialect: "msvc",
-    executable: createCompilerRegex(String.raw`(?:([^/]*)-)?clang-cl`, true),
+    executable: createCompilerRegex(String.raw`(?:([^\\/]+)-)?clang-cl`, true),
     targetPrefix: true,
   },
   {
@@ -81,35 +73,9 @@ const BUILTIN_COMPILER_RULES: readonly BuiltinCompilerRule[] = [
     executable: createCompilerRegex(String.raw`cl`, false),
   },
   {
-    kind: "flang",
-    dialect: "unknown",
-    executable: createCompilerRegex(
-      String.raw`(?:[^/]*-)?(?:flang|flang-new)`,
-      true,
-    ),
-  },
-  {
-    kind: "ifort",
-    dialect: "unknown",
-    executable: createCompilerRegex(String.raw`(?:ifort|ifx)`, true),
-  },
-  {
-    kind: "crayftn",
-    dialect: "unknown",
-    executable: createCompilerRegex(String.raw`(?:crayftn|ftn)`, true),
-  },
-  {
     kind: "nvcc",
     dialect: "nvcc",
-    executable: createCompilerRegex(String.raw`(?:[^/]*-)?nvcc`, true),
-  },
-  {
-    kind: "wrapper",
-    dialect: "unknown",
-    executable: createCompilerRegex(
-      String.raw`(?:ccache|distcc|sccache)`,
-      false,
-    ),
+    executable: createCompilerRegex(String.raw`(?:[^\\/]+-)?nvcc`, true),
   },
 ];
 

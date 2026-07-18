@@ -25,8 +25,12 @@ const compilerCases: readonly {
   {
     executable:
       "/usr/local/gcc-15.1.0/libexec/gcc/x86_64-pc-linux-gnu/15.1.0/cc1plus",
-    expected: "gcc",
+    expected: "unknown",
   },
+  { executable: "cc1", expected: "unknown" },
+  { executable: "f951", expected: "unknown" },
+  { executable: "collect2", expected: "unknown" },
+  { executable: "lto1", expected: "unknown" },
   {
     executable: String.raw`C:\msys64\ucrt64\bin\gcc.exe`,
     expected: "gcc",
@@ -99,19 +103,23 @@ const compilerCases: readonly {
     executable: String.raw`C:\PROGRA~1\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC\14.44.35207\bin\Hostx64\x64\cl.exe`,
     expected: "msvc",
   },
-  { executable: "flang", expected: "flang" },
-  { executable: "flang-new", expected: "flang" },
-  { executable: "/opt/llvm/bin/flang-new", expected: "flang" },
-  { executable: "aarch64-linux-gnu-flang-19", expected: "flang" },
-  { executable: "ifort", expected: "ifort" },
-  { executable: "ifx", expected: "ifort" },
+  { executable: "gfortran", expected: "unknown" },
+  { executable: "egfortran", expected: "unknown" },
+  { executable: "f95", expected: "unknown" },
+  { executable: "aarch64-linux-gnu-gfortran-15", expected: "unknown" },
+  { executable: "flang", expected: "unknown" },
+  { executable: "flang-new", expected: "unknown" },
+  { executable: "/opt/llvm/bin/flang-new", expected: "unknown" },
+  { executable: "aarch64-linux-gnu-flang-19", expected: "unknown" },
+  { executable: "ifort", expected: "unknown" },
+  { executable: "ifx", expected: "unknown" },
   {
     executable: String.raw`C:\Program Files (x86)\Intel\oneAPI\compiler\latest\bin\ifx.exe`,
-    expected: "ifort",
+    expected: "unknown",
   },
-  { executable: "crayftn", expected: "crayftn" },
-  { executable: "ftn", expected: "crayftn" },
-  { executable: "/opt/cray/pe/craype/default/bin/ftn", expected: "crayftn" },
+  { executable: "crayftn", expected: "unknown" },
+  { executable: "ftn", expected: "unknown" },
+  { executable: "/opt/cray/pe/craype/default/bin/ftn", expected: "unknown" },
   { executable: "nvcc", expected: "nvcc" },
   { executable: "nvcc-12.6", expected: "nvcc" },
   { executable: "/usr/local/cuda/bin/nvcc", expected: "nvcc" },
@@ -119,14 +127,16 @@ const compilerCases: readonly {
     executable: String.raw`C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\bin\nvcc.exe`,
     expected: "nvcc",
   },
-  { executable: "ccache", expected: "wrapper" },
-  { executable: "distcc", expected: "wrapper" },
-  { executable: "sccache", expected: "wrapper" },
-  { executable: "/usr/lib/ccache/ccache", expected: "wrapper" },
+  { executable: "ccache", expected: "unknown" },
+  { executable: "distcc", expected: "unknown" },
+  { executable: "sccache", expected: "unknown" },
+  { executable: "/usr/lib/ccache/ccache", expected: "unknown" },
   {
     executable: String.raw`C:\Program Files\Mozilla Build\sccache.exe`,
-    expected: "wrapper",
+    expected: "unknown",
   },
+  { executable: "-gcc", expected: "unknown" },
+  { executable: "-clang", expected: "unknown" },
   { executable: "clang-cl.exe.bak", expected: "unknown" },
   { executable: "cl-wrapper.exe", expected: "unknown" },
   { executable: String.raw`C:\Tools\cl-wrapper.exe`, expected: "unknown" },
@@ -199,20 +209,16 @@ const gccInternal = identifier.identifyCompilerCommand({
   exe: "/usr/libexec/gcc/x86_64-linux-gnu/15/cc1plus",
   argv: ["cc1plus", "main.cc"],
 });
-expectEq(gccInternal.key, "builtin:gcc", "gcc internal key");
-expectEq(gccInternal.dialect, "gcc", "gcc internal dialect");
+expectEq(gccInternal.key, "builtin:unknown", "gcc internal key");
+expectEq(gccInternal.dialect, "unknown", "gcc internal dialect");
 
 const gfortran = identifier.identifyCompilerCommand({
   exe: "aarch64-linux-gnu-gfortran-15",
   argv: ["aarch64-linux-gnu-gfortran-15", "-c", "main.f90"],
 });
-expectEq(gfortran.key, "builtin:gcc", "gfortran family key");
-expectEq(gfortran.dialect, "gcc", "gfortran dialect");
-expectEq(
-  gfortran.target?.target.triple,
-  "aarch64-linux-gnu",
-  "gfortran target",
-);
+expectEq(gfortran.key, "builtin:unknown", "gfortran family key");
+expectEq(gfortran.dialect, "unknown", "gfortran dialect");
+expectEq(gfortran.target, undefined, "gfortran target");
 
 identifier.registerCompilerRule("project-clang", {
   match: /(?:^|[\\/])clang$/,

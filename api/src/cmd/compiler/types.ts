@@ -7,11 +7,7 @@ export const CompilerKind = [
   "clang",
   "clang-cl",
   "msvc",
-  "flang",
-  "ifort",
-  "crayftn",
   "nvcc",
-  "wrapper",
   "unknown",
 ] as const;
 
