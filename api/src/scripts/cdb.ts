@@ -4,14 +4,14 @@ import * as service from "../service.js";
 import * as cli from "../cli/index.js";
 import * as io from "../io.js";
 import * as fs from "../fs.js";
+import { analyze } from "../cmd/index.js";
 import {
   CDBManager,
   type CDBCommand,
   type CDBEntry,
   type CDBItem,
-  analyze,
   cdbItemsOf,
-} from "../cmd/index.js";
+} from "../cdb/index.js";
 
 type Producer = CDBCommand;
 

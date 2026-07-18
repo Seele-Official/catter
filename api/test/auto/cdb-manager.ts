@@ -1,4 +1,4 @@
-import { cmd, debug, fs, io } from "catter";
+import { cdb, debug, fs, io } from "catter";
 
 function expectEq<T>(actual: T, expected: T, label: string) {
   if (actual !== expected) {
@@ -62,12 +62,12 @@ io.TextFileStream.with(inheritedPath, "utf-8", (stream) => {
   stream.write(JSON.stringify(inheritedItems, null, 2));
 });
 
-const manager = new cmd.CDBManager(inheritedPath);
+const manager = new cdb.CDBManager(inheritedPath);
 const initialItems = manager.items();
 expectEq(initialItems.length, 4, "initial item count");
 
 const extraPath = fs.path.joinAll(testEnvPath, "other.json");
-const extra = new cmd.CDBManager(extraPath);
+const extra = new cdb.CDBManager(extraPath);
 extra.addItem({
   directory: fs.path.joinAll(buildDir, "."),
   file: "./override.cc",
@@ -144,7 +144,7 @@ if (!Array.isArray(savedJSON)) {
 }
 expectEq(savedJSON.length, 5, "saved item count");
 
-const reloaded = new cmd.CDBManager(savePath).items();
+const reloaded = new cdb.CDBManager(savePath).items();
 expectEq(reloaded.length, 5, "reloaded item count");
 const reloadedOverrideItem = expectDefined(
   reloaded.find((item) => item.output === "override-new.o"),

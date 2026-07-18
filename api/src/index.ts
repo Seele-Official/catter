@@ -22,6 +22,7 @@ import * as service from "./service.js";
 import * as option from "./option/index.js";
 import * as scripts from "./scripts/index.js";
 import * as cmd from "./cmd/index.js";
+import * as cdb from "./cdb/index.js";
 import * as data from "./data/index.js";
 import * as cli from "./cli/index.js";
 import * as neverthrow from "./neverthrow/index.js";
@@ -37,6 +38,7 @@ export {
   service,
   scripts,
   cmd,
+  cdb,
   data,
   cli,
   neverthrow,
