@@ -7,6 +7,11 @@ type ExpectedAnalysis = {
   compilerMode: cmd.CompilerMode;
   inputs: string[];
   outputs: string[];
+  target?: {
+    artifactModel: cmd.CompilerArtifactModel;
+    source: cmd.CompilerTargetSource["kind"];
+    triple?: string;
+  };
 };
 
 function expectEq<T>(actual: T, expected: T, label: string) {
@@ -98,6 +103,14 @@ function parseCompilerCommand(argv: string[]): cmd.CompilerParseResult {
   );
 }
 
+function resolveCompilerCommand(
+  argv: string[],
+  resolver: cmd.CompilerResolver,
+): cmd.CompilerResolveResult {
+  const identity = compilerIdentifier.identifyCompilerCommand(invocation(argv));
+  return resolver.resolve(cmd.parseCompilerCommand(argv, identity), identity);
+}
+
 function expectAnalysis(expected: ExpectedAnalysis) {
   const analysis = expectCompilerAnalysis(
     compilerAnalyzer.analyze(invocation(expected.cmd)),
@@ -129,6 +142,23 @@ function expectAnalysis(expected: ExpectedAnalysis) {
   );
   expectArrayEq(analysis.reads, expected.inputs, `${expected.label} reads`);
   expectArrayEq(analysis.writes, expected.outputs, `${expected.label} writes`);
+  if (expected.target !== undefined) {
+    expectEq(
+      analysis.target.artifactModel,
+      expected.target.artifactModel,
+      `${expected.label} target artifact model`,
+    );
+    expectEq(
+      analysis.target.source.kind,
+      expected.target.source,
+      `${expected.label} target source`,
+    );
+    expectEq(
+      analysis.target.descriptor.triple,
+      expected.target.triple,
+      `${expected.label} target triple`,
+    );
+  }
 }
 
 debug.assertThrow(
@@ -153,6 +183,43 @@ const nvccIdentity = compilerIdentifier.identifyCompilerCommand(
   invocation(["nvcc", "-c", "kernel.cu"]),
 );
 debug.assertThrow(nvccIdentity?.dialect === cmd.CompilerDialect.Nvcc);
+
+const unprefixedVersionedClangIdentity =
+  compilerIdentifier.identifyCompilerCommand(
+    invocation(["clang-20", "-c", "main.c"]),
+  );
+expectEq(
+  unprefixedVersionedClangIdentity.target,
+  undefined,
+  "versioned clang has no executable target",
+);
+
+const prefixedVersionedClangIdentity =
+  compilerIdentifier.identifyCompilerCommand(
+    invocation(["aarch64-linux-gnu-clang-20", "-c", "main.c"]),
+  );
+expectEq(
+  prefixedVersionedClangIdentity.target?.target.triple,
+  "aarch64-linux-gnu",
+  "versioned cross clang executable target",
+);
+expectEq(
+  prefixedVersionedClangIdentity.target?.source.kind,
+  "executable-prefix",
+  "versioned cross clang target source",
+);
+
+const absoluteCrossClangIdentity = compilerIdentifier.identifyCompilerCommand(
+  invocation(
+    ["x86_64-w64-mingw32-clang++.exe", "-c", "main.cpp"],
+    "C:/toolchains/bin/x86_64-w64-mingw32-clang++.exe",
+  ),
+);
+expectEq(
+  absoluteCrossClangIdentity.target?.target.triple,
+  "x86_64-w64-mingw32",
+  "absolute cross clang executable target",
+);
 
 const absoluteExeAnalysis = expectCompilerAnalysis(
   compilerAnalyzer.analyze(
@@ -209,6 +276,31 @@ expectEq(
   "parser ir output candidate count",
 );
 expectEq(parserIr.outputs[0]!.path, "-", "parser ir output fact path");
+
+const parserTarget = parseCompilerCommand([
+  "clang",
+  "--target=aarch64-linux-gnu",
+  "--target=x86_64-pc-windows-msvc",
+  "-c",
+  "main.c",
+]);
+expectEq(
+  parserTarget.target?.target.triple,
+  "x86_64-pc-windows-msvc",
+  "parser final explicit target",
+);
+expectEq(
+  parserTarget.target?.source.kind,
+  "argument",
+  "parser explicit target source",
+);
+if (parserTarget.target?.source.kind === "argument") {
+  expectEq(
+    parserTarget.target.source.index,
+    1,
+    "parser final explicit target index",
+  );
+}
 
 const remainderIr = parseCompilerCommand([
   "clang",
@@ -314,9 +406,12 @@ const debugResolverCmd = ["clang", "-c", "not-a-source"];
 
 const debugResolverParsed = parseCompilerCommand(debugResolverCmd);
 
-const debugResolverresolved = new cmd.CompilerCommandResolver({
+const debugResolverresolved = new cmd.CompilerResolver({
   debug: true,
-}).resolve(debugResolverParsed);
+}).resolve(
+  debugResolverParsed,
+  compilerIdentifier.identifyCompilerCommand(invocation(debugResolverCmd)),
+);
 
 expectArrayEq(
   debugResolverresolved.reads,
@@ -340,7 +435,7 @@ expectEq(
 );
 
 const allCandidateAnalyzer = new cmd.CompilerAnalyzer({
-  resolver: new cmd.CompilerCommandResolver({
+  resolver: new cmd.CompilerResolver({
     inputCandidates: {
       withoutLanguage: {
         unknownSuffix: "source",
@@ -364,7 +459,7 @@ expectArrayEq(
 );
 
 const noCandidateAnalyzer = new cmd.CompilerAnalyzer({
-  resolver: new cmd.CompilerCommandResolver({
+  resolver: new cmd.CompilerResolver({
     inputCandidates: {
       byLanguage: {
         c: {
@@ -399,7 +494,7 @@ expectArrayEq(
 );
 
 const noDefaultOutputAnalyzer = new cmd.CompilerAnalyzer({
-  resolver: new cmd.CompilerCommandResolver({
+  resolver: new cmd.CompilerResolver({
     writes: {
       inferDefaultOutputs: false,
     },
@@ -421,7 +516,7 @@ expectArrayEq(
 );
 
 const noDirectoryExpansionAnalyzer = new cmd.CompilerAnalyzer({
-  resolver: new cmd.CompilerCommandResolver({
+  resolver: new cmd.CompilerResolver({
     writes: {
       expandDirectoryOutputs: false,
     },
@@ -440,7 +535,7 @@ expectArrayEq(
 );
 
 const noAssemblyListingAnalyzer = new cmd.CompilerAnalyzer({
-  resolver: new cmd.CompilerCommandResolver({
+  resolver: new cmd.CompilerResolver({
     writes: {
       inferAssemblyListings: false,
     },
@@ -460,34 +555,41 @@ expectArrayEq(
 
 let incompleteConventionRejected = false;
 try {
-  new cmd.CompilerCommandResolver({
-    debug: true,
-    target: {
-      os: cmd.CompilerTargetOS.Unknown,
-      env: cmd.CompilerTargetEnv.Unknown,
-      objectFormat: cmd.CompilerObjectFormat.Unknown,
-    },
-  }).resolve(parseCompilerCommand(["clang", "-c", "main.c"]));
+  resolveCompilerCommand(
+    ["clang", "-c", "main.c"],
+    new cmd.CompilerResolver({
+      debug: true,
+      targetOverride: {
+        os: cmd.CompilerTargetOS.Unknown,
+        env: cmd.CompilerTargetEnv.Unknown,
+        objectFormat: cmd.CompilerObjectFormat.Unknown,
+      },
+    }),
+  );
 } catch (error) {
   incompleteConventionRejected =
-    error instanceof cmd.CompilerResolverOptionsError;
+    error instanceof cmd.CompilerTargetResolutionError;
 }
 debug.assertThrow(incompleteConventionRejected);
 
-const unknownTargetWithConventionResolved = new cmd.CompilerCommandResolver({
-  debug: true,
-  target: {
-    os: cmd.CompilerTargetOS.Unknown,
-    env: cmd.CompilerTargetEnv.Unknown,
-    objectFormat: cmd.CompilerObjectFormat.Unknown,
-  },
-  outputConvention: {
-    object: ".objx",
-    executable: ".binx",
-    sharedLibrary: ".sox",
-    staticLibrary: ".libx",
-  },
-}).resolve(parseCompilerCommand(["clang", "-c", "main.c"]));
+const unknownTargetWithConventionResolved = resolveCompilerCommand(
+  ["clang", "-c", "main.c"],
+  new cmd.CompilerResolver({
+    debug: true,
+    targetOverride: {
+      os: cmd.CompilerTargetOS.Unknown,
+      env: cmd.CompilerTargetEnv.Unknown,
+      objectFormat: cmd.CompilerObjectFormat.Unknown,
+      artifactModel: cmd.CompilerArtifactModel.Elf,
+    },
+    outputConvention: {
+      object: ".objx",
+      executable: ".binx",
+      sharedLibrary: ".sox",
+      staticLibrary: ".libx",
+    },
+  }),
+);
 expectArrayEq(
   unknownTargetWithConventionResolved.reads,
   ["main.c"],
@@ -500,7 +602,7 @@ expectArrayEq(
 );
 
 const customUnspecifiedSuffixAnalyzer = new cmd.CompilerAnalyzer({
-  resolver: new cmd.CompilerCommandResolver({
+  resolver: new cmd.CompilerResolver({
     inputCandidates: {
       withoutLanguage: {
         suffixRules: [{ suffix: ".foo", role: "source" }],
@@ -527,7 +629,7 @@ expectArrayEq(
 );
 
 const customExplicitSuffixAnalyzer = new cmd.CompilerAnalyzer({
-  resolver: new cmd.CompilerCommandResolver({
+  resolver: new cmd.CompilerResolver({
     inputCandidates: {
       byLanguage: {
         c: {
@@ -848,6 +950,61 @@ const cases: ExpectedAnalysis[] = [
     },
     inputs: ["main.c"],
     outputs: ["main.obj"],
+    target: {
+      artifactModel: cmd.CompilerArtifactModel.CoffMsvc,
+      source: "argument",
+      triple: "x86_64-pc-windows-msvc",
+    },
+  },
+  {
+    label: "prefixed clang windows msvc target",
+    cmd: ["x86_64-pc-windows-msvc-clang", "-c", "main.c"],
+    compilerMode: {
+      phase: cmd.CompilerPhase.Compile,
+      artifact: cmd.CompilerArtifact.Object,
+    },
+    inputs: ["main.c"],
+    outputs: ["main.obj"],
+    target: {
+      artifactModel: cmd.CompilerArtifactModel.CoffMsvc,
+      source: "executable-prefix",
+      triple: "x86_64-pc-windows-msvc",
+    },
+  },
+  {
+    label: "explicit clang target overrides executable target",
+    cmd: [
+      "aarch64-linux-gnu-clang",
+      "--target=x86_64-pc-windows-msvc",
+      "-c",
+      "main.c",
+    ],
+    compilerMode: {
+      phase: cmd.CompilerPhase.Compile,
+      artifact: cmd.CompilerArtifact.Object,
+    },
+    inputs: ["main.c"],
+    outputs: ["main.obj"],
+    target: {
+      artifactModel: cmd.CompilerArtifactModel.CoffMsvc,
+      source: "argument",
+      triple: "x86_64-pc-windows-msvc",
+    },
+  },
+  {
+    label: "versioned clang cross compiler target",
+    cmd: ["aarch64-linux-gnu-clang-20", "-c", "main.c"],
+    compilerMode: {
+      phase: cmd.CompilerPhase.Compile,
+      artifact: cmd.CompilerArtifact.Object,
+    },
+    inputs: ["main.c"],
+    outputs: ["main.o"],
+    target: {
+      artifactModel: cmd.CompilerArtifactModel.Elf,
+      source: "executable-prefix",
+      triple: "aarch64-linux-gnu",
+    },
   },
   {
     label: "clang explicit windows gnu target executable output",
@@ -930,6 +1087,11 @@ const cases: ExpectedAnalysis[] = [
     },
     inputs: ["main.c"],
     outputs: ["main.o"],
+    target: {
+      artifactModel: cmd.CompilerArtifactModel.Elf,
+      source: "argument",
+      triple: "x86_64-linux-gnu",
+    },
   },
   {
     label: "clang-cl cl-style default executable output",
@@ -940,6 +1102,11 @@ const cases: ExpectedAnalysis[] = [
     },
     inputs: ["src/main.cpp"],
     outputs: ["main.exe"],
+    target: {
+      artifactModel: cmd.CompilerArtifactModel.CoffMsvc,
+      source: "driver-default",
+      triple: "unknown-pc-windows-msvc",
+    },
   },
   {
     label: "clang-cl dash preprocess to file mode",
@@ -1107,6 +1274,7 @@ expectAnalysisError(
 compilerIdentifier.registerCompilerRule("test:cross-gcc", {
   dialect: cmd.CompilerDialect.Gcc,
   match: [/^my-cross-tool$/, /^\/opt\/bin\/my-cross-tool$/],
+  target: { triple: "x86_64-pc-windows-msvc" },
 });
 expectAnalysis({
   label: "custom gnu compiler rule",
@@ -1116,7 +1284,12 @@ expectAnalysis({
     artifact: cmd.CompilerArtifact.Object,
   },
   inputs: ["src/custom.c"],
-  outputs: ["custom.o"],
+  outputs: ["custom.obj"],
+  target: {
+    artifactModel: cmd.CompilerArtifactModel.CoffMsvc,
+    source: "compiler-rule",
+    triple: "x86_64-pc-windows-msvc",
+  },
 });
 const customAbsoluteExeAnalysis = expectCompilerAnalysis(
   compilerAnalyzer.analyze(
@@ -1129,7 +1302,7 @@ const customAbsoluteExeAnalysis = expectCompilerAnalysis(
 );
 expectArrayEq(
   customAbsoluteExeAnalysis.writes,
-  ["custom-absolute.o"],
+  ["custom-absolute.obj"],
   "custom absolute executable writes",
 );
 

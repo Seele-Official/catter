@@ -4,6 +4,7 @@ import {
   type CompilerInputCandidateRules,
   type CompilerInputRole,
   type CompilerInputSuffixRule,
+  type CompilerIdentity,
   type CompilerInferredWrite,
   type CompilerOutputConvention,
   type CompilerParseResult,
@@ -14,7 +15,10 @@ import {
   type CompilerResolverWriteOptions,
 } from "../types.js";
 import { CompilerResolverOptionsError } from "../errors.js";
-import { hostTarget, outputConventionFromTarget } from "../target.js";
+import {
+  CompilerTargetResolver,
+  outputConventionFromArtifactModel,
+} from "./target.js";
 import { collectReads } from "./reads.js";
 import type {
   CompleteInputCandidateOptions,
@@ -146,11 +150,17 @@ function buildInputCandidateOptions(
 function buildEffectiveOptions(
   options: NormalizedResolverOptions,
   parsed: CompilerParseResult,
+  identity: CompilerIdentity,
+  targetResolver: CompilerTargetResolver,
 ): CompilerResolverEffectiveOptions {
-  const target = options.target ?? parsed.target ?? hostTarget();
+  const target = targetResolver.resolve(
+    parsed,
+    identity,
+    options.targetOverride,
+  );
 
   const convention = {
-    ...outputConventionFromTarget(target),
+    ...outputConventionFromArtifactModel(target.artifactModel),
     ...options.outputConvention,
   };
 
@@ -226,12 +236,13 @@ export class ResolverTrace {
 /**
  * Resolves parsed compiler facts into visible file reads, writes, and dependency edges.
  */
-export class CompilerCommandResolver {
+export class CompilerResolver {
   private readonly options: NormalizedResolverOptions;
+  private readonly targetResolver = new CompilerTargetResolver();
 
   constructor(options: CompilerResolverOptions = {}) {
     this.options = {
-      target: options.target,
+      targetOverride: options.targetOverride,
       outputConvention: options.outputConvention,
       inputCandidates: options.inputCandidates,
       writes: {
@@ -242,13 +253,22 @@ export class CompilerCommandResolver {
     };
   }
 
-  resolve(parsed: CompilerParseResult): CompilerResolveResult {
-    const effectiveOptions = buildEffectiveOptions(this.options, parsed);
+  resolve(
+    parsed: CompilerParseResult,
+    identity: CompilerIdentity,
+  ): CompilerResolveResult {
+    const effectiveOptions = buildEffectiveOptions(
+      this.options,
+      parsed,
+      identity,
+      this.targetResolver,
+    );
     const trace = new ResolverTrace();
     const reads = collectReads(parsed, effectiveOptions, trace);
     const writes = resolveWrites(parsed, reads, effectiveOptions, trace);
 
     const result: CompilerResolveResult = {
+      target: effectiveOptions.target,
       reads: reads.map((read) => read.input.path),
       writes: writes.map((write) => write.path),
       edges: writes.map((write) => ({

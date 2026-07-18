@@ -4,7 +4,7 @@ import type { AnalyzedData } from "../model.js";
 import { CompilerAnalysisError, toCompilerAnalysisError } from "./errors.js";
 import { CompilerIdentifier } from "./identify.js";
 import { parseCompilerCommand } from "./parsers/index.js";
-import { CompilerCommandResolver } from "./resolver/index.js";
+import { CompilerResolver } from "./resolver/index.js";
 import type {
   CompilerAnalyzerOptions,
   CompilerParseResult,
@@ -12,6 +12,7 @@ import type {
   CompilerMode,
   UnwrappedCompilerCommand,
   CompilerResolveDebug,
+  EffectiveCompilerTarget,
 } from "./types.js";
 import { unwrapCompilerCommand } from "./unwrap.js";
 
@@ -38,6 +39,8 @@ export class CompilerAnalysis extends Analysis {
   readonly sourceFiles: readonly string[];
   /** Optional debug information for resolver decisions and diagnostics. */
   readonly debug?: CompilerResolveDebug;
+  /** Effective output target selected from arguments, executable identity, driver defaults, or host fallback. */
+  readonly target: EffectiveCompilerTarget;
 
   constructor(
     parsed: CompilerParseResult,
@@ -58,6 +61,7 @@ export class CompilerAnalysis extends Analysis {
     this.compilerMode = { ...parsed.compilerMode };
     this.sourceFiles = [...resolved.sourceFiles];
     this.debug = resolved.debug;
+    this.target = resolved.target;
   }
 }
 
@@ -71,7 +75,7 @@ export class CompilerAnalyzer extends Analyzer {
   constructor(options: CompilerAnalyzerOptions = {}) {
     super();
     this.identifier = options.identifier ?? new CompilerIdentifier();
-    this.resolver = options.resolver ?? new CompilerCommandResolver();
+    this.resolver = options.resolver ?? new CompilerResolver();
   }
 
   analyze(
@@ -83,7 +87,7 @@ export class CompilerAnalyzer extends Analyzer {
         const identity = this.identifier.identifyCompilerCommand(unwrapped);
 
         const parsed = parseCompilerCommand(unwrapped.argv, identity);
-        const resolved = this.resolver.resolve(parsed);
+        const resolved = this.resolver.resolve(parsed, identity);
         return new CompilerAnalysis(parsed, resolved, command, unwrapped);
       },
       (error) => toCompilerAnalysisError(error, "compiler analysis failed"),

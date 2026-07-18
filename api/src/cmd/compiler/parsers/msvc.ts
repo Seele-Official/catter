@@ -5,7 +5,6 @@ import {
   collectClangDriverOptions,
 } from "./clang-driver.js";
 import type { CompilerParseResult } from "../types.js";
-import { clDriverTarget } from "../target.js";
 
 /**
  * Parses an MSVC-family command using the clang-cl compatible option table.
@@ -21,6 +20,5 @@ export function parseMsvcCommand(
   return buildClangClDriverModel(
     collectClangDriverOptions(args, CLANG_CL_VISIBILITY),
     identity.dialect,
-    clDriverTarget(),
   );
 }

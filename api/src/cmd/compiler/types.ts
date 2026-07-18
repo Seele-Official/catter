@@ -129,12 +129,69 @@ export const CompilerObjectFormat = {
 export type CompilerObjectFormat =
   (typeof CompilerObjectFormat)[keyof typeof CompilerObjectFormat];
 
-/** Target facts that affect compiler output naming. */
+/** Resolver-ready artifact and ABI convention selected for a compiler target. */
+export const CompilerArtifactModel = {
+  Elf: "elf",
+  MachO: "macho",
+  CoffGnu: "coff-gnu",
+  CoffMsvc: "coff-msvc",
+} as const;
+
+/** Union of resolver-ready compiler artifact models. */
+export type CompilerArtifactModel =
+  (typeof CompilerArtifactModel)[keyof typeof CompilerArtifactModel];
+
+/** Raw or partially classified target facts from one target source. */
 export type CompilerTarget = {
   triple?: string;
   os?: CompilerTargetOS;
   env?: CompilerTargetEnv;
   objectFormat?: CompilerObjectFormat;
+  /** Explicit artifact model when a triple is unavailable or custom. */
+  artifactModel?: CompilerArtifactModel;
+};
+
+/** Evidence source for a compiler target fact. */
+export type CompilerTargetSource =
+  | {
+      kind: "argument";
+      option: string;
+      index: number;
+    }
+  | {
+      kind: "compiler-rule";
+      key: string;
+    }
+  | {
+      kind: "executable-prefix";
+      executable: string;
+      prefix: string;
+    }
+  | {
+      kind: "driver-default";
+      dialect: CompilerDialect;
+    }
+  | {
+      kind: "resolver-override";
+    }
+  | {
+      kind: "host-fallback";
+    };
+
+/** One target fact together with the evidence that produced it. */
+export type CompilerTargetFact = {
+  target: CompilerTarget;
+  source: CompilerTargetSource;
+};
+
+/** Fully classified target accepted by command resolution. */
+export type EffectiveCompilerTarget = {
+  /** Winning target descriptor. Lower-priority descriptors are never merged into it. */
+  descriptor: CompilerTarget;
+  /** Mandatory minimum target information used for file conventions. */
+  artifactModel: CompilerArtifactModel;
+  /** Evidence that selected the winning descriptor. */
+  source: CompilerTargetSource;
 };
 
 /** Output suffix convention used by the resolver when default outputs are inferred. */
@@ -230,8 +287,8 @@ export type CompilerOutput = {
 export type CompilerParseResult = {
   /** Parser dialect selected for this command line. This describes parser syntax only, not the target platform. */
   dialect: CompilerDialect;
-  /** Target facts parsed from the command or inferred from the driver name when available. */
-  target?: CompilerTarget;
+  /** Final explicit target fact parsed from command-line arguments, when present. */
+  target?: CompilerTargetFact;
   /** High-level action and primary artifact selected from parsed driver options. */
   compilerMode: CompilerMode;
   /** Semantic action facts collected from options before mode resolution. */
@@ -297,8 +354,8 @@ export type CompilerResolverWriteOptions = {
 
 /** Configures how compiler parser facts are resolved into visible file reads, writes, and edges. */
 export type CompilerResolverOptions = {
-  /** Explicit target facts used before parser-inferred target facts. */
-  target?: CompilerTarget;
+  /** Forced target override used before command and executable target facts. */
+  targetOverride?: CompilerTarget;
   /** Explicit output suffix convention used before target-derived conventions. */
   outputConvention?: Partial<CompilerOutputConvention>;
   /** Rules for promoting parser input candidates into reads. */
@@ -361,6 +418,7 @@ export type CompilerResolveDebug = {
 };
 
 export type CompilerResolveResult = {
+  target: EffectiveCompilerTarget;
   reads: string[];
   writes: string[];
   edges: Edge[];
@@ -368,13 +426,17 @@ export type CompilerResolveResult = {
   debug?: CompilerResolveDebug;
 };
 
-export interface CompilerResolver {
-  resolve(parsed: CompilerParseResult): CompilerResolveResult;
+/** Resolver protocol accepted by the compiler analyzer. */
+export interface CompilerResolverLike {
+  resolve(
+    parsed: CompilerParseResult,
+    identity: CompilerIdentity,
+  ): CompilerResolveResult;
 }
 
 export type CompilerAnalyzerOptions = {
   identifier?: CompilerIdentifier;
-  resolver?: CompilerResolver;
+  resolver?: CompilerResolverLike;
 };
 
 /**
@@ -392,6 +454,8 @@ export interface CompilerRule {
   dialect: CompilerDialect;
   /** One matcher or a list of alternative matchers. */
   match: CompilerMatcher | CompilerMatcher[];
+  /** Target facts for renamed or project-specific compiler executables. */
+  target?: CompilerTarget;
 }
 
 /** Result of identifying a command before builtin parser dispatch. */
@@ -400,6 +464,8 @@ export interface CompilerIdentity {
   key: string;
   /** Parser dialect selected for the command, or `unknown` when unsupported. */
   dialect: CompilerDialect;
+  /** Target fact inferred from the executable name or supplied by a custom rule. */
+  target?: CompilerTargetFact;
 }
 
 /** Result of the unwrap stage before compiler identification. */

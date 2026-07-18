@@ -12,7 +12,6 @@ import {
   type CompilerIdentity,
   type CompilerParseResult,
 } from "../types.js";
-import { clDriverTarget } from "../target.js";
 
 function findClangDriverMode(
   parsed: readonly ClangDriverParsedOption[],
@@ -36,7 +35,6 @@ export function parseClangCommand(
     return buildClangClDriverModel(
       collectClangDriverOptions(args, CLANG_CL_VISIBILITY),
       CompilerDialect.Msvc,
-      clDriverTarget(),
     );
   }
 

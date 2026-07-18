@@ -6,7 +6,54 @@ import type {
   CompilerIdentity,
   CompilerMatcher,
   CompilerRule,
+  CompilerTargetFact,
 } from "./types.js";
+
+import { path } from "../../fs.js";
+
+function targetPrefixFromExecutable(
+  executable: string,
+  compiler: string,
+): string | undefined {
+  const basename = path.filename(executable).replace(/\.exe$/i, "");
+  const version = String.raw`(?:[-_]?\d+(?:[._-][0-9a-zA-Z]+)*)?`;
+  let driver: string;
+
+  switch (compiler) {
+    case "clang-cl":
+      driver = String.raw`clang-cl${version}`;
+      break;
+    case "clang":
+      driver = String.raw`clang(?:\+\+)?${version}`;
+      break;
+    case "gcc":
+      driver = String.raw`(?:cc|c\+\+|gcc|g\+\+|gfortran|egfortran|f95)${version}`;
+      break;
+    default:
+      return undefined;
+  }
+
+  return new RegExp(`^(.+)-${driver}$`, "i").exec(basename)?.[1];
+}
+
+function executableTargetFact(
+  executable: string,
+  compiler: string,
+): CompilerTargetFact | undefined {
+  const prefix = targetPrefixFromExecutable(executable, compiler);
+  if (prefix === undefined) {
+    return undefined;
+  }
+
+  return {
+    target: { triple: prefix },
+    source: {
+      kind: "executable-prefix",
+      executable,
+      prefix,
+    },
+  };
+}
 
 export class CompilerIdentifier {
   private readonly customRules = new Map<string, CompilerRule>();
@@ -45,6 +92,13 @@ export class CompilerIdentifier {
       return {
         key,
         dialect: rule.dialect,
+        target:
+          rule.target === undefined
+            ? undefined
+            : {
+                target: { ...rule.target },
+                source: { kind: "compiler-rule", key },
+              },
       };
     }
 
@@ -53,6 +107,7 @@ export class CompilerIdentifier {
     return {
       key: `builtin:${compiler}`,
       dialect,
+      target: executableTargetFact(command.exe, compiler),
     };
   }
 
