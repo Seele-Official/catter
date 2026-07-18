@@ -1,47 +1,149 @@
-import { identify_compiler } from "catter-c";
-
 import type { AnalyzedData } from "../model.js";
 import type {
   CompilerDialect,
   CompilerIdentity,
+  CompilerKind,
   CompilerMatcher,
   CompilerRule,
   CompilerTargetFact,
 } from "./types.js";
 
-import { path } from "../../fs.js";
+import { platform } from "../../os.js";
 
-function targetPrefixFromExecutable(
-  executable: string,
-  compiler: string,
-): string | undefined {
-  const basename = path.filename(executable).replace(/\.exe$/i, "");
-  const version = String.raw`(?:[-_]?\d+(?:[._-][0-9a-zA-Z]+)*)?`;
-  let driver: string;
+const VERSION_PATTERN = String.raw`(?:[-_]?\d+(?:[._-][0-9a-zA-Z]+)*)?`;
+const COMPILER_PATTERN_FLAGS = platform() === "windows" ? "i" : "";
 
-  switch (compiler) {
-    case "clang-cl":
-      driver = String.raw`clang-cl${version}`;
-      break;
-    case "clang":
-      driver = String.raw`clang(?:\+\+)?${version}`;
-      break;
-    case "gcc":
-      driver = String.raw`(?:cc|c\+\+|gcc|g\+\+|gfortran|egfortran|f95)${version}`;
-      break;
-    default:
-      return undefined;
+function createCompilerRegex(
+  basePattern: string,
+  withVersion: boolean,
+): RegExp {
+  const optionalPathPrefix = String.raw`(?:(?:.*[\\/]))?`;
+  const versionPattern = withVersion ? VERSION_PATTERN : "";
+  const executableSuffix = String.raw`(?:\.exe)?`;
+  return new RegExp(
+    `^${optionalPathPrefix}${basePattern}${versionPattern}${executableSuffix}$`,
+    COMPILER_PATTERN_FLAGS,
+  );
+}
+
+type BuiltinCompilerRule = {
+  kind: CompilerKind;
+  dialect: CompilerDialect;
+  executable: RegExp;
+  targetPrefix?: boolean;
+};
+
+const BUILTIN_COMPILER_RULES: readonly BuiltinCompilerRule[] = [
+  {
+    kind: "gcc",
+    dialect: "gcc",
+    executable: createCompilerRegex(
+      String.raw`(?:([^/]*)-)?(?:cc|c\+\+)`,
+      false,
+    ),
+    targetPrefix: true,
+  },
+  {
+    kind: "gcc",
+    dialect: "gcc",
+    executable: createCompilerRegex(
+      String.raw`(?:([^/]*)-)?(?:gcc|g\+\+|gfortran|egfortran|f95)`,
+      true,
+    ),
+    targetPrefix: true,
+  },
+  {
+    kind: "gcc",
+    dialect: "gcc",
+    executable: createCompilerRegex(
+      String.raw`(?:cc1(?:plus|obj|objplus)?|f951|collect2|lto1)`,
+      false,
+    ),
+  },
+  {
+    kind: "clang",
+    dialect: "clang",
+    executable: createCompilerRegex(
+      String.raw`(?:([^/]*)-)?clang(?:\+\+)?`,
+      true,
+    ),
+    targetPrefix: true,
+  },
+  {
+    kind: "clang-cl",
+    dialect: "msvc",
+    executable: createCompilerRegex(String.raw`(?:([^/]*)-)?clang-cl`, true),
+    targetPrefix: true,
+  },
+  {
+    kind: "msvc",
+    dialect: "msvc",
+    executable: createCompilerRegex(String.raw`cl`, false),
+  },
+  {
+    kind: "flang",
+    dialect: "unknown",
+    executable: createCompilerRegex(
+      String.raw`(?:[^/]*-)?(?:flang|flang-new)`,
+      true,
+    ),
+  },
+  {
+    kind: "ifort",
+    dialect: "unknown",
+    executable: createCompilerRegex(String.raw`(?:ifort|ifx)`, true),
+  },
+  {
+    kind: "crayftn",
+    dialect: "unknown",
+    executable: createCompilerRegex(String.raw`(?:crayftn|ftn)`, true),
+  },
+  {
+    kind: "nvcc",
+    dialect: "nvcc",
+    executable: createCompilerRegex(String.raw`(?:[^/]*-)?nvcc`, true),
+  },
+  {
+    kind: "wrapper",
+    dialect: "unknown",
+    executable: createCompilerRegex(
+      String.raw`(?:ccache|distcc|sccache)`,
+      false,
+    ),
+  },
+];
+
+type BuiltinCompilerIdentity = {
+  kind: CompilerKind;
+  dialect: CompilerDialect;
+  targetPrefix?: string;
+};
+
+function identifyBuiltinCompiler(executable: string): BuiltinCompilerIdentity {
+  for (const rule of BUILTIN_COMPILER_RULES) {
+    const match = rule.executable.exec(executable);
+    if (match !== null) {
+      return {
+        kind: rule.kind,
+        dialect: rule.dialect,
+        targetPrefix: rule.targetPrefix === true ? match[1] : undefined,
+      };
+    }
   }
 
-  return new RegExp(`^(.+)-${driver}$`, "i").exec(basename)?.[1];
+  return { kind: "unknown", dialect: "unknown" };
+}
+
+/** Identifies the builtin compiler family for an executable path or name. */
+export function identifyCompiler(executable: string): CompilerKind {
+  return identifyBuiltinCompiler(executable).kind;
 }
 
 function executableTargetFact(
   executable: string,
-  compiler: string,
+  prefix: string | undefined,
 ): CompilerTargetFact | undefined {
-  const prefix = targetPrefixFromExecutable(executable, compiler);
-  if (prefix === undefined) {
+  if (prefix === undefined || prefix.length === 0) {
     return undefined;
   }
 
@@ -102,29 +204,12 @@ export class CompilerIdentifier {
       };
     }
 
-    const compiler = identify_compiler(command.exe);
-    const dialect = this.builtinDialectForCompiler(compiler);
+    const builtin = identifyBuiltinCompiler(command.exe);
     return {
-      key: `builtin:${compiler}`,
-      dialect,
-      target: executableTargetFact(command.exe, compiler),
+      key: `builtin:${builtin.kind}`,
+      dialect: builtin.dialect,
+      target: executableTargetFact(command.exe, builtin.targetPrefix),
     };
-  }
-
-  private builtinDialectForCompiler(compiler: string): CompilerDialect {
-    switch (compiler) {
-      case "clang":
-        return "clang";
-      case "gcc":
-        return "gcc";
-      case "clang-cl":
-      case "msvc":
-        return "msvc";
-      case "nvcc":
-        return "nvcc";
-      default:
-        return "unknown";
-    }
   }
 
   private matcherMatches(

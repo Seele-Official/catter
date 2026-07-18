@@ -1,6 +1,22 @@
-import type { Compiler } from "catter-c";
 import type { AnalyzedData, Edge } from "../model.js";
 import type { CompilerIdentifier } from "./identify.js";
+
+/** Compiler executable families recognized by the builtin identifier. */
+export const CompilerKind = [
+  "gcc",
+  "clang",
+  "clang-cl",
+  "msvc",
+  "flang",
+  "ifort",
+  "crayftn",
+  "nvcc",
+  "wrapper",
+  "unknown",
+] as const;
+
+/** Union of compiler executable families recognized by the builtin identifier. */
+export type CompilerKind = (typeof CompilerKind)[number];
 
 /** High-level compiler pipeline phase. */
 export const CompilerPhase = {
