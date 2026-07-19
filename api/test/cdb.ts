@@ -1,5 +1,5 @@
 import {
-  cmd,
+  cdb,
   debug,
   fs,
   scripts,
@@ -97,7 +97,7 @@ try {
 
   await serviceRuntime.finish({ code: 0, stdout: "", stderr: "" });
 
-  const items = new cmd.CDBManager(savePath).items();
+  const items = new cdb.CDBManager(savePath).items();
   debug.assertThrow(items.length === 1);
   debug.assertThrow(items[0] !== undefined);
   if (items[0] === undefined) {
@@ -127,7 +127,7 @@ try {
     ),
   );
   await failedRuntime.finish({ code: 1, stdout: "", stderr: "" });
-  debug.assertThrow(new cmd.CDBManager(failedSavePath).items().length === 1);
+  debug.assertThrow(new cdb.CDBManager(failedSavePath).items().length === 1);
 
   const skippedFailurePath = fs.path.joinAll(
     testEnvPath,
@@ -151,7 +151,7 @@ try {
   debug.assertThrow(!fs.exists(skippedFailurePath));
 
   const appendPath = fs.path.joinAll(testEnvPath, "append.json");
-  const inherited = new cmd.CDBManager(appendPath, { inherit: false });
+  const inherited = new cdb.CDBManager(appendPath, { inherit: false });
   inherited.addItem({
     directory: fs.path.absolute(testEnvPath),
     file: "src/inherited.cc",
@@ -172,7 +172,7 @@ try {
     ),
   );
   await appendRuntime.finish({ code: 0, stdout: "", stderr: "" });
-  const appendedItems = new cmd.CDBManager(appendPath).items();
+  const appendedItems = new cdb.CDBManager(appendPath).items();
   debug.assertThrow(appendedItems.length === 2);
   debug.assertThrow(
     appendedItems.some((item) => item.file === "src/inherited.cc"),
@@ -182,7 +182,7 @@ try {
   );
 
   const replacePath = fs.path.joinAll(testEnvPath, "replace.json");
-  const replaceInherited = new cmd.CDBManager(replacePath, { inherit: false });
+  const replaceInherited = new cdb.CDBManager(replacePath, { inherit: false });
   replaceInherited.addItem({
     directory: fs.path.absolute(testEnvPath),
     file: "src/old.cc",
@@ -205,7 +205,7 @@ try {
     ),
   );
   await replaceRuntime.finish({ code: 0, stdout: "", stderr: "" });
-  const replacedItems = new cmd.CDBManager(replacePath).items();
+  const replacedItems = new cdb.CDBManager(replacePath).items();
   debug.assertThrow(replacedItems.length === 1);
   debug.assertThrow(replacedItems[0]?.file === "src/new.cc");
 
@@ -242,7 +242,7 @@ try {
     commandFailureAborted = String(error).includes("exited with code 2");
   }
   debug.assertThrow(commandFailureAborted);
-  debug.assertThrow(new cmd.CDBManager(abortCommandPath).items().length === 1);
+  debug.assertThrow(new cdb.CDBManager(abortCommandPath).items().length === 1);
 
   const abortCaptureRuntime = new service.ServiceRuntime();
   abortCaptureRuntime.use(scripts.cdb());

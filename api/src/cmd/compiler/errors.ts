@@ -16,11 +16,16 @@ export class CompilerResolverOptionsError extends AnalysisError {
   readonly kind = "compiler-resolver-options" as const;
 }
 
+export class CompilerTargetResolutionError extends AnalysisError {
+  readonly kind = "compiler-target-resolution" as const;
+}
+
 export type CompilerAnalysisError =
   | CompilerUnsupportedError
   | CompilerParseError
   | CompilerModelError
-  | CompilerResolverOptionsError;
+  | CompilerResolverOptionsError
+  | CompilerTargetResolutionError;
 
 export function toCompilerAnalysisError(
   value: unknown,
@@ -30,7 +35,8 @@ export function toCompilerAnalysisError(
     value instanceof CompilerUnsupportedError ||
     value instanceof CompilerParseError ||
     value instanceof CompilerModelError ||
-    value instanceof CompilerResolverOptionsError
+    value instanceof CompilerResolverOptionsError ||
+    value instanceof CompilerTargetResolutionError
   ) {
     return value;
   }

@@ -154,27 +154,6 @@ expectEdgeEq(
   "compile second edge",
 );
 
-const cdbItems = cmd.cdbItemsOf(
-  {
-    cwd: "/tmp/build",
-    argv: [...compileCommand],
-  },
-  [
-    {
-      file: "src/a.c",
-      output: "a.o",
-    },
-    {
-      file: "src/b.c",
-      output: "b.o",
-    },
-  ],
-);
-expectEq(cdbItems.length, 2, "cdb item count");
-expectEq(cdbItems[0].directory, "/tmp/build", "cdb directory");
-expectEq(cdbItems[0].file, "src/a.c", "cdb first file");
-expectEq(cdbItems[0].output, "a.o", "cdb first output");
-
 const preprocessAnalysis = expectCompilerAnalysis(
   cmd.analyze(invocation(["gcc", "-E", "src/a.c", "-o", "a.i"])),
   "preprocess analysis",

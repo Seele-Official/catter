@@ -417,17 +417,3 @@ export function option_parse(
   cb: (parseRes: string | OptionItem) => boolean,
   visibility?: number,
 ): void;
-
-export type Compiler =
-  | "gcc"
-  | "clang"
-  | "clang-cl"
-  | "msvc"
-  | "flang"
-  | "ifort"
-  | "crayftn"
-  | "nvcc"
-  | "wrapper"
-  | "unknown";
-
-export function identify_compiler(compiler_name: string): Compiler;

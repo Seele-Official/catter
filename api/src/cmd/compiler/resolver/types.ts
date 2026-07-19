@@ -5,11 +5,11 @@ import type {
   CompilerResolverOptions,
   CompilerResolverSourceLanguage,
   CompilerResolverWriteOptions,
-  CompilerTarget,
+  EffectiveCompilerTarget,
 } from "../types.js";
 
 export type CompilerResolverEffectiveOptions = {
-  target: CompilerTarget;
+  target: EffectiveCompilerTarget;
   outputConvention: CompilerOutputConvention;
   inputCandidates: {
     byLanguage: Record<
