@@ -1,4 +1,4 @@
-import { cmd, debug, fs, os } from "catter";
+import { cmd, debug, fs } from "catter";
 import { neverthrow } from "catter";
 
 type ExpectedAnalysis = {
@@ -42,10 +42,6 @@ function expectArrayEq(
 
 function normalizedJoin(...parts: string[]) {
   return fs.path.lexicalNormal(fs.path.joinAll(...parts));
-}
-
-function hostDefaultExecutable() {
-  return os.platform() === "windows" ? "a.exe" : "a.out";
 }
 
 function invocation(argv: string[], exe = argv[0]!): cmd.AnalyzedData {
@@ -515,6 +511,40 @@ expectArrayEq(
   "resolver disables default outputs writes",
 );
 
+const unresolvedImplicitOutput = resolveCompilerCommand(
+  ["clang", "main.c"],
+  new cmd.CompilerResolver({ debug: true }),
+);
+expectArrayEq(
+  unresolvedImplicitOutput.writes,
+  [],
+  "resolver unresolved implicit output writes",
+);
+if (unresolvedImplicitOutput.debug === undefined) {
+  throw new Error(
+    "resolver unresolved implicit output debug information missing",
+  );
+}
+expectEq(
+  unresolvedImplicitOutput.debug.diagnostics.length,
+  1,
+  "resolver unresolved implicit output diagnostic count",
+);
+expectEq(
+  unresolvedImplicitOutput.debug.diagnostics[0]!.code,
+  "implicit-output-unresolved",
+  "resolver unresolved implicit output diagnostic code",
+);
+const unresolvedImplicitOutputWithoutDebug = resolveCompilerCommand(
+  ["clang", "main.c"],
+  new cmd.CompilerResolver(),
+);
+expectEq(
+  unresolvedImplicitOutputWithoutDebug.debug,
+  undefined,
+  "resolver unresolved implicit output hides diagnostics without debug",
+);
+
 const noDirectoryExpansionAnalyzer = new cmd.CompilerAnalyzer({
   resolver: new cmd.CompilerResolver({
     writes: {
@@ -902,24 +932,24 @@ const cases: ExpectedAnalysis[] = [
     outputs: ["main.o"],
   },
   {
-    label: "clang default executable output",
+    label: "clang unresolved default executable output",
     cmd: ["clang", "src/t.c"],
     compilerMode: {
       phase: cmd.CompilerPhase.Link,
       artifact: cmd.CompilerArtifact.Executable,
     },
     inputs: ["src/t.c"],
-    outputs: [hostDefaultExecutable()],
+    outputs: [],
   },
   {
-    label: "clang default executable output from object input",
+    label: "clang unresolved default executable output from object input",
     cmd: ["clang", "obj/t.o"],
     compilerMode: {
       phase: cmd.CompilerPhase.Link,
       artifact: cmd.CompilerArtifact.Executable,
     },
     inputs: ["obj/t.o"],
-    outputs: [hostDefaultExecutable()],
+    outputs: [],
   },
   {
     label: "clang archive static lib from object inputs",
@@ -1007,14 +1037,14 @@ const cases: ExpectedAnalysis[] = [
     },
   },
   {
-    label: "clang explicit windows gnu target executable output",
+    label: "clang unresolved windows gnu target executable output",
     cmd: ["clang", "--target=x86_64-w64-windows-gnu", "src/tool.c"],
     compilerMode: {
       phase: cmd.CompilerPhase.Link,
       artifact: cmd.CompilerArtifact.Executable,
     },
     inputs: ["src/tool.c"],
-    outputs: ["a.exe"],
+    outputs: [],
   },
   {
     label: "clang windows msvc target accepts coff link inputs",
@@ -1049,14 +1079,14 @@ const cases: ExpectedAnalysis[] = [
     outputs: ["bin/app"],
   },
   {
-    label: "clang explicit linux target executable output",
+    label: "clang unresolved linux target executable output",
     cmd: ["clang", "--target=x86_64-unknown-linux-gnu", "src/tool.c"],
     compilerMode: {
       phase: cmd.CompilerPhase.Link,
       artifact: cmd.CompilerArtifact.Executable,
     },
     inputs: ["src/tool.c"],
-    outputs: ["a.out"],
+    outputs: [],
   },
   {
     label: "prefixed mingw gnu driver object output",

@@ -210,7 +210,6 @@ export type EffectiveCompilerTarget = {
 export type CompilerOutputConvention = {
   object: string;
   executable: string;
-  defaultExecutable?: string;
   sharedLibrary: string;
   staticLibrary: string;
 };

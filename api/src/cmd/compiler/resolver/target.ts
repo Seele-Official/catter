@@ -16,7 +16,6 @@ import {
 export const ELF_OUTPUT_CONVENTION: CompilerOutputConvention = {
   object: ".o",
   executable: "",
-  defaultExecutable: "a.out",
   sharedLibrary: ".so",
   staticLibrary: ".a",
 };
@@ -24,7 +23,6 @@ export const ELF_OUTPUT_CONVENTION: CompilerOutputConvention = {
 export const MACHO_OUTPUT_CONVENTION: CompilerOutputConvention = {
   object: ".o",
   executable: "",
-  defaultExecutable: "a.out",
   sharedLibrary: ".dylib",
   staticLibrary: ".a",
 };
@@ -32,7 +30,6 @@ export const MACHO_OUTPUT_CONVENTION: CompilerOutputConvention = {
 export const COFF_GNU_OUTPUT_CONVENTION: CompilerOutputConvention = {
   object: ".o",
   executable: ".exe",
-  defaultExecutable: "a.exe",
   sharedLibrary: ".dll",
   staticLibrary: ".a",
 };

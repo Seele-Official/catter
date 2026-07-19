@@ -1,6 +1,7 @@
 import * as fs from "../../../fs.js";
 import {
   CompilerArtifact,
+  CompilerDialect,
   CompilerPhase,
   type CompilerOutput,
   type CompilerOutputConvention,
@@ -174,13 +175,15 @@ function resolveDefaultCompileOutputs(
     });
     return [];
   }
-
-  const extension = defaultArtifactExtension(
+  const extension = artifactExtension(
     parsed.compilerMode.artifact,
     options.outputConvention,
-    trace,
   );
   if (extension === undefined) {
+    trace.addDiagnostic({
+      code: "default-output-unsupported-artifact",
+      message: `cannot infer default output for ${parsed.compilerMode.artifact}`,
+    });
     return [];
   }
 
@@ -211,10 +214,17 @@ function resolveDefaultSingleOutput(
   }
 
   const path = defaultSingleOutputPath(
-    parsed.compilerMode.artifact,
+    parsed,
     firstRead.input.path,
     options.outputConvention,
   );
+  if (path === undefined) {
+    trace.addDiagnostic({
+      code: "implicit-output-unresolved",
+      message: `cannot infer implicit output for ${parsed.dialect} ${parsed.compilerMode.phase}/${parsed.compilerMode.artifact}`,
+    });
+    return [];
+  }
 
   trace.inferredWrite(path, "default-output");
 
@@ -224,22 +234,6 @@ function resolveDefaultSingleOutput(
       reads: relevantReads,
     },
   ];
-}
-
-function defaultArtifactExtension(
-  artifact: CompilerArtifact,
-  convention: CompilerOutputConvention,
-  trace: ResolverTrace,
-): string | undefined {
-  const extension = artifactExtension(artifact, convention);
-  if (extension === undefined) {
-    trace.addDiagnostic({
-      code: "default-output-unsupported-artifact",
-      message: `cannot infer default output for ${artifact}`,
-    });
-  }
-
-  return extension;
 }
 
 function artifactExtension(
@@ -277,22 +271,24 @@ function artifactExtension(
 }
 
 function defaultSingleOutputPath(
-  artifact: CompilerArtifact,
+  parsed: CompilerParseResult,
   inputPath: string,
   convention: CompilerOutputConvention,
-): string {
-  switch (artifact) {
+): string | undefined {
+  if (
+    parsed.dialect !== CompilerDialect.Msvc ||
+    parsed.compilerMode.phase !== CompilerPhase.Link
+  ) {
+    return undefined;
+  }
+
+  switch (parsed.compilerMode.artifact) {
     case CompilerArtifact.Executable:
-      return (
-        convention.defaultExecutable ??
-        pathStem(inputPath) + convention.executable
-      );
+      return pathStem(inputPath) + convention.executable;
     case CompilerArtifact.SharedLibrary:
       return pathStem(inputPath) + convention.sharedLibrary;
-    case CompilerArtifact.StaticLibrary:
-      return pathStem(inputPath) + convention.staticLibrary;
     default:
-      return pathStem(inputPath) + convention.object;
+      return undefined;
   }
 }
 
