@@ -4,7 +4,13 @@ import * as service from "../service.js";
 import * as cli from "../cli/index.js";
 import * as io from "../io.js";
 import * as fs from "../fs.js";
-import { analyze } from "../cmd/index.js";
+import {
+  CompilerAnalyzer,
+  CompilerResolver,
+  type CompilerAnalysis,
+  type CompilerAnalysisError,
+  type CompilerResolveDebug,
+} from "../cmd/index.js";
 import {
   CDBManager,
   type CDBCommand,
@@ -22,6 +28,7 @@ type CDBScriptOptions = {
   abortOnCommandFailure: boolean;
   abortOnCaptureError: boolean;
   quiet: boolean;
+  verbose: boolean;
 };
 
 const cdbCLI = cli.command({
@@ -55,6 +62,10 @@ const cdbCLI = cli.command({
     cli.flag("quiet", {
       short: "q",
       description: "Suppress informational output.",
+    }),
+    cli.flag("verbose", {
+      short: "v",
+      description: "Print detailed command analysis and generated entries.",
     }),
   ] as const,
   positionals: [
@@ -96,6 +107,7 @@ function defaultOptions(outputPath: string): CDBScriptOptions {
     abortOnCommandFailure: false,
     abortOnCaptureError: false,
     quiet: false,
+    verbose: false,
   };
 }
 
@@ -103,6 +115,114 @@ function log(options: CDBScriptOptions, message: string): void {
   if (!options.quiet) {
     io.println(message);
   }
+}
+
+function verboseLog(options: CDBScriptOptions, message: string): void {
+  if (options.verbose && !options.quiet) {
+    io.println(message);
+  }
+}
+
+function quoteArgument(argument: string): string {
+  return /^[A-Za-z0-9_@%+=:,./\\-]+$/.test(argument)
+    ? argument
+    : JSON.stringify(argument);
+}
+
+function commandLine(command: service.CommandData): string {
+  const argv = command.argv.length === 0 ? [command.exe] : command.argv;
+  return argv.map(quoteArgument).join(" ");
+}
+
+function indentedList(label: string, values: readonly string[]): string[] {
+  if (values.length === 0) {
+    return [`  ${label}: none recognized`];
+  }
+  return [`  ${label}:`, ...values.map((value) => `    ${value}`)];
+}
+
+function resolverNotes(debug: CompilerResolveDebug): string[] {
+  const diagnosticPriority = (code: string): number => {
+    if (code.includes("output") || code.includes("assembly")) {
+      return 0;
+    }
+    return code === "input-candidate-rejected" ? 2 : 1;
+  };
+  const diagnostics = [...debug.diagnostics]
+    .sort(
+      (left, right) =>
+        diagnosticPriority(left.code) - diagnosticPriority(right.code),
+    )
+    .map((diagnostic) => {
+      const subject =
+        diagnostic.path === undefined ? "" : `${diagnostic.path}: `;
+      return `${subject}${diagnostic.message}`;
+    });
+
+  const notes: string[] = [];
+  for (const diagnostic of diagnostics) {
+    if (!notes.includes(diagnostic)) {
+      notes.push(diagnostic);
+    }
+    if (notes.length === 3) {
+      break;
+    }
+  }
+  return notes;
+}
+
+function compilerOutputs(analysis: CompilerAnalysis): string[] {
+  const inferred = new Map(
+    analysis.debug?.inferredWrites.map(
+      (write) => [write.path, write.reason] as const,
+    ),
+  );
+  return analysis.writes.map((output) => {
+    const reason = inferred.get(output);
+    if (reason === "default-output") {
+      return `${output} (inferred from compiler defaults)`;
+    }
+    if (reason === "assembly-listing") {
+      return `${output} (inferred assembly listing)`;
+    }
+    return output;
+  });
+}
+
+function compilerAnalysisSuccessLog(
+  id: number,
+  command: service.CommandData,
+  analysis: CompilerAnalysis,
+): string {
+  const lines = [
+    `Successfully analyzed command #${id}`,
+    `  at ${command.cwd}`,
+    `    ${commandLine(command)}`,
+    ...indentedList("Sources", analysis.sourceFiles),
+    ...indentedList("Outputs", compilerOutputs(analysis)),
+  ];
+  if (analysis.debug !== undefined) {
+    const notes = resolverNotes(analysis.debug);
+    if (notes.length !== 0) {
+      lines.push("  Resolver notes:", ...notes.map((note) => `    ${note}`));
+    }
+  }
+
+  return lines.join("\n");
+}
+
+function compilerAnalysisErrorLog(
+  id: number,
+  command: service.CommandData,
+  error: CompilerAnalysisError,
+): string {
+  return [
+    `Failed to analyze command #${id}`,
+    `  at ${command.cwd}`,
+    `    ${commandLine(command)}`,
+    `  ${error.kind}:`,
+    `    ${error.message}`,
+  ].join("\n");
 }
 
 /**
@@ -143,6 +263,7 @@ export function cdb(
   savePath = "build/compile_commands.json",
 ): service.CatterContextService {
   let options = defaultOptions(savePath);
+  let compilerAnalyzer = new CompilerAnalyzer();
   const commandTree = new data.FlatTree<string, string>();
   const producers = new Map<string, Producer[]>();
   const srcFiles = new Map<string, string>();
@@ -185,10 +306,17 @@ export function cdb(
   }
 
   function save(): void {
+    const items = generatedItems();
+    verboseLog(
+      options,
+      `Generated ${items.length} entries for ${new Set(items.map((item) => item.file)).size} source files; ` +
+        `${items.filter((item) => item.output !== undefined).length} entries include an output path.`,
+    );
+
     const manager = new CDBManager(options.outputPath, {
       inherit: options.append,
     });
-    manager.merge(generatedItems());
+    manager.merge(items);
 
     const savedPath = manager.save();
     log(
@@ -215,7 +343,21 @@ export function cdb(
         abortOnCommandFailure: parsed["abort-on-command-failure"],
         abortOnCaptureError: parsed["abort-on-capture-error"],
         quiet: parsed.quiet,
+        verbose: parsed.verbose,
       };
+      compilerAnalyzer = new CompilerAnalyzer({
+        resolver: new CompilerResolver({ debug: options.verbose }),
+      });
+
+      verboseLog(
+        options,
+        [
+          "CDB verbose logging enabled.",
+          `  Output file: ${options.outputPath}`,
+          `  Existing entries: ${options.append ? "merge" : "replace"}`,
+          "  Resolver diagnostics: enabled",
+        ].join("\n"),
+      );
 
       return config;
     },
@@ -244,18 +386,23 @@ export function cdb(
       }
 
       const command = data.data;
-      const analysisResult = analyze({
+      const analysisResult = compilerAnalyzer.analyze({
         exe: command.exe,
         argv: command.argv,
       });
       if (analysisResult.isErr()) {
+        verboseLog(
+          options,
+          compilerAnalysisErrorLog(ctx.id, command, analysisResult.error),
+        );
         return;
       }
 
       const analysis = analysisResult.value;
-      if (analysis.kind !== "compiler") {
-        return;
-      }
+      verboseLog(
+        options,
+        compilerAnalysisSuccessLog(ctx.id, command, analysis),
+      );
       capturedCompilerCommandIds.add(ctx.id);
 
       for (const source of analysis.sourceFiles) {
