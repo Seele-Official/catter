@@ -256,6 +256,57 @@ try {
     captureErrorAborted = String(error).includes("spawn failed");
   }
   debug.assertThrow(captureErrorAborted);
+
+  const verbosePath = fs.path.joinAll(testEnvPath, "verbose.json");
+  const verboseRuntime = new service.ServiceRuntime();
+  verboseRuntime.use(scripts.cdb());
+  await verboseRuntime.start(config(["--output", verbosePath, "--verbose"]));
+  expectSkip(
+    await verboseRuntime.command(
+      16,
+      command(["not-a-build-tool", "input.txt"], fs.path.absolute(testEnvPath)),
+    ),
+  );
+  expectSkip(
+    await verboseRuntime.command(
+      17,
+      command(
+        [
+          "ar",
+          "qc",
+          "libverbose.a",
+          "one.o",
+          "two.o",
+          "three.o",
+          "four.o",
+          "five.o",
+          "six.o",
+          "seven.o",
+          "eight.o",
+          "nine.o",
+        ],
+        fs.path.absolute(testEnvPath),
+      ),
+    ),
+  );
+  expectSkip(
+    await verboseRuntime.command(
+      18,
+      command(
+        [
+          "clang++",
+          "-c",
+          "src/verbose file.cc",
+          "not-a-source",
+          "-o",
+          "obj/verbose file.o",
+        ],
+        fs.path.absolute(testEnvPath),
+      ),
+    ),
+  );
+  await verboseRuntime.finish({ code: 0, stdout: "", stderr: "" });
+  debug.assertThrow(new cdb.CDBManager(verbosePath).items().length === 1);
 } finally {
   if (fs.exists(testEnvPath)) {
     fs.removeAll(testEnvPath);
