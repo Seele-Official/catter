@@ -1522,7 +1522,7 @@ public:
         virtual std::string normalizer(const char* referrer_name, const char* module_name) = 0;
 
         /** Return the JavaScript source bytes for a canonical module name. */
-        virtual std::vector<char> loader(const char* module_name) = 0;
+        virtual std::string loader(const char* module_name) = 0;
 
         virtual ~ModuleLoader() = default;
     };
@@ -1548,29 +1548,43 @@ public:
                 -> char* {
                 auto raw = static_cast<Raw*>(opaque);
                 assert(raw && raw->module_loader && "Module loader is not set");
+                try {
+                    auto normalized_name =
+                        raw->module_loader->normalizer(module_base_name, module_name);
 
-                auto normalized_name =
-                    raw->module_loader->normalizer(module_base_name, module_name);
-
-                return js_strdup(ctx, normalized_name.c_str());
+                    return js_strdup(ctx, normalized_name.c_str());
+                } catch(const std::exception& e) {
+                    JS_ThrowInternalError(ctx, "Exception in module normalizer: %s", e.what());
+                    return nullptr;
+                } catch(...) {
+                    JS_ThrowInternalError(ctx, "Unknown exception in module normalizer");
+                    return nullptr;
+                }
             },
             [](JSContext* ctx, const char* module_name, void* opaque) -> JSModuleDef* {
                 auto raw = static_cast<Raw*>(opaque);
                 assert(raw && raw->module_loader && "Module loader is not set");
 
-                auto source = raw->module_loader->loader(module_name);
+                try {
+                    auto source = raw->module_loader->loader(module_name);
+                    JSValue module_value = JS_Eval(ctx,
+                                                   source.data(),
+                                                   source.size(),
+                                                   module_name,
+                                                   JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
 
-                JSValue module_value = JS_Eval(ctx,
-                                               source.data(),
-                                               source.size(),
-                                               module_name,
-                                               JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+                    if(JS_IsException(module_value))
+                        return NULL;
 
-                if(JS_IsException(module_value))
-                    return NULL;
-
-                JSModuleDef* module = (JSModuleDef*)JS_VALUE_GET_PTR(module_value);
-                return module;
+                    JSModuleDef* module = (JSModuleDef*)JS_VALUE_GET_PTR(module_value);
+                    return module;
+                } catch(const std::exception& e) {
+                    JS_ThrowInternalError(ctx, "Exception in module loader: %s", e.what());
+                    return nullptr;
+                } catch(...) {
+                    JS_ThrowInternalError(ctx, "Unknown exception in module loader");
+                    return nullptr;
+                }
             },
             this->raw.get());
     }

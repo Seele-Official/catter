@@ -11,6 +11,7 @@
 
 #include "apitool.h"
 #include "async.h"
+#include "esm_loader.h"
 
 extern "C" {
     extern const char _binary_lib_js_start[];
@@ -45,6 +46,7 @@ struct RuntimeState {
         on_execution = {};
         runtime = qjs::Runtime::create();
         config = std::move(next_config);
+        runtime.set_module_loader(make_esm_module_loader(config.pwd));
     }
 };
 

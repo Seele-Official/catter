@@ -218,10 +218,9 @@ TEST_CASE(script_and_module_evaluation_cover_sync_async_and_custom_loading) {
             return "virtual:dependency";
         }
 
-        std::vector<char> loader(const char* module_name) override {
+        std::string loader(const char* module_name) override {
             loaded_name = module_name;
-            constexpr std::string_view source = "export const value = 6 * 7;";
-            return std::vector<char>{source.begin(), source.end()};
+            return "export const value = 6 * 7;";
         }
 
         std::string normalized_referrer;
