@@ -1519,10 +1519,12 @@ public:
     /** Callbacks used to resolve and load JavaScript source modules. */
     struct ModuleLoader {
         /** Resolve module_name relative to referrer_name and return its canonical module name. */
-        kota::function<std::string(const char* referrer_name, const char* module_name)> normalizer;
+        virtual std::string normalizer(const char* referrer_name, const char* module_name) = 0;
 
         /** Return the JavaScript source bytes for a canonical module name. */
-        kota::function<std::vector<char>(const char* module_name)> loader;
+        virtual std::vector<char> loader(const char* module_name) = 0;
+
+        virtual ~ModuleLoader() = default;
     };
 
     static Runtime create();
@@ -1537,7 +1539,7 @@ public:
      * Install or replace this runtime's JavaScript module loader.
      * The callbacks are retained by the runtime and used by subsequent module evaluations.
      */
-    void set_module_loader(ModuleLoader loader) const noexcept {
+    void set_module_loader(std::unique_ptr<ModuleLoader> loader) const noexcept {
         this->raw->module_loader = std::move(loader);
 
         return JS_SetModuleLoaderFunc(
@@ -1545,7 +1547,7 @@ public:
             [](JSContext* ctx, const char* module_base_name, const char* module_name, void* opaque)
                 -> char* {
                 auto raw = static_cast<Raw*>(opaque);
-                assert(raw && raw->module_loader.has_value() && "Module loader is not set");
+                assert(raw && raw->module_loader && "Module loader is not set");
 
                 auto normalized_name =
                     raw->module_loader->normalizer(module_base_name, module_name);
@@ -1554,7 +1556,7 @@ public:
             },
             [](JSContext* ctx, const char* module_name, void* opaque) -> JSModuleDef* {
                 auto raw = static_cast<Raw*>(opaque);
-                assert(raw && raw->module_loader.has_value() && "Module loader is not set");
+                assert(raw && raw->module_loader && "Module loader is not set");
 
                 auto source = raw->module_loader->loader(module_name);
 
@@ -1618,7 +1620,7 @@ private:
             void operator() (JSRuntime* rt) const noexcept;
         };
 
-        std::optional<ModuleLoader> module_loader = std::nullopt;
+        std::unique_ptr<ModuleLoader> module_loader = nullptr;
         std::unique_ptr<JSRuntime, JSRuntimeDeleter> rt = nullptr;
         std::unordered_map<std::string, Context> ctxs{};
     };

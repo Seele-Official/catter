@@ -84,7 +84,7 @@ struct CatterConfig {
     DecoKV(names = {"-m", "--mode"},
            meta_var = "<Mode>",
            help = "mode of operation, e.g. 'inject'",
-           required = true)
+           required = false)
     <config::RunMode> mode = config::RunMode{};
 
     DecoKV(names = {"-d", "--dir"},

@@ -1,5 +1,6 @@
 #include "js/qjs.h"
 
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -210,23 +211,27 @@ TEST_CASE(script_and_module_evaluation_cover_sync_async_and_custom_loading) {
     EXPECT_TRUE(async_result.is_fulfilled());
     EXPECT_TRUE(global["asyncResult"].as<int64_t>() == 42);
 
-    std::string normalized_referrer;
-    std::string normalized_specifier;
-    std::string loaded_name;
-    runtime.set_module_loader({
-        .normalizer =
-            [&](const char* referrer_name, const char* module_name) {
-                normalized_referrer = referrer_name;
-                normalized_specifier = module_name;
-                return std::string{"virtual:dependency"};
-            },
-        .loader =
-            [&](const char* module_name) {
-                loaded_name = module_name;
-                constexpr std::string_view source = "export const value = 6 * 7;";
-                return std::vector<char>{source.begin(), source.end()};
-            },
-    });
+    struct Loader : public qjs::Runtime::ModuleLoader {
+        std::string normalizer(const char* referrer_name, const char* module_name) override {
+            normalized_referrer = referrer_name;
+            normalized_specifier = module_name;
+            return "virtual:dependency";
+        }
+
+        std::vector<char> loader(const char* module_name) override {
+            loaded_name = module_name;
+            constexpr std::string_view source = "export const value = 6 * 7;";
+            return std::vector<char>{source.begin(), source.end()};
+        }
+
+        std::string normalized_referrer;
+        std::string normalized_specifier;
+        std::string loaded_name;
+    };
+
+    auto loader = std::make_unique<Loader>();
+    auto loader_ptr = loader.get();
+    runtime.set_module_loader(std::move(loader));
 
     auto module_result = ctx.eval_module(R"(
             import { value } from './dependency.js';
@@ -237,9 +242,9 @@ TEST_CASE(script_and_module_evaluation_cover_sync_async_and_custom_loading) {
 
     EXPECT_TRUE(module_result.is_fulfilled());
     EXPECT_TRUE(global["moduleResult"].as<int64_t>() == 42);
-    EXPECT_TRUE(normalized_referrer == "main-module.js");
-    EXPECT_TRUE(normalized_specifier == "./dependency.js");
-    EXPECT_TRUE(loaded_name == "virtual:dependency");
+    EXPECT_TRUE(loader_ptr->normalized_referrer == "main-module.js");
+    EXPECT_TRUE(loader_ptr->normalized_specifier == "./dependency.js");
+    EXPECT_TRUE(loader_ptr->loaded_name == "virtual:dependency");
 };
 
 TEST_CASE(object_property_apis_cover_reads_writes_and_exceptional_access) {
