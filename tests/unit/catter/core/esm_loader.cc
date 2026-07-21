@@ -198,11 +198,11 @@ TEST_CASE(api_source_style_project_dependency_graph_is_resolved_once) {
         const auto bootstrap_path = (fixture.root / "bootstrap.js").string();
 
         constexpr auto script_content =  "import './index.js';\n"
-                                                            "if (globalThis.projectResult !== 575) {\n"
-                                                            "  throw new Error('unexpected project result');\n" "}\n"
-                                                            "if (globalThis.sharedLoads !== 1) {\n"
-                                                            "  throw new Error('shared module was evaluated more than once');\n"
-                                                            "}\n";
+                                    "if (globalThis.projectResult !== 575) {\n"
+                                    "  throw new Error('unexpected project result');\n" "}\n"
+                                    "if (globalThis.sharedLoads !== 1) {\n"
+                                    "  throw new Error('shared module was evaluated more than once');\n"
+                                    "}\n";
 
         auto task = async_run({.script_content = script_content,
                                .script_path = bootstrap_path,

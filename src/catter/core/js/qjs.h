@@ -1567,17 +1567,18 @@ public:
 
                 try {
                     auto source = raw->module_loader->loader(module_name);
-                    JSValue module_value = JS_Eval(ctx,
-                                                   source.data(),
-                                                   source.size(),
-                                                   module_name,
-                                                   JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+                    auto module_value =
+                        Value{ctx,
+                              JS_Eval(ctx,
+                                      source.data(),
+                                      source.size(),
+                                      module_name,
+                                      JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY)};
 
-                    if(JS_IsException(module_value))
+                    if(module_value.is_exception())
                         return NULL;
 
-                    JSModuleDef* module = (JSModuleDef*)JS_VALUE_GET_PTR(module_value);
-                    return module;
+                    return (JSModuleDef*)JS_VALUE_GET_PTR(module_value.value());
                 } catch(const std::exception& e) {
                     JS_ThrowInternalError(ctx, "Exception in module loader: %s", e.what());
                     return nullptr;

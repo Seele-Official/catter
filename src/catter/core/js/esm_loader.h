@@ -28,8 +28,4 @@ private:
 
     std::filesystem::path working_directory;
 };
-
-std::unique_ptr<qjs::Runtime::ModuleLoader>
-    make_esm_module_loader(std::filesystem::path working_directory);
-
 }  // namespace catter::js

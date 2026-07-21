@@ -78,10 +78,4 @@ std::string EsmModuleLoader::loader(const char* module_name) {
     std::string source{std::istreambuf_iterator<char>{input}, std::istreambuf_iterator<char>{}};
     return source;
 }
-
-std::unique_ptr<qjs::Runtime::ModuleLoader>
-    make_esm_module_loader(std::filesystem::path working_directory) {
-    return std::make_unique<EsmModuleLoader>(std::move(working_directory));
-}
-
 }  // namespace catter::js
