@@ -52,13 +52,6 @@ struct RuntimeState {
 
 RuntimeState state{};
 
-void register_catter_module(const qjs::Context& ctx) {
-    auto& mod = ctx.cmodule("catter-c");
-    for(auto& reg: catter::apitool::api_registers()) {
-        reg(mod, ctx);
-    }
-}
-
 std::string_view js_lib_source() {
     const std::string_view js_lib{_binary_lib_js_start, _binary_lib_js_end};
     auto last = js_lib.find_last_not_of('\0');
@@ -112,8 +105,10 @@ kota::task<> RuntimeScope::start(RuntimeConfig config) {
     std::exception_ptr error;
     try {
         const auto& ctx = state.runtime.context();
-        register_catter_module(ctx);
-
+        auto& mod = ctx.cmodule("catter-c");
+        for(auto& reg: catter::apitool::api_registers()) {
+            reg(mod, ctx);
+        }
         co_await eval_module(js_lib_source(), "catter");
     } catch(...) {
         error = std::current_exception();
