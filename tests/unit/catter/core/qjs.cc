@@ -1,5 +1,6 @@
 #include "js/qjs.h"
 
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -156,11 +157,13 @@ TEST_CASE(value_conversions_cover_supported_types_copy_move_and_type_mismatch) {
         auto bool_value = qjs::Value::from(ctx.js_context(), true);
         auto signed_value = qjs::Value::from(ctx.js_context(), int64_t{-7});
         auto unsigned_value = qjs::Value::from(ctx.js_context(), uint32_t{11});
+        auto wide_unsigned_value = qjs::Value::from(ctx.js_context(), uint64_t{1} << 32);
         auto string_value = qjs::Value::from(ctx.js_context(), std::string{"hello"});
 
         EXPECT_TRUE(bool_value.to<bool>().value_or(false));
         EXPECT_TRUE(signed_value.as<int64_t>() == -7);
         EXPECT_TRUE(unsigned_value.as<uint32_t>() == 11);
+        EXPECT_TRUE(wide_unsigned_value.as<uint64_t>() == (uint64_t{1} << 32));
         EXPECT_TRUE(string_value.as<std::string>() == "hello");
 
         auto copied_string = string_value;
@@ -185,6 +188,62 @@ TEST_CASE(value_conversions_cover_supported_types_copy_move_and_type_mismatch) {
     EXPECT_FALSE(bool_value.to<std::string>().has_value());
     EXPECT_TRUE(throws_with_message([&]() { (void)bool_value.as<std::string>(); },
                                     "Value is not a string"));
+};
+
+TEST_CASE(script_and_module_evaluation_cover_sync_async_and_custom_loading) {
+    auto runtime = qjs::Runtime::create();
+    auto& ctx = runtime.context();
+    auto global = ctx.global_this();
+
+    constexpr std::string_view sync_source = "globalThis.syncResult = 40 + 2;";
+    auto sync_result = ctx.eval_script(sync_source.data(), sync_source.size(), "sync-script.js");
+    EXPECT_TRUE(sync_result.as<int64_t>() == 42);
+    EXPECT_TRUE(global["syncResult"].as<int64_t>() == 42);
+    EXPECT_TRUE(throws_with_message(
+        [&]() { (void)ctx.eval_script("undeclaredValue = 1", "strict-script.js"); },
+        "ReferenceError"));
+
+    auto async_result =
+        ctx.async_eval_script("await Promise.resolve(); globalThis.asyncResult = 21 * 2;",
+                              "async-script.js");
+    EXPECT_TRUE(async_result.is_pending());
+    drain_jobs(runtime);
+    EXPECT_TRUE(async_result.is_fulfilled());
+    EXPECT_TRUE(global["asyncResult"].as<int64_t>() == 42);
+
+    struct Loader : public qjs::Runtime::ModuleLoader {
+        std::string normalizer(const char* referrer_name, const char* module_name) override {
+            normalized_referrer = referrer_name;
+            normalized_specifier = module_name;
+            return "virtual:dependency";
+        }
+
+        std::string loader(const char* module_name) override {
+            loaded_name = module_name;
+            return "export const value = 6 * 7;";
+        }
+
+        std::string normalized_referrer;
+        std::string normalized_specifier;
+        std::string loaded_name;
+    };
+
+    auto loader = std::make_unique<Loader>();
+    auto loader_ptr = loader.get();
+    runtime.set_module_loader(std::move(loader));
+
+    auto module_result = ctx.eval_module(R"(
+            import { value } from './dependency.js';
+            globalThis.moduleResult = value;
+        )",
+                                         "main-module.js");
+    drain_jobs(runtime);
+
+    EXPECT_TRUE(module_result.is_fulfilled());
+    EXPECT_TRUE(global["moduleResult"].as<int64_t>() == 42);
+    EXPECT_TRUE(loader_ptr->normalized_referrer == "main-module.js");
+    EXPECT_TRUE(loader_ptr->normalized_specifier == "./dependency.js");
+    EXPECT_TRUE(loader_ptr->loaded_name == "virtual:dependency");
 };
 
 TEST_CASE(object_property_apis_cover_reads_writes_and_exceptional_access) {

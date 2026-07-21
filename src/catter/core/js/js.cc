@@ -11,6 +11,7 @@
 
 #include "apitool.h"
 #include "async.h"
+#include "esm_loader.h"
 
 extern "C" {
     extern const char _binary_lib_js_start[];
@@ -44,18 +45,12 @@ struct RuntimeState {
         on_command = {};
         on_execution = {};
         runtime = qjs::Runtime::create();
+        runtime.set_module_loader(std::make_unique<EsmModuleLoader>(next_config.pwd));
         config = std::move(next_config);
     }
 };
 
 RuntimeState state{};
-
-void register_catter_module(const qjs::Context& ctx) {
-    auto& mod = ctx.cmodule("catter-c");
-    for(auto& reg: catter::apitool::api_registers()) {
-        reg(mod, ctx);
-    }
-}
 
 std::string_view js_lib_source() {
     const std::string_view js_lib{_binary_lib_js_start, _binary_lib_js_end};
@@ -67,11 +62,8 @@ std::string_view js_lib_source() {
 }
 
 kota::task<> eval_module(std::string_view input, const char* filename) {
-    constexpr int flags = JS_EVAL_FLAG_STRICT;
-
     auto& ctx = state.runtime.context();
-    auto result =
-        co_await state.js_loop.promise_to_task<void>(ctx.eval_module(input, filename, flags));
+    auto result = co_await state.js_loop.promise_to_task<void>(ctx.eval_module(input, filename));
     if(!result) {
         throw result.error().to_exception();
     }
@@ -113,8 +105,10 @@ kota::task<> RuntimeScope::start(RuntimeConfig config) {
     std::exception_ptr error;
     try {
         const auto& ctx = state.runtime.context();
-        register_catter_module(ctx);
-
+        auto& mod = ctx.cmodule("catter-c");
+        for(auto& reg: catter::apitool::api_registers()) {
+            reg(mod, ctx);
+        }
         co_await eval_module(js_lib_source(), "catter");
     } catch(...) {
         error = std::current_exception();

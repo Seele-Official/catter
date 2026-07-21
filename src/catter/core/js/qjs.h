@@ -1058,12 +1058,13 @@ template <class Num>
     requires std::is_integral_v<Num>
 struct value_trans<Num> {
     static Value from(JSContext* ctx, Num value) noexcept {
-        if constexpr(std::is_unsigned_v<Num> && sizeof(Num) <= sizeof(uint32_t)) {
-            return Value{ctx, JS_NewUint32(ctx, static_cast<uint32_t>(value))};
-        } else if constexpr(std::is_signed_v<Num>) {
-            return Value{ctx, JS_NewInt64(ctx, static_cast<int64_t>(value))};
+        static_assert(sizeof(Num) <= sizeof(uint64_t),
+                      "Integral type is too large to be represented in JavaScript");
+
+        if constexpr(std::is_unsigned_v<Num>) {
+            return Value{ctx, JS_NewUint64(ctx, static_cast<uint64_t>(value))};
         } else {
-            static_assert(kota::dependent_false<Num>, "Unsupported integral type for value");
+            return Value{ctx, JS_NewInt64(ctx, static_cast<int64_t>(value))};
         }
     }
 
@@ -1416,15 +1417,50 @@ public:
     Value eval(std::string_view input, const char* filename, int eval_flags) const;
 
     /**
-     * Evaluate a JavaScript module, it will automatically add flag JS_EVAL_TYPE_MODULE to
-     * eval_flags.
+     * Evaluate a strict-mode classic script synchronously in this context's global scope.
+     * The returned value is the script's completion value.
      */
-    Promise eval_module(const char* input,
-                        size_t input_len,
-                        const char* filename,
-                        int eval_flags) const;
+    Value eval_script(const char* input, size_t input_len, const char* filename) const {
+        return this->eval(input, input_len, filename, JS_EVAL_TYPE_GLOBAL | JS_EVAL_FLAG_STRICT);
+    }
 
-    Promise eval_module(std::string_view input, const char* filename, int eval_flags) const;
+    /** String-view overload of eval_script(). */
+    Value eval_script(std::string_view input, const char* filename) const {
+        return this->eval_script(input.data(), input.size(), filename);
+    }
+
+    /**
+     * Evaluate a strict-mode classic script with top-level await support.
+     * The returned promise settles when the script and all of its top-level awaits complete.
+     */
+    Promise async_eval_script(const char* input, size_t input_len, const char* filename) const {
+        return this
+            ->eval(input,
+                   input_len,
+                   filename,
+                   JS_EVAL_TYPE_GLOBAL | JS_EVAL_FLAG_ASYNC | JS_EVAL_FLAG_STRICT)
+            .as<Promise>();
+    }
+
+    /** String-view overload of async_eval_script(). */
+    Promise async_eval_script(std::string_view input, const char* filename) const {
+        return this->async_eval_script(input.data(), input.size(), filename);
+    }
+
+    /**
+     * Evaluate a strict-mode ECMAScript module.
+     * Imports are resolved through the Runtime module loader, and the returned promise settles
+     * after module evaluation, including top-level awaits, has completed.
+     */
+    Promise eval_module(const char* input, size_t input_len, const char* filename) const {
+        return this->eval(input, input_len, filename, JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_STRICT)
+            .as<Promise>();
+    }
+
+    /** String-view overload of eval_module(). */
+    Promise eval_module(std::string_view input, const char* filename) const {
+        return this->eval_module(input.data(), input.size(), filename);
+    }
 
     Object global_this() const noexcept;
 
@@ -1480,6 +1516,17 @@ public:
     Runtime& operator= (Runtime&&) = default;
     ~Runtime() = default;
 
+    /** Callbacks used to resolve and load JavaScript source modules. */
+    struct ModuleLoader {
+        /** Resolve module_name relative to referrer_name and return its canonical module name. */
+        virtual std::string normalizer(const char* referrer_name, const char* module_name) = 0;
+
+        /** Return the JavaScript source bytes for a canonical module name. */
+        virtual std::string loader(const char* module_name) = 0;
+
+        virtual ~ModuleLoader() = default;
+    };
+
     static Runtime create();
 
     // Get or create a context with the given name
@@ -1487,6 +1534,61 @@ public:
     const Context& context(const std::string& name = "default") const;
 
     JSRuntime* js_runtime() const noexcept;
+
+    /**
+     * Install or replace this runtime's JavaScript module loader.
+     * The callbacks are retained by the runtime and used by subsequent module evaluations.
+     */
+    void set_module_loader(std::unique_ptr<ModuleLoader> loader) const noexcept {
+        this->raw->module_loader = std::move(loader);
+
+        return JS_SetModuleLoaderFunc(
+            this->js_runtime(),
+            [](JSContext* ctx, const char* module_base_name, const char* module_name, void* opaque)
+                -> char* {
+                auto raw = static_cast<Raw*>(opaque);
+                assert(raw && raw->module_loader && "Module loader is not set");
+                try {
+                    auto normalized_name =
+                        raw->module_loader->normalizer(module_base_name, module_name);
+
+                    return js_strdup(ctx, normalized_name.c_str());
+                } catch(const std::exception& e) {
+                    JS_ThrowInternalError(ctx, "Exception in module normalizer: %s", e.what());
+                    return nullptr;
+                } catch(...) {
+                    JS_ThrowInternalError(ctx, "Unknown exception in module normalizer");
+                    return nullptr;
+                }
+            },
+            [](JSContext* ctx, const char* module_name, void* opaque) -> JSModuleDef* {
+                auto raw = static_cast<Raw*>(opaque);
+                assert(raw && raw->module_loader && "Module loader is not set");
+
+                try {
+                    auto source = raw->module_loader->loader(module_name);
+                    auto module_value =
+                        Value{ctx,
+                              JS_Eval(ctx,
+                                      source.data(),
+                                      source.size(),
+                                      module_name,
+                                      JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY)};
+
+                    if(module_value.is_exception())
+                        return NULL;
+
+                    return (JSModuleDef*)JS_VALUE_GET_PTR(module_value.value());
+                } catch(const std::exception& e) {
+                    JS_ThrowInternalError(ctx, "Exception in module loader: %s", e.what());
+                    return nullptr;
+                } catch(...) {
+                    JS_ThrowInternalError(ctx, "Unknown exception in module loader");
+                    return nullptr;
+                }
+            },
+            this->raw.get());
+    }
 
     bool has_job_pending() const noexcept {
         return JS_IsJobPending(this->js_runtime());
@@ -1533,6 +1635,7 @@ private:
             void operator() (JSRuntime* rt) const noexcept;
         };
 
+        std::unique_ptr<ModuleLoader> module_loader = nullptr;
         std::unique_ptr<JSRuntime, JSRuntimeDeleter> rt = nullptr;
         std::unordered_map<std::string, Context> ctxs{};
     };

@@ -506,18 +506,6 @@ Value Context::eval(std::string_view input, const char* filename, int eval_flags
     return this->eval(input.data(), input.size(), filename, eval_flags);
 }
 
-Promise Context::eval_module(const char* input,
-                             size_t input_len,
-                             const char* filename,
-                             int eval_flags) const {
-    return this->eval(input, input_len, filename, eval_flags | JS_EVAL_TYPE_MODULE).as<Promise>();
-}
-
-Promise Context::eval_module(std::string_view input, const char* filename, int eval_flags) const {
-    return this->eval(input.data(), input.size(), filename, eval_flags | JS_EVAL_TYPE_MODULE)
-        .as<Promise>();
-}
-
 Object Context::global_this() const noexcept {
     return Object{this->js_context(), JS_GetGlobalObject(this->js_context())};
 }
