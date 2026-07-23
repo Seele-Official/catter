@@ -603,8 +603,9 @@ void Runtime::set_module_loader(std::unique_ptr<ModuleLoader> loader) const noex
                                                   module_name,
                                                   JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY)};
 
-                if(module_value.is_exception())
-                    return NULL;
+                if(module_value.is_exception()) {
+                    return nullptr;
+                }
 
                 return (JSModuleDef*)JS_VALUE_GET_PTR(module_value.value());
             } catch(const std::exception& e) {
