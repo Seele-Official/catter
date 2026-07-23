@@ -1,6 +1,7 @@
 #include "qjs.h"
 
 #include <atomic>
+#include <cassert>
 #include <cstdint>
 #include <utility>
 #include <quickjs.h>
@@ -466,19 +467,19 @@ void Context::Raw::JSContextDeleter::operator() (JSContext* ctx) const noexcept 
 }
 
 const CModule& Context::cmodule(const std::string& name) const {
-    if(auto it = this->raw->modules.find(name); it != this->raw->modules.end()) {
+    auto raw = Raw::from(this->js_context());
+    assert(raw != nullptr && "Raw context should not be null when creating a C module");
+
+    if(auto it = raw->modules.find(name); it != raw->modules.end()) {
         return it->second;
     }
 
     auto m = JS_NewCModule(this->js_context(), name.data(), [](JSContext* js_ctx, JSModuleDef* m) {
-        auto* ctx = Context::get_opaque(js_ctx);
+        auto* raw = Raw::from(js_ctx);
+        assert(raw != nullptr && "Raw context should not be null when creating a C module");
+
         auto atom = Atom(js_ctx, JS_GetModuleName(js_ctx, m));
-
-        if(!ctx) {
-            return -1;
-        }
-
-        auto& mod = ctx->modules[atom.to_string()];
+        auto& mod = raw->modules[atom.to_string()];
         for(auto& kv: mod.exports_list()) {
             JS_SetModuleExport(js_ctx, m, kv.name.c_str(), kv.value.release());
         }
@@ -488,7 +489,7 @@ const CModule& Context::cmodule(const std::string& name) const {
         throw qjs::Exception("Failed to create new C module");
     }
 
-    return this->raw->modules.emplace(name, CModule(this->js_context(), m, name)).first->second;
+    return raw->modules.emplace(name, CModule(this->js_context(), m, name)).first->second;
 }
 
 Value
@@ -515,24 +516,14 @@ bool Context::has_exception() const noexcept {
 }
 
 JSContext* Context::js_context() const noexcept {
-    return this->raw->ctx.get();
+    return this->ctx;
 }
 
 Context::operator bool() const noexcept {
-    return this->raw != nullptr;
+    return this->ctx != nullptr;
 }
 
-void Context::set_opaque() noexcept {
-    JS_SetContextOpaque(this->js_context(), this->raw.get());
-}
-
-Context::Raw* Context::get_opaque(JSContext* ctx) noexcept {
-    return static_cast<Raw*>(JS_GetContextOpaque(ctx));
-}
-
-Context::Context(JSContext* js_ctx) noexcept : raw(std::make_unique<Raw>(js_ctx)) {
-    this->set_opaque();
-}
+Context::Context(JSContext* ctx) noexcept : ctx(ctx) {}
 
 Runtime::Raw::Raw(JSRuntime* rt) noexcept : rt(rt) {
     JS_SetRuntimeOpaque(rt, next_runtime_token());
@@ -550,16 +541,16 @@ Runtime Runtime::create() {
     return Runtime(js_rt);
 }
 
-const Context& Runtime::context(const std::string& name) const {
+Context Runtime::context(const std::string& name) const {
     if(auto it = this->raw->ctxs.find(name); it != this->raw->ctxs.end()) {
-        return it->second;
+        return {it->second->ctx.get()};
     }
 
     auto js_ctx = JS_NewContext(this->js_runtime());
     if(!js_ctx) {
         throw qjs::Exception("Failed to create new JS context");
     }
-    return this->raw->ctxs.emplace(name, Context(js_ctx)).first->second;
+    return this->raw->ctxs.emplace(name, Context::Raw::create(js_ctx)).first->second->ctx.get();
 }
 
 JSRuntime* Runtime::js_runtime() const noexcept {
@@ -573,6 +564,22 @@ Runtime::operator bool() const noexcept {
 Runtime::Runtime(JSRuntime* js_rt) : raw(std::make_unique<Raw>(js_rt)) {}
 
 namespace json {
+std::string stringify(qjs::Value v) {
+    auto ctx = v.context();
+    auto val = v.value();
+    auto json_str_val = qjs::Value{ctx, JS_JSONStringify(ctx, val, JS_UNDEFINED, JS_UNDEFINED)};
+    if(JS_HasException(ctx)) {
+        throw qjs::JSException::dump(ctx);
+    }
+
+    const char* json_cstr = JS_ToCString(ctx, json_str_val.value());
+    if(json_cstr) {
+        std::string result{json_cstr};
+        JS_FreeCString(ctx, json_cstr);
+        return result;
+    }
+    throw qjs::TypeException("Failed to convert value to JSON string");
+};
 
 qjs::Value parse(const std::string& json_str, const Context& ctx) {
     auto ret = qjs::Value{
