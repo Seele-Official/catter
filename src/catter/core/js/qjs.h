@@ -1493,7 +1493,7 @@ private:
         std::unordered_map<std::string, CModule> modules{};
     };
 
-    JSContext* ctx;
+    JSContext* ctx = nullptr;
 };
 
 /**
