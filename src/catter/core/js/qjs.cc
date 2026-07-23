@@ -462,6 +462,16 @@ std::vector<CModule::kv>& CModule::exports_list() const noexcept {
 
 Context::Raw::Raw(JSContext* ctx) : ctx(ctx) {}
 
+std::unique_ptr<Context::Raw> Context::Raw::create(JSContext* ctx) noexcept {
+    auto ret = std::make_unique<Raw>(ctx);
+    JS_SetContextOpaque(ctx, ret.get());
+    return ret;
+}
+
+Context::Raw* Context::Raw::from(JSContext* ctx) noexcept {
+    return static_cast<Context::Raw*>(JS_GetContextOpaque(ctx));
+}
+
 void Context::Raw::JSContextDeleter::operator() (JSContext* ctx) const noexcept {
     JS_FreeContext(ctx);
 }
@@ -555,6 +565,71 @@ Context Runtime::context(const std::string& name) const {
 
 JSRuntime* Runtime::js_runtime() const noexcept {
     return this->raw->rt.get();
+}
+
+void Runtime::set_module_loader(std::unique_ptr<ModuleLoader> loader) const noexcept {
+    this->raw->module_loader = std::move(loader);
+
+    return JS_SetModuleLoaderFunc(
+        this->js_runtime(),
+        [](JSContext* ctx, const char* module_base_name, const char* module_name, void* opaque)
+            -> char* {
+            auto raw = static_cast<Raw*>(opaque);
+            assert(raw && raw->module_loader && "Module loader is not set");
+            try {
+                auto normalized_name =
+                    raw->module_loader->normalizer(module_base_name, module_name);
+
+                return js_strdup(ctx, normalized_name.c_str());
+            } catch(const std::exception& e) {
+                JS_ThrowInternalError(ctx, "Exception in module normalizer: %s", e.what());
+                return nullptr;
+            } catch(...) {
+                JS_ThrowInternalError(ctx, "Unknown exception in module normalizer");
+                return nullptr;
+            }
+        },
+        [](JSContext* js_ctx, const char* module_name, void* opaque) -> JSModuleDef* {
+            auto ctx = Context{js_ctx};
+            auto raw = static_cast<Raw*>(opaque);
+            assert(raw && raw->module_loader && "Module loader is not set");
+
+            try {
+                auto source = raw->module_loader->loader(module_name);
+
+                auto module_value = ctx.eval(source.c_str(),
+                                             source.size(),
+                                             module_name,
+                                             JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+
+                if(module_value.is_exception())
+                    return NULL;
+
+                return (JSModuleDef*)JS_VALUE_GET_PTR(module_value.value());
+            } catch(const std::exception& e) {
+                JS_ThrowInternalError(js_ctx, "Exception in module loader: %s", e.what());
+                return nullptr;
+            } catch(...) {
+                JS_ThrowInternalError(js_ctx, "Unknown exception in module loader");
+                return nullptr;
+            }
+        },
+        this->raw.get());
+}
+
+std::expected<bool, Value> Runtime::execute_pending_job() const noexcept {
+    JSContext* ctx = nullptr;
+    switch(JS_ExecutePendingJob(this->js_runtime(), &ctx)) {
+        case 1: return true;
+        case 0: return false;
+        case -1:
+            if(ctx) {
+                return std::unexpected(Value{ctx, JS_GetException(ctx)});
+            } else {
+                return std::unexpected(Value{});
+            }
+        default: return std::unexpected(Value{});
+    }
 }
 
 Runtime::operator bool() const noexcept {
