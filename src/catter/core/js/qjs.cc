@@ -590,17 +590,18 @@ void Runtime::set_module_loader(std::unique_ptr<ModuleLoader> loader) const noex
             }
         },
         [](JSContext* js_ctx, const char* module_name, void* opaque) -> JSModuleDef* {
-            auto ctx = Context{js_ctx};
             auto raw = static_cast<Raw*>(opaque);
             assert(raw && raw->module_loader && "Module loader is not set");
 
             try {
                 auto source = raw->module_loader->loader(module_name);
 
-                auto module_value = ctx.eval(source.c_str(),
-                                             source.size(),
-                                             module_name,
-                                             JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+                auto module_value = Value{js_ctx,
+                                          JS_Eval(js_ctx,
+                                                  source.c_str(),
+                                                  source.size(),
+                                                  module_name,
+                                                  JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY)};
 
                 if(module_value.is_exception())
                     return NULL;
