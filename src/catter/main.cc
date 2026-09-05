@@ -51,16 +51,26 @@ int main(int argc, char* argv[]) {
             return ret;
         }
         if(!res) {
-            std::println("Error when parsing: \n{}\nUse -h or --help for usage",
-                         res.error().message);
+            std::println("{}\nUse -h or --help for usage", res.error().message);
             return 1;
         }
         kota::run(app::async_run(res->options));
     } catch(const qjs::JSException& ex) {
-        std::println("Eval JavaScript file failed: \n{}", ex.what());
+        std::println("JavaScript {}: {}", ex.js_error_name(), ex.message());
+        std::println("JavaScript Stack trace:\n{}", ex.js_stack());
+        std::println("Native Stack trace:");
+        for(const auto& frame: ex.trace()) {
+            std::println("    {}", frame.to_string());
+        }
+        return 1;
+    } catch(const cpptrace::exception& ex) {
+        std::println("{}\nStack trace:", ex.message());
+        for(const auto& frame: ex.trace()) {
+            std::println("    {}", frame.to_string());
+        }
         return 1;
     } catch(const std::exception& ex) {
-        std::println("Fatal error: {}", ex.what());
+        std::println("{}", ex.what());
         return 1;
     } catch(...) {
         std::println("Unknown fatal error.");
