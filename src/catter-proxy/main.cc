@@ -81,9 +81,10 @@ kota::task<data::process_result> run(data::action act, data::ipcid_t id) {
 }
 
 std::string format_args(int argc, char* argv[]) {
-    std::string result;
-    for(int i = 0; i < argc; i++) {
-        result += ' ' + std::string(argv[i]);
+    std::string result = argv[0];
+    for(int i = 1; i < argc; i++) {
+        result += ' ';
+        result += argv[i];
     }
     return result;
 }
