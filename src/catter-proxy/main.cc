@@ -80,7 +80,18 @@ kota::task<data::process_result> run(data::action act, data::ipcid_t id) {
     }
 }
 
-kota::task<int> handle_proxy_request(const catter::proxy::ProxyOption& opt,
+std::string format_args(int argc, char* argv[]) {
+    std::string result = argv[0];
+    for(int i = 1; i < argc; i++) {
+        result += ' ';
+        result += argv[i];
+    }
+    return result;
+}
+
+kota::task<int> handle_proxy_request(int argc,
+                                     char* argv[],
+                                     const catter::proxy::ProxyOption& opt,
                                      proxy::ipc::Peer& peer) noexcept {
     // ensure peer is closed when proxy_main exits, otherwise the peer might still be
     // running and trying to access resources that have been cleaned up after proxy_main
@@ -130,26 +141,27 @@ kota::task<int> handle_proxy_request(const catter::proxy::ProxyOption& opt,
         co_await peer.finish(std::move(result));
 
         co_return static_cast<int>(result.code);
-    } catch(const std::exception& e) {
-        std::string args;
-        if(opt.args.has_value()) {
-            args.reserve(opt.args->size() * 5);
-            for(int i = 0; i < opt.args->size(); ++i) {
-                args += ' ';
-                args += (*opt.args)[i];
-            }
+    } catch(const cpptrace::exception& ex) {
+        err = std::format("{}\nStack trace:\n", ex.message());
+
+        for(const auto& frame: ex.trace()) {
+            err += std::format("    {}\n", frame.to_string());
         }
-        LOG_CRITICAL("Exception in catter-proxy: {}. Args: {}", e.what(), args);
-        err = e.what();
+    } catch(const std::exception& ex) {
+        err = std::format("{}\n", ex.what());
     } catch(...) {
-        LOG_CRITICAL("Unknown exception in catter-proxy.");
-        err = "Unknown exception in catter-proxy.";
+        err = "Unknown fatal error.\n";
     }
-    co_await peer.report_error(*opt.parent_id, err);
+
+    auto msg = std::format("Run `{}` failed:\n{}", format_args(argc, argv), err);
+
+    LOG_ERROR(msg);
+    co_await peer.report_error(*opt.parent_id, msg);
+
     co_return -1;
 };
 
-kota::task<int> proxy_main(const catter::proxy::ProxyOption& opt) noexcept {
+kota::task<int> proxy_main(int argc, char* argv[], const catter::proxy::ProxyOption& opt) noexcept {
     auto& current = kota::event_loop::current();
     auto ret =
         co_await kota::pipe::connect(config::ipc::pipe_name(), kota::pipe::options(), current);
@@ -164,7 +176,8 @@ kota::task<int> proxy_main(const catter::proxy::ProxyOption& opt) noexcept {
                                std::make_unique<kota::ipc::StreamTransport>(std::move(*ret))}
     };
 
-    auto [_, code] = co_await kota::when_all{peer.run(), handle_proxy_request(opt, peer)};
+    auto [_, code] =
+        co_await kota::when_all{peer.run(), handle_proxy_request(argc, argv, opt, peer)};
 
     co_return code;
 }
@@ -191,11 +204,8 @@ int main(int argc, char* argv[], [[maybe_unused]] char* envp[]) {
               [&](const catter::proxy::Option& opt) { cli.usage(std::cerr); })
         .match(catter::proxy::Option::Cate::proxy,
                [&](const auto& opt) {
-                   auto task = proxy_main(opt.proxy_opt);
-                   kota::event_loop loop;
-                   loop.schedule(task);
-                   loop.run();
-                   ret = task.result();
+                   auto [code] = kota::run(proxy_main(argc, argv, opt.proxy_opt));
+                   ret = code.value_or(-1);
                })
         .on_error([&](const kota::deco::cli::ParseError& err) {
             std::cerr << err.message << std::endl;

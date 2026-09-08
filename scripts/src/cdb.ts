@@ -374,11 +374,10 @@ function cdb(savePath = "build/compile_commands.json"): CatterContextService {
     onCommand(ctx) {
       const data = ctx.capture;
       if (data.isErr()) {
-        const message = `CDB received capture error: ${data.error.msg}`;
         if (options.abortOnCaptureError) {
-          throw new Error(message);
+          throw new Error(data.error.msg);
         }
-        log(options, message);
+        log(options, data.error.msg);
         return;
       }
 

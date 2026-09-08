@@ -21,7 +21,7 @@
 // MISSING-NOT: event=create
 // MISSING-NOT: event=decision
 // MISSING-NOT: event=finish
-// MISSING: event=error parent=0 message="missing command arguments after --{{.*}}"
+// MISSING: event=error parent=0 message="{{.*}}missing command arguments after --{{.*}}"
 // MISSING-NOT: event=create
 // MISSING-NOT: event=decision
 // MISSING-NOT: event=finish
